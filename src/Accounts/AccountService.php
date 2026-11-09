@@ -11,6 +11,7 @@ namespace TTLeague\Accounts;
 
 use TTLeague\Access\Capabilities;
 use TTLeague\Infrastructure\Database\Db;
+use TTLeague\Infrastructure\Database\PersonUserIndex;
 
 final class AccountService {
 
@@ -95,11 +96,15 @@ final class AccountService {
 
 	/**
 	 * Verknüpft die Person mit dem Konto. Ein Konto gehört höchstens einer Person
-	 * (UNIQUE-Index auf person.user_id); ein Konflikt wird als Fehler gemeldet.
+	 * (UNIQUE-Index auf person.user_id); ein Konflikt wird als Fehler gemeldet. Fehlt der
+	 * UNIQUE-Index noch (ältere Installation mit doppelten Verknüpfungen), ist Verknüpfen gesperrt.
 	 *
-	 * @throws \RuntimeException Wenn das Konto bereits einer anderen Person gehört.
+	 * @throws \RuntimeException Wenn das Konto bereits einer anderen Person gehört oder Verknüpfen gesperrt ist.
 	 */
 	public function link_user( int $person_id, int $user_id ): void {
+		if ( ! ( new PersonUserIndex( $this->db ) )->is_unique() ) {
+			throw new \RuntimeException( 'Konten können erst wieder verknüpft werden, wenn doppelte Verknüpfungen bereinigt sind (wp ttleague account unlink).' );
+		}
 		try {
 			$this->db->update(
 				'person',

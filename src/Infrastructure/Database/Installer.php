@@ -27,6 +27,12 @@ final class Installer {
 	public static function maybe_upgrade(): void {
 		if ( get_option( self::OPTION ) !== Schema::VERSION ) {
 			self::install();
+			return;
+		}
+		// Fehlt der UNIQUE-Index auf person.user_id noch, höchstens stündlich erneut versuchen.
+		if ( false === get_transient( 'ttleague_person_user_index' ) ) {
+			set_transient( 'ttleague_person_user_index', 1, HOUR_IN_SECONDS );
+			self::ensure_unique_person_user();
 		}
 	}
 
@@ -34,7 +40,11 @@ final class Installer {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-		self::make_person_user_unique();
+		// Vor dbDelta umwandeln, damit dbDelta den gleichnamigen Index nicht ein zweites Mal anlegen will.
+		$person = Schema::table( 'person', $wpdb->prefix );
+		if ( $person === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $person ) ) ) {
+			self::ensure_unique_person_user();
+		}
 		foreach ( Schema::statements( $wpdb->prefix, $wpdb->get_charset_collate() ) as $sql ) {
 			dbDelta( $sql );
 		}
@@ -42,30 +52,19 @@ final class Installer {
 	}
 
 	/**
-	 * Ein Konto gehört höchstens einer Person: Ältere Installationen haben auf person.user_id
-	 * einen gewöhnlichen Index. dbDelta ändert bestehende Indizes nicht, deshalb wird er hier
-	 * entfernt, damit dbDelta ihn als UNIQUE neu anlegt. Gibt es doppelte Verknüpfungen, bleibt
-	 * der alte Index stehen und eine Meldung landet im Fehlerprotokoll; die Doppelungen löst
-	 * ein Administrator mit «wp ttleague account unlink» auf.
+	 * Ältere Installationen: Index person.user_id in UNIQUE umwandeln. Bestehen doppelte
+	 * Verknüpfungen, bleibt der Index vorerst, Verknüpfungen sind gesperrt, und der Versuch
+	 * wird stündlich (und nach «wp ttleague account unlink») wiederholt.
+	 *
+	 * @return bool true, wenn der Index eindeutig ist.
 	 */
-	private static function make_person_user_unique(): void {
-		global $wpdb;
-		$table = Schema::table( 'person', $wpdb->prefix );
-		if ( $table !== $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) ) {
-			return;
+	public static function ensure_unique_person_user(): bool {
+		$index = new PersonUserIndex( WpdbDb::from_global() );
+		if ( $index->migrate() ) {
+			return true;
 		}
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery -- Tabellenname aus Schema, Migration beim Update.
-		$non_unique = $wpdb->get_var( "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{$table}' AND INDEX_NAME = 'user_id' AND NON_UNIQUE = 1" );
-		if ( '0' === (string) $non_unique || null === $non_unique ) {
-			return;
-		}
-		$duplicates = $wpdb->get_col( "SELECT user_id FROM `{$table}` WHERE user_id IS NOT NULL GROUP BY user_id HAVING COUNT(*) > 1" );
-		if ( array() !== $duplicates ) {
-			error_log( 'ttleague: Konten mit mehreren Personen verknüpft (user_id ' . implode( ', ', array_map( 'intval', $duplicates ) ) . '). Index person.user_id bleibt vorerst ohne UNIQUE.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
-			return;
-		}
-		$wpdb->query( "ALTER TABLE `{$table}` DROP INDEX `user_id`" );
-		// phpcs:enable
+		error_log( 'ttleague: Konten mit mehreren Personen verknüpft (user_id ' . implode( ', ', $index->duplicates() ) . '). Neue Verknüpfungen sind gesperrt, bis das mit «wp ttleague account unlink» bereinigt ist.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
+		return false;
 	}
 
 	/**
