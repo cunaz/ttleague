@@ -42,6 +42,7 @@ final class PhotoStorage {
 
 	public static function register(): void {
 		add_filter( 'site_status_tests', array( self::class, 'site_status_tests' ) );
+		add_action( 'delete_attachment', array( self::class, 'delete_files' ) );
 	}
 
 	/**
@@ -121,6 +122,44 @@ final class PhotoStorage {
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * Löscht die Dateien eines Anhangs im Verzeichnis der Fotos, wenn WordPress den Anhang löscht
+	 * (Mediathek, Aufräumen nach einem gescheiterten Upload, Zurücksetzen der Demo). WordPress
+	 * selbst löscht nur innerhalb von uploads (wp_delete_file_from_directory()); in einem
+	 * Verzeichnis der Konstante ausserhalb davon blieben die Fotos sonst liegen. Gelöscht wird
+	 * nur, was nach Auflösen symbolischer Links im Verzeichnis der Fotos liegt.
+	 *
+	 * @param int $attachment_id Anhang.
+	 */
+	public static function delete_files( int $attachment_id ): void {
+		$file = get_attached_file( $attachment_id, true );
+		if ( ! is_string( $file ) || '' === $file ) {
+			return;
+		}
+		$names = array( wp_basename( $file ) );
+		$meta  = wp_get_attachment_metadata( $attachment_id, true );
+		if ( is_array( $meta ) ) {
+			// Fassungen im selben Verzeichnis: Original (z. B. vor der Umwandlung von HEIC), Quelle, Grössen.
+			foreach ( array( 'original_image', 'source_image' ) as $key ) {
+				if ( isset( $meta[ $key ] ) && is_string( $meta[ $key ] ) && '' !== $meta[ $key ] ) {
+					$names[] = wp_basename( $meta[ $key ] );
+				}
+			}
+			foreach ( (array) ( $meta['sizes'] ?? array() ) as $size ) {
+				if ( is_array( $size ) && isset( $size['file'] ) && is_string( $size['file'] ) && '' !== $size['file'] ) {
+					$names[] = wp_basename( $size['file'] );
+				}
+			}
+		}
+		$base = self::resolved( self::base_dir() );
+		foreach ( array_unique( $names ) as $name ) {
+			$real = realpath( dirname( $file ) . '/' . $name );
+			if ( false !== $real && is_file( $real ) && str_starts_with( wp_normalize_path( $real ), $base . '/' ) ) {
+				wp_delete_file( $real );
+			}
+		}
 	}
 
 	/**
