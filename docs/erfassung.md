@@ -218,7 +218,7 @@ Nach jeder Änderung an Resultat oder Status: `DataVersion::bump()` und eine ent
 | Entscheid der TK | beide Seiten | sofort |
 | Forfait-Vorschlag | TK | 16 Tage nach Anspielzeit ohne Resultat |
 
-Jede Benachrichtigung wird pro Person, Ereignis, Bezug und Kanal genau einmal versendet (`notification_log`). Personen wählen pro Ereignistyp E-Mail und Push (`notification_pref`); ohne Eintrag gilt E-Mail an.
+Jede Benachrichtigung geht pro Person, Ereignis, Bezug und Kanal in der Regel einmal hinaus (`notification_log`); die Grenzen stehen unter «Kein doppelter Versand». Personen wählen pro Ereignistyp E-Mail und Push (`notification_pref`); ohne Eintrag gilt E-Mail an.
 
 ### Umsetzung
 

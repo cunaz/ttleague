@@ -1,6 +1,6 @@
 <?php
 /**
- * Versand einer Benachrichtigung an Empfänger über die gewählten Kanäle, genau einmal.
+ * Versand einer Benachrichtigung an Empfänger über die gewählten Kanäle, ohne doppelten Versand.
  *
  * @package TTLeague
  */
