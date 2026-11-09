@@ -38,6 +38,9 @@ final class Plugin {
 		// Resultaterfassung (REST-API, Neuberechnung der Wertungszahl).
 		\TTLeague\Results\Results::register();
 
+		// Backend der TK: Menü «Spielbetrieb» mit Übersicht sowie Konten und Einladungen.
+		\TTLeague\Tk\Tk::register();
+
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
 			\TTLeague\Content\Content::register();

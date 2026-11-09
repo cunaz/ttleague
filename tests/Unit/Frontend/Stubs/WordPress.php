@@ -91,3 +91,9 @@ if ( ! function_exists( 'is_user_logged_in' ) ) {
 		return false;
 	}
 }
+
+if ( ! function_exists( 'is_email' ) ) {
+	function is_email( string $email ): string|false {
+		return false !== filter_var( $email, FILTER_VALIDATE_EMAIL ) ? $email : false;
+	}
+}

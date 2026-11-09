@@ -1,0 +1,100 @@
+/**
+ * ttleague – Abschnitt «Mein Club» in «Mein Bereich» (nur für TK-Chefs geladen).
+ *
+ * Baut auf frontend.css auf: Variablen (--ttl-*), .ttl-table--cards (Karten unter 600px),
+ * .ttl-form, .ttl-field, .ttl-button, .ttl-badge, .ttl-details.
+ */
+
+.ttl-club__summary {
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+}
+
+.ttl-club__table th[scope="row"] {
+	font-weight: 700;
+}
+
+.ttl-club__email {
+	overflow-wrap: anywhere;
+}
+
+.ttl-club__detail {
+	display: block;
+	font-size: var(--ttl-small);
+}
+
+.ttl-club__actions {
+	min-width: 12rem;
+}
+
+.ttl-club__actions > * + * {
+	margin-block-start: 0.35rem;
+}
+
+.ttl .ttl-club__edit {
+	margin: 0;
+}
+
+.ttl .ttl-club__edit > summary {
+	min-height: 2.25rem;
+	font-size: var(--ttl-small);
+}
+
+.ttl .ttl-club__form {
+	gap: 0.6rem;
+	max-width: 22rem;
+	margin-block: 0.25rem 0.75rem;
+}
+
+.ttl .ttl-club__invite {
+	margin: 0;
+}
+
+.ttl .ttl-club__hint {
+	margin: 0;
+	font-size: var(--ttl-small);
+}
+
+.ttl-notice--error {
+	border-color: color-mix(in srgb, var(--ttl-loss) 55%, transparent);
+	background: color-mix(in srgb, var(--ttl-loss) 8%, var(--ttl-surface));
+}
+
+.ttl-club .ttl-notice {
+	margin-block: 0 var(--ttl-gap);
+}
+
+.ttl-club .ttl-notice p {
+	margin: 0;
+}
+
+.ttl-club .ttl-notice ul {
+	margin: 0.4rem 0 0;
+	padding-inline-start: 1.2rem;
+}
+
+@media (max-width: 599.98px) {
+
+	.ttl-club__table .ttl-club__email,
+	.ttl-club__table .ttl-club__actions {
+		flex: 1 0 100%;
+		min-width: 0;
+	}
+
+	.ttl-club__table .ttl-club__actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 0.5rem 0.75rem;
+		padding-block-start: 0.35rem;
+		border-block-start: 1px solid var(--ttl-line);
+	}
+
+	.ttl-club__table .ttl-club__actions > * + * {
+		margin-block-start: 0;
+	}
+
+	.ttl-club__table .ttl-club__edit[open] {
+		flex: 1 0 100%;
+	}
+}

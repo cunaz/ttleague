@@ -13,8 +13,13 @@ final class Accounts {
 
 	public const PURGE_HOOK = 'ttleague_purge_tokens';
 
+	/** Benutzer-Metadatum: Zeitpunkt der letzten Anmeldung (Unix-Zeit). */
+	public const LAST_LOGIN_META = 'ttleague_last_login';
+
 	public static function register(): void {
 		LoginFlow::register();
+		MyClub::register();
+		add_action( 'wp_login', array( self::class, 'remember_login' ), 10, 2 );
 		add_action( 'init', array( Blocks::class, 'register' ) );
 		add_action( 'init', array( self::class, 'schedule' ) );
 		add_action( self::PURGE_HOOK, array( self::class, 'purge_tokens' ) );
@@ -63,6 +68,20 @@ final class Accounts {
 	 */
 	private static function uses_backend(): bool {
 		return AccountService::is_elevated( get_current_user_id() );
+	}
+
+	/**
+	 * Letzte Anmeldung festhalten (Passwort und Anmeldelink lösen beide wp_login aus), für den
+	 * Kontostatus in «Konten und Einladungen» und «Mein Club».
+	 *
+	 * @param string $user_login Anmeldename.
+	 * @param mixed  $user       Konto (WP_User); fehlt, wenn Drittcode die Aktion ohne Konto auslöst.
+	 */
+	public static function remember_login( string $user_login, mixed $user = null ): void {
+		unset( $user_login );
+		if ( $user instanceof \WP_User ) {
+			update_user_meta( $user->ID, self::LAST_LOGIN_META, Services::clock()->now()->getTimestamp() );
+		}
 	}
 
 	public static function purge_tokens(): void {
