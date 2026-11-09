@@ -21,5 +21,6 @@ require_once __DIR__ . '/src/Infrastructure/Database/Schema.php';
 require_once __DIR__ . '/src/Infrastructure/Database/Installer.php';
 
 \TTLeague\Infrastructure\Database\Installer::drop_all();
+delete_metadata( 'user', 0, 'ttleague_last_login', '', true );
 delete_option( 'ttleague_db_version' );
 delete_option( 'ttleague_remove_data_on_uninstall' );

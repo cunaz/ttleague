@@ -197,6 +197,34 @@ Nach jeder Änderung an Resultat oder Status: `DataVersion::bump()` und eine ent
 
 Jede Benachrichtigung wird pro Person, Ereignis, Bezug und Kanal genau einmal versendet (`notification_log`). Personen wählen pro Ereignistyp E-Mail und Push (`notification_pref`); ohne Eintrag gilt E-Mail an.
 
+## TK-Dashboard und Einladungen
+
+Backend-Menü «Spielbetrieb» (Capability `ttl_tk`, also Rolle `ttl_tk` und Administratoren).
+
+**Übersicht** (`admin.php?page=ttleague-tk`): offene Punkte der aktiven Saison. Fristen aus den Saisonregeln; Spieltermine in Ortszeit, Fristen in verstrichener Zeit (auch über die Zeitumstellung).
+
+| Liste | Bedingung | Alter seit |
+|---|---|---|
+| Einsprachen | `disputed`, mit Begründung der letzten Einsprache | Einsprache |
+| Bestätigung durch die TK fällig | `provisional`, seit mehr als `objection_days` erfasst | Erfassung |
+| Fehlende Resultate | `scheduled` oder `postponed`, mehr als `entry_deadline_hours` nach Anspielzeit | Anspielzeit |
+| Forfait-Vorschläge | ohne Resultat `forfeit_after_days` nach Anspielzeit (nicht zusätzlich unter «fehlende Resultate») | Anspielzeit |
+| Hinweise | `data.warnings` aus `fixture_event` der letzten 30 Tage; Wiederholungen derselben Begegnung nur einmal | Ereignis |
+| Letzte Entscheide | `decided`, `forfeit`, `reset`, Bestätigungen der TK | Ereignis |
+
+Jede Zeile verlinkt `Results::entry_url()`. Schnellaktionen sind Formulare an `admin-post.php` (Nonce pro Begegnung, `version` gegen gleichzeitige Änderungen), die `ResultService::decide()` aufrufen: «Bestätigen» (`provisional`), «Abschliessen» mit freiwilliger Bemerkung (`disputed`, `confirmed`), «Forfait» mit Sieger und Pflichtbemerkung (`scheduled`, `postponed`). Die Abfragen stehen in `TTLeague\Tk\Dashboard`, eine pro Liste.
+
+**Konten und Einladungen** (`admin.php?page=ttleague-tk-konten&club={id}`): pro Club die gemeldeten Spieler und Funktionsträger der aktiven Saison mit Funktion, E-Mail-Adresse und Kontostatus (`TTLeague\Accounts\ClubPeople`): keine E-Mail, kein Konto, eingeladen (offenes Einladungstoken, das länger gilt als ein Anmeldelink), Konto ohne Anmeldung, aktiv (letzte Anmeldung aus `user_meta` `ttleague_last_login`, gesetzt bei `wp_login`; für ältere Anmeldungen genügt `person.consent_at`). Aktionen: E-Mail setzen oder ändern, einladen, erneut einladen, alle Captains und TK-Chefs ohne Konto einladen.
+
+**Mein Club** in «Mein Bereich» für TK-Chefs (`ttleague_my_area_sections`, Priorität 20): dieselbe Liste für den eigenen Club mit E-Mail setzen und einladen. Die Formulare prüfen Nonce, `ttl_manage_club` (Club) und `ttl_invite_person` (Person). Stil `assets/css/club.css` nur in diesem Abschnitt.
+
+Regeln (`TTLeague\Accounts\ClubAccounts`):
+
+- TK-Chefs ändern Adressen nur für Personen ihres Clubs ohne erweiterte Rechte (siehe Rechte); als Konto zählt das verknüpfte, sonst das Konto mit der hinterlegten Adresse. Die TK ändert alle ausser Administratorkonten.
+- Die neue Adresse ist gültig (`is_email`) und weder bei einer anderen Person noch bei einem anderen Konto hinterlegt; sonst eine Meldung statt eines Datenbankfehlers. Ein verknüpftes Konto erhält sie ebenfalls (`wp_update_user`, ohne die Standardmitteilung von WordPress). Die bisherige Adresse erhält eine Mitteilung mit der gekürzten neuen Adresse.
+- Einladungen (`Invitations::invite`) nur an gültige Adressen. Konten mit erweiterten Rechten (`LoginFlow::link_allowed`, siehe Anmeldung) erhalten keinen Link, die einladende Person sieht einen Hinweis. TK-Chefs verschicken höchstens 50 Einladungen pro Stunde (`RateLimiter`, wie beim Anmeldelink nicht atomar).
+- `audit_log`: `email_changed` mit Adresse vorher und nachher, `invited` für jede Einladung.
+
 ## Tests
 
 | Ebene | Ordner | Inhalt |

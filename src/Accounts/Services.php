@@ -15,6 +15,7 @@ use TTLeague\Infrastructure\AuditLog;
 use TTLeague\Infrastructure\Database\Db;
 use TTLeague\Infrastructure\Database\WpdbDb;
 use TTLeague\Infrastructure\Mail\Mailer;
+use TTLeague\Infrastructure\Mail\Message;
 use TTLeague\Infrastructure\RateLimiter;
 use TTLeague\Infrastructure\Time\Clock;
 use TTLeague\Infrastructure\Time\SystemClock;
@@ -62,5 +63,34 @@ final class Services {
 
 	public static function preferences(): Preferences {
 		return new Preferences( self::db() );
+	}
+
+	public static function users(): UserDirectory {
+		return new WordPressUsers();
+	}
+
+	public static function club_people(): ClubPeople {
+		return new ClubPeople( self::db(), self::users(), self::clock() );
+	}
+
+	/**
+	 * E-Mail-Adressen und Einladungen mit den Regeln für TK und TK-Chefs.
+	 */
+	public static function club_accounts(): ClubAccounts {
+		$invitations = self::invitations();
+		$mailer      = self::mailer();
+		return new ClubAccounts(
+			self::accounts(),
+			self::policy(),
+			self::club_people(),
+			self::users(),
+			self::audit(),
+			self::limiter(),
+			static function ( int $person_id, int $user_id ) use ( $invitations ): void {
+				$invitations->invite( $person_id, $user_id );
+			},
+			static fn( Message $message ): bool => $mailer->send( $message ),
+			wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES )
+		);
 	}
 }
