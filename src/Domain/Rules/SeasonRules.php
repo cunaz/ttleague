@@ -79,6 +79,20 @@ final class SeasonRules {
 		if ( $this->sets_to_win < 1 ) {
 			throw new \InvalidArgumentException( 'sets_to_win muss mindestens 1 sein.' );
 		}
+		// Fristen der Benachrichtigungen: 0 schaltet nur die Erinnerung vor dem Spiel aus. Eine
+		// Erinnerung «Resultat fehlt» zur Anspielzeit oder eine Erinnerung an die Gastseite, wenn die
+		// TK schon bestätigen soll, wäre sinnlos.
+		if ( $this->match_reminder_days < 0 ) {
+			throw new \InvalidArgumentException( 'match_reminder_days darf nicht negativ sein (0 schaltet die Erinnerung aus).' );
+		}
+		if ( $this->result_reminder_hours < 1 ) {
+			throw new \InvalidArgumentException( 'result_reminder_hours muss mindestens 1 sein.' );
+		}
+		foreach ( $this->confirm_reminder_days as $days ) {
+			if ( ! is_int( $days ) || $days < 1 || $days >= $this->objection_days ) {
+				throw new \InvalidArgumentException( 'confirm_reminder_days: nur ganze Tage ab 1 und vor objection_days.' );
+			}
+		}
 	}
 
 	/**

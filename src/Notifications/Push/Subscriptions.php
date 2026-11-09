@@ -30,7 +30,7 @@ final class Subscriptions {
 	public function save( int $person_id, Subscription $subscription ): void {
 		$this->db->query(
 			"INSERT INTO {$this->db->table( 'push_subscription' )} (person_id, endpoint_hash, endpoint, keys_json, created_at) VALUES (%d, %s, %s, %s, %s)
-			ON DUPLICATE KEY UPDATE person_id = VALUES(person_id), endpoint = VALUES(endpoint), keys_json = VALUES(keys_json)",
+			ON DUPLICATE KEY UPDATE person_id = VALUES(person_id), endpoint = VALUES(endpoint), keys_json = VALUES(keys_json), created_at = VALUES(created_at)",
 			array( $person_id, self::hash( $subscription->endpoint ), $subscription->endpoint, $subscription->keys_json(), $this->clock->now()->format( 'Y-m-d H:i:s' ) )
 		);
 		$ids = array_map(

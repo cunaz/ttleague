@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Tests\Unit\Domain;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use TTLeague\Domain\Rules\SeasonRules;
 
@@ -56,6 +57,48 @@ final class SeasonRulesTest extends TestCase {
 		$rules = new SeasonRules( rating_k: 32.0 );
 		$copy  = SeasonRules::from_array( $rules->to_array() );
 		self::assertSame( $rules->to_array(), $copy->to_array() );
+	}
+
+	/**
+	 * @return array<string,array{0:array<string,mixed>}>
+	 */
+	public static function invalid_reminders(): array {
+		return array(
+			'Spiel steht an negativ'           => array( array( 'match_reminder_days' => -1 ) ),
+			'Resultat fehlt zur Anspielzeit'   => array( array( 'result_reminder_hours' => 0 ) ),
+			'Resultat fehlt negativ'           => array( array( 'result_reminder_hours' => -5 ) ),
+			'Bestätigung am Tag 0'             => array( array( 'confirm_reminder_days' => array( 0, 3 ) ) ),
+			'Bestätigung negativ'              => array( array( 'confirm_reminder_days' => array( -1 ) ) ),
+			'Bestätigung erst mit der TK'      => array( array( 'confirm_reminder_days' => array( 3, 7 ) ) ),
+			'Bestätigung nach Einsprachefrist' => array(
+				array(
+					'objection_days'        => 4,
+					'confirm_reminder_days' => array( 5 ),
+				),
+			),
+		);
+	}
+
+	/**
+	 * @param array<string,mixed> $rules Regeln.
+	 */
+	#[DataProvider( 'invalid_reminders' )]
+	public function test_invalid_reminder_timings_are_rejected( array $rules ): void {
+		$this->expectException( \InvalidArgumentException::class );
+		SeasonRules::from_array( $rules );
+	}
+
+	public function test_boundary_reminder_timings_are_valid(): void {
+		$rules = SeasonRules::from_array(
+			array(
+				'match_reminder_days'   => 0,
+				'result_reminder_hours' => 1,
+				'confirm_reminder_days' => array( 1, 6 ),
+				'objection_days'        => 7,
+			)
+		);
+		self::assertSame( 0, $rules->match_reminder_days, '0 schaltet die Erinnerung vor dem Spiel aus' );
+		self::assertSame( array( 1, 6 ), $rules->confirm_reminder_days );
 	}
 
 	public function test_invalid_cup_mode_is_rejected(): void {

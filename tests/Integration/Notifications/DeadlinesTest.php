@@ -267,6 +267,22 @@ final class DeadlinesTest extends NotificationTestCase {
 		self::assertSame( $this->tk(), $this->to( 'confirm_overdue' ) );
 	}
 
+	/**
+	 * Mehrere offene Begegnungen und die Übersicht brauchen die TK-Empfänger; sie werden pro Lauf
+	 * einmal ermittelt und im nächsten Lauf neu.
+	 */
+	public function test_tk_recipients_are_resolved_once_per_run(): void {
+		$this->db->update( 'fixture', array( 'scheduled_at' => '2026-11-10 20:00:00' ), array( 'id' => $this->id['derby'] ) );
+		$this->run_at( '2026-11-13 08:00:00' );
+		self::assertSame( $this->tk(), $this->to( 'result_missing_tk', $this->id['f1'] ) );
+		self::assertSame( $this->tk(), $this->to( 'result_missing_tk', $this->id['derby'] ) );
+		self::assertSame( $this->tk(), $this->to( 'tk_digest', 20261113 ) );
+		self::assertSame( 1, $this->tk->calls, 'eine Abfrage der TK-Konten für den ganzen Lauf' );
+
+		$this->run_at( '2026-11-14 08:00:00' );
+		self::assertSame( 2, $this->tk->calls, 'der nächste Lauf fragt neu' );
+	}
+
 	public function test_daily_tk_digest_only_with_open_points(): void {
 		$this->db->update( 'fixture', array( 'status' => 'final' ), array( 'id' => $this->id['f1'] ) );
 		$this->db->update( 'fixture', array( 'status' => 'final' ), array( 'id' => $this->id['derby'] ) );

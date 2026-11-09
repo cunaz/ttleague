@@ -101,6 +101,23 @@ final class PushChannelTest extends NotificationTestCase {
 		self::assertSame( 0, $this->count_subscriptions() );
 	}
 
+	/**
+	 * Die Person hat schon so viele Abos, wie erlaubt sind, und übernimmt einen alten Endpunkt
+	 * einer anderen Person (gleicher Browser). Das übernommene Abo gilt als neu gemeldet und
+	 * bleibt; wegfallen muss das am längsten nicht gemeldete.
+	 */
+	public function test_taken_over_endpoint_counts_as_newest_at_the_limit(): void {
+		$old = $this->subscribe( 'captain_a1', 'https://fcm.googleapis.com/fcm/send/alt' );
+		foreach ( array( 1, 2, 3 ) as $i ) {
+			$this->subscribe( 'chef_away', 'https://fcm.googleapis.com/fcm/send/chef-' . $i );
+		}
+
+		$this->subscriptions->save( $this->person['chef_away'], $old['subscription'] );
+
+		$endpoints = $this->db->get_col( "SELECT endpoint FROM {$this->db->table( 'push_subscription' )} WHERE person_id = %d ORDER BY endpoint", array( $this->person['chef_away'] ) );
+		self::assertSame( array( 'https://fcm.googleapis.com/fcm/send/alt', 'https://fcm.googleapis.com/fcm/send/chef-2', 'https://fcm.googleapis.com/fcm/send/chef-3' ), $endpoints );
+	}
+
 	public function test_push_is_encrypted_with_headers_and_vapid(): void {
 		$browser = $this->subscribe( 'captain_a1', 'https://fcm.googleapis.com/fcm/send/handy' );
 		$this->service()->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );

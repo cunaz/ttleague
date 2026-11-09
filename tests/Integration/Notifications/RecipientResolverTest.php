@@ -62,6 +62,25 @@ final class RecipientResolverTest extends NotificationTestCase {
 		self::assertNotContains( $this->p( 'unconnected' ), $keys );
 	}
 
+	public function test_cup_player_one_comes_first_even_with_the_higher_id(): void {
+		$entry = (int) $this->db->get_var( "SELECT home_entry_id FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['cup'] ) );
+		$first = (int) $this->db->get_var( "SELECT player1_id FROM {$this->db->table( 'cup_entry' )} WHERE id = %d", array( $entry ) );
+		$other = (int) $this->db->get_var( "SELECT player2_id FROM {$this->db->table( 'cup_entry' )} WHERE id = %d", array( $entry ) );
+		$this->db->update(
+			'cup_entry',
+			array(
+				'player1_id' => $other,
+				'player2_id' => $first,
+			),
+			array( 'id' => $entry )
+		);
+		self::assertGreaterThan( $first, $other, 'Spieler 1 hat jetzt die grössere ID' );
+
+		$ctx = $this->repo->context( $this->id['cup'] );
+
+		self::assertSame( array( $this->p( 'cup_h2' ), $this->p( 'cup_h1' ), $this->p( 'chef_home' ) ), self::keys( $this->recipients->side( $ctx, 'home' ) ) );
+	}
+
 	public function test_cup_sides_are_the_players_of_the_entry_and_tk_chefs(): void {
 		$ctx = $this->repo->context( $this->id['cup'] );
 

@@ -90,14 +90,39 @@ final class VapidKeys {
 			if ( null === $generated ) {
 				return null;
 			}
-			// add_option schreibt nur, wenn noch nichts da ist; bei gleichzeitigen Anfragen gewinnt die erste.
-			add_option( self::OPTION, $generated + array( 'created_at' => gmdate( 'Y-m-d H:i:s' ) ), '', false );
+			self::store_once( $generated + array( 'created_at' => gmdate( 'Y-m-d H:i:s' ) ) );
 			$stored = get_option( self::OPTION );
 		}
 		if ( ! is_array( $stored ) || ! isset( $stored['private'], $stored['public'] ) ) {
 			return null;
 		}
 		return Vapid::from_base64url( (string) $stored['private'], (string) $stored['public'] );
+	}
+
+	/**
+	 * Legt das Schlüsselpaar nur an, wenn es noch keines gibt (INSERT IGNORE), und verwirft danach
+	 * die zwischengespeicherte Option samt «gibt es nicht». add_option() schreibt mit ON DUPLICATE
+	 * KEY UPDATE: Bei gleichzeitigen Anfragen würde das zweite Paar das erste überschreiben,
+	 * obwohl ein Browser das erste vielleicht schon für ein Abo verwendet. So gilt für alle das
+	 * zuerst gespeicherte Paar.
+	 *
+	 * @param array<string,string> $keys Schlüsselpaar mit Zeitpunkt.
+	 */
+	private static function store_once( array $keys ): void {
+		global $wpdb;
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- atomares Anlegen, Cache wird danach geleert.
+			$wpdb->prepare(
+				"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'off')",
+				self::OPTION,
+				maybe_serialize( $keys )
+			)
+		);
+		wp_cache_delete( self::OPTION, 'options' );
+		$missing = wp_cache_get( 'notoptions', 'options' );
+		if ( is_array( $missing ) && isset( $missing[ self::OPTION ] ) ) {
+			unset( $missing[ self::OPTION ] );
+			wp_cache_set( 'notoptions', $missing, 'options' );
+		}
 	}
 
 	private static function from_constants(): bool {

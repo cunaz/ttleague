@@ -42,6 +42,9 @@ final class Deadlines {
 
 	private int $digest_hour;
 
+	/** @var list<Recipient>|null TK-Empfänger des laufenden Laufs. */
+	private ?array $tk = null;
+
 	/**
 	 * @param array{from_hour?:int,until_hour?:int,digest_hour?:int} $options Versandfenster und Stunde der Übersicht (Ortszeit).
 	 */
@@ -67,8 +70,9 @@ final class Deadlines {
 	 * @return list<array{event:string,ref:int,deliveries:list<array{recipient:string,channel:string,status:string}>}>
 	 */
 	public function run(): array {
-		$now   = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) );
-		$local = $now->setTimezone( $this->timezone );
+		$this->tk = null;
+		$now      = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) );
+		$local    = $now->setTimezone( $this->timezone );
 		$this->log?->purge();
 
 		$hour = (int) $local->format( 'G' );
@@ -98,9 +102,18 @@ final class Deadlines {
 		$count = count( $open['missing'] ) + count( $open['forfeit'] ) + count( $open['overdue'] ) + count( $open['disputed'] );
 		if ( $hour >= $this->digest_hour && $count > 0 ) {
 			$notification = $this->messages->tk_digest( $local->format( 'Y-m-d' ), $open );
-			$report[]     = self::entry( $notification, $this->notifier->send( $notification, $this->recipients->tk() ) );
+			$report[]     = self::entry( $notification, $this->notifier->send( $notification, $this->tk() ) );
 		}
 		return $report;
+	}
+
+	/**
+	 * TK-Empfänger, einmal pro Lauf aufgelöst (jede offene Begegnung braucht sie wieder).
+	 *
+	 * @return list<Recipient>
+	 */
+	private function tk(): array {
+		return $this->tk ??= $this->recipients->tk();
 	}
 
 	/**
@@ -164,7 +177,7 @@ final class Deadlines {
 			} else {
 				continue;
 			}
-			$report[] = self::entry( $notification, $this->notifier->send( $notification, $this->recipients->tk() ) );
+			$report[] = self::entry( $notification, $this->notifier->send( $notification, $this->tk() ) );
 		}
 	}
 
@@ -204,7 +217,7 @@ final class Deadlines {
 			if ( $overdue ) {
 				$open['overdue'][] = $ctx;
 				$notification      = $this->messages->confirm_overdue( $ctx, $event['id'] );
-				$report[]          = self::entry( $notification, $this->notifier->send( $notification, $this->recipients->tk() ) );
+				$report[]          = self::entry( $notification, $this->notifier->send( $notification, $this->tk() ) );
 			}
 		}
 	}

@@ -39,7 +39,8 @@ final class RecipientResolver {
 				$people = $this->db->get_col(
 					"SELECT p.person_id FROM {$this->db->table( 'cup_entry' )} ce
 					JOIN {$this->db->table( 'player' )} p ON p.id = ce.player1_id OR p.id = ce.player2_id
-					WHERE ce.id = %d",
+					WHERE ce.id = %d
+					ORDER BY p.id = ce.player2_id, p.id",
 					array( $info['entry_id'] )
 				);
 			}
