@@ -48,6 +48,11 @@ jobs:
       TTLEAGUE_TEST_DB_DSN: mysql:host=127.0.0.1;port=3306;dbname=ttleague_test;charset=utf8mb4
       TTLEAGUE_TEST_DB_USER: ttleague
       TTLEAGUE_TEST_DB_PASS: ttleague
+      # Eigene Datenbank: Die WordPress-Testsuite löscht und installiert ihre Tabellen bei jedem Lauf.
+      TTLEAGUE_WP_TEST_DB_NAME: ttleague_wptest
+      TTLEAGUE_WP_TEST_DB_HOST: 127.0.0.1:3306
+      TTLEAGUE_WP_TEST_DB_USER: ttleague
+      TTLEAGUE_WP_TEST_DB_PASS: ttleague
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -57,7 +62,7 @@ jobs:
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: dom, mbstring, json, intl, pdo_mysql
+          extensions: dom, mbstring, json, intl, mysqli, pdo_mysql
           coverage: none
 
       - name: Abhängigkeiten installieren
@@ -65,6 +70,15 @@ jobs:
 
       - name: Tests
         run: composer test
+
+      - name: Datenbank für die WordPress-Tests
+        run: >-
+          docker exec ${{ job.services.mariadb.id }} mariadb -uroot -proot -e
+          "CREATE DATABASE IF NOT EXISTS ttleague_wptest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL ON ttleague_wptest.* TO 'ttleague'@'%';"
+
+      - name: WordPress-Tests
+        run: composer test:wp
 
       - name: Coding Standards
         if: matrix.php == '8.3'
