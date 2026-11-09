@@ -191,7 +191,13 @@ final class Blocks {
 			. '<p class="ttl-field ttl-field--check"><input id="ttl-phone-visible" type="checkbox" name="phone_visible" value="1"' . checked( '1', (string) ( $person['phone_visible'] ?? '0' ), false ) . '> '
 			. '<label for="ttl-phone-visible">' . esc_html__( 'Captains, TK-Chefs und die TK dürfen meine Telefonnummer sehen.', 'ttleague' ) . '</label></p>'
 			. '<table class="ttl-table ttl-prefs"><caption>' . esc_html__( 'Benachrichtigungen', 'ttleague' ) . '</caption><thead><tr><th scope="col">' . esc_html__( 'Ereignis', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'E-Mail', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'Push', 'ttleague' ) . '</th></tr></thead><tbody>' . $rows . '</tbody></table>'
-			. ( $push ? '' : '<p class="ttl-muted">' . esc_html__( 'Push-Benachrichtigungen folgen mit der App.', 'ttleague' ) . '</p>' )
+			/**
+			 * Bedienelemente für Push auf diesem Gerät (HTML, escaped), nur wenn Push verfügbar ist.
+			 *
+			 * @param string $html      Bisherige Ausgabe.
+			 * @param int    $person_id Person.
+			 */
+			. ( $push ? (string) apply_filters( 'ttleague_push_controls', '', $person_id ) : '<p class="ttl-muted">' . esc_html__( 'Push-Benachrichtigungen folgen mit der App.', 'ttleague' ) . '</p>' )
 			. '<button type="submit" class="ttl-button">' . esc_html__( 'Speichern', 'ttleague' ) . '</button>'
 			. '</form></section>';
 	}

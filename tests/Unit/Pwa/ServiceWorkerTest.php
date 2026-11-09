@@ -87,6 +87,8 @@ final class ServiceWorkerTest extends TestCase {
 		foreach ( array( 'CONFIG.never', 'skipWaiting', 'clients.claim', 'caches.delete', "'GET' !== request.method", 'no-store', 'private', 'stale', 'offlinePage' ) as $needle ) {
 			self::assertStringContainsString( $needle, $template );
 		}
-		self::assertStringNotContainsString( 'pushManager', $template, 'ohne Push' );
+		foreach ( array( "addEventListener( 'push'", "addEventListener( 'notificationclick'", 'showNotification', 'openWindow', 'self.location.origin' ) as $needle ) {
+			self::assertStringContainsString( $needle, $template, 'Push anzeigen und Klick nur auf gleiche Herkunft' );
+		}
 	}
 }

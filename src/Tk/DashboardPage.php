@@ -14,6 +14,7 @@ use TTLeague\Domain\Match\FixtureWorkflow as Flow;
 use TTLeague\Domain\Rules\SeasonRules;
 use TTLeague\Frontend\Support\Format;
 use TTLeague\Infrastructure\Flash;
+use TTLeague\Infrastructure\Time\Hours;
 use TTLeague\Results\ResultService;
 use TTLeague\Results\Results;
 
@@ -235,7 +236,7 @@ final class DashboardPage {
 				return esc_html( sprintf( __( 'erfasst am %s', 'ttleague' ), self::local_from_utc( $row['since'] ) ) );
 
 			case 'missing':
-				$deadline = ( new \DateTimeImmutable( (string) $row['scheduled_at'], wp_timezone() ) )->modify( '+' . $rules->entry_deadline_hours . ' hours' );
+				$deadline = Hours::after( new \DateTimeImmutable( (string) $row['scheduled_at'], wp_timezone() ), $rules->entry_deadline_hours );
 				/* translators: %s: Datum und Zeit */
 				return esc_html( sprintf( __( 'Frist abgelaufen am %s', 'ttleague' ), Format::datetime( $deadline->format( 'Y-m-d H:i:s' ) ) ) );
 

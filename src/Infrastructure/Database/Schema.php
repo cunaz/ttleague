@@ -17,7 +17,18 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026111002';
+	public const VERSION = '2026111006';
+
+	/**
+	 * Indizes, die eine neuere Schemaversion ersetzt hat. dbDelta() entfernt keine Indizes;
+	 * der Installer löscht sie, falls vorhanden, vor dem Abgleich.
+	 *
+	 * @var array<string,list<string>>
+	 */
+	public const OBSOLETE_INDEXES = array(
+		// Seit 2026111005: Dedupe über Person oder Konto (TK-Konten ohne Person) und Zusatzschlüssel.
+		'notification_log' => array( 'once' ),
+	);
 
 	public const TABLES = array(
 		'season',
@@ -508,15 +519,19 @@ final class Schema {
 
 			$t( 'notification_log' )        => "CREATE TABLE {$t('notification_log')} (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  person_id bigint(20) unsigned NOT NULL,
+  person_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  user_id bigint(20) unsigned NOT NULL DEFAULT 0,
   event_type varchar(48) NOT NULL,
   ref_type varchar(16) NOT NULL,
   ref_id bigint(20) unsigned NOT NULL,
+  ref_key varchar(32) NOT NULL DEFAULT '',
   channel varchar(8) NOT NULL,
+  status varchar(8) NOT NULL DEFAULT 'sent',
   sent_at datetime NOT NULL,
   PRIMARY KEY  (id),
-  UNIQUE KEY once (person_id,event_type,ref_type,ref_id,channel),
-  KEY ref (ref_type,ref_id)
+  UNIQUE KEY recipient_once (person_id,user_id,event_type,ref_type,ref_id,ref_key,channel),
+  KEY ref (ref_type,ref_id),
+  KEY sent_at (sent_at)
 ) $charset_collate;",
 
 			$t( 'fixture_event' )           => "CREATE TABLE {$t('fixture_event')} (

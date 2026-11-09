@@ -1,5 +1,5 @@
 /**
- * ttleague – Service Worker der Web-App (ohne Push).
+ * ttleague – Service Worker der Web-App.
  *
  * WordPress liefert dieses Skript unter /sw.js aus und setzt die Konstante CONFIG davor
  * (siehe TTLeague\Pwa\ServiceWorker): Pfad der Startadresse, Version, Texte und Farben.
@@ -14,6 +14,8 @@
  *   kommen nur aus dem Netz, offline erscheint die Offline-Seite.
  * - Cache-Namen tragen die Version; beim Aktivieren werden ältere Caches dieses
  *   Service Workers gelöscht. skipWaiting und clients.claim übernehmen sofort.
+ * - Push: Nachrichten {title, body, url, tag, icon} als Benachrichtigung anzeigen; ein Klick
+ *   fokussiert ein offenes Fenster mit der Adresse oder öffnet sie (nur gleiche Herkunft).
  */
 
 /* global CONFIG */
@@ -255,4 +257,64 @@ self.addEventListener( 'fetch', ( event ) => {
 	if ( [ 'style', 'script', 'font', 'image' ].includes( request.destination ) || ASSET_EXTENSIONS.test( url.pathname ) ) {
 		event.respondWith( asset( event ) );
 	}
+} );
+
+/**
+ * Adresse aus einer Push-Nachricht, nur gleiche Herkunft; sonst die Startadresse.
+ *
+ * @param {*} value Adresse.
+ * @return {string} Absolute Adresse.
+ */
+function pushTarget( value ) {
+	try {
+		const url = new URL( String( value || '' ), self.location.origin );
+		if ( url.origin === self.location.origin ) {
+			return url.href;
+		}
+	} catch ( error ) {
+		// Ungültige Adresse: Startadresse.
+	}
+	return new URL( CONFIG.base, self.location.origin ).href;
+}
+
+// Push: Benachrichtigung anzeigen. Der Inhalt ist JSON {title, body, url, tag, icon}.
+self.addEventListener( 'push', ( event ) => {
+	let data = {};
+	if ( event.data ) {
+		try {
+			data = event.data.json() || {};
+		} catch ( error ) {
+			data = { body: event.data.text() };
+		}
+	}
+	const options = {
+		body: String( data.body || '' ),
+		data: { url: pushTarget( data.url ) },
+		lang: CONFIG.offline.lang,
+	};
+	if ( data.icon ) {
+		options.icon = String( data.icon );
+	}
+	if ( data.tag ) {
+		options.tag = String( data.tag );
+		options.renotify = true;
+	}
+	event.waitUntil( self.registration.showNotification( String( data.title || CONFIG.offline.site ), options ) );
+} );
+
+// Klick auf eine Benachrichtigung: offenes Fenster mit der Adresse fokussieren, sonst öffnen.
+self.addEventListener( 'notificationclick', ( event ) => {
+	event.notification.close();
+	const target = pushTarget( event.notification.data && event.notification.data.url );
+	event.waitUntil(
+		( async () => {
+			const windows = await self.clients.matchAll( { type: 'window', includeUncontrolled: true } );
+			for ( const client of windows ) {
+				if ( client.url === target && 'focus' in client ) {
+					return client.focus();
+				}
+			}
+			return self.clients.openWindow ? self.clients.openWindow( target ) : undefined;
+		} )()
+	);
 } );

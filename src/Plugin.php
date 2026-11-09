@@ -38,6 +38,8 @@ final class Plugin {
 		// Resultaterfassung (REST-API, Neuberechnung der Wertungszahl).
 		\TTLeague\Results\Results::register();
 
+		// Benachrichtigungen per E-Mail und Web-Push, Fristen und Erinnerungen.
+		\TTLeague\Notifications\Notifications::register();
 		// Backend der TK: Menü «Spielbetrieb» mit Übersicht sowie Konten und Einladungen.
 		\TTLeague\Tk\Tk::register();
 
@@ -60,6 +62,7 @@ final class Plugin {
 			\WP_CLI::add_command( 'ttleague', \TTLeague\Cli\Command::class );
 			\WP_CLI::add_command( 'ttleague rating', \TTLeague\Cli\RatingCommand::class );
 			\WP_CLI::add_command( 'ttleague account', \TTLeague\Cli\AccountCommand::class );
+			\WP_CLI::add_command( 'ttleague notifications', \TTLeague\Cli\NotificationCommand::class );
 		}
 	}
 }

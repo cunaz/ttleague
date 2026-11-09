@@ -40,6 +40,9 @@ final class SeasonRules {
 	 * @param float               $rating_scale             Skalierung der Erwartungswertformel (kalibriert: 200, d. h. eine Klassierungsstufe Unterschied ergibt 76 % Siegerwartung).
 	 * @param float               $rating_doubles_weight    Gewicht eines Doppels für die Wertungszahl.
 	 * @param float               $rating_points_per_class  Wertungspunkte pro Klassierungsstufe.
+	 * @param int                 $match_reminder_days      Erinnerung an beide Seiten so viele Tage vor dem Spiel.
+	 * @param int                 $result_reminder_hours    Erinnerung an die Heimseite, wenn so viele Stunden nach Anspielzeit kein Resultat vorliegt.
+	 * @param list<int>           $confirm_reminder_days    Erinnerungen an die Gastseite so viele Tage nach der Erfassung (danach die TK nach objection_days).
 	 */
 	public function __construct(
 		public readonly int $substitute_max = 3,
@@ -63,6 +66,9 @@ final class SeasonRules {
 		public readonly float $rating_scale = 200.0,
 		public readonly float $rating_doubles_weight = 0.5,
 		public readonly float $rating_points_per_class = 100.0,
+		public readonly int $match_reminder_days = 2,
+		public readonly int $result_reminder_hours = 24,
+		public readonly array $confirm_reminder_days = array( 3, 6 ),
 	) {
 		if ( $this->substitute_max < 0 ) {
 			throw new \InvalidArgumentException( 'substitute_max darf nicht negativ sein.' );
@@ -73,16 +79,38 @@ final class SeasonRules {
 		if ( $this->sets_to_win < 1 ) {
 			throw new \InvalidArgumentException( 'sets_to_win muss mindestens 1 sein.' );
 		}
+		// Fristen der Benachrichtigungen: 0 schaltet nur die Erinnerung vor dem Spiel aus. Eine
+		// Erinnerung «Resultat fehlt» zur Anspielzeit oder eine Erinnerung an die Gastseite, wenn die
+		// TK schon bestätigen soll, wäre sinnlos.
+		if ( $this->match_reminder_days < 0 ) {
+			throw new \InvalidArgumentException( 'match_reminder_days darf nicht negativ sein (0 schaltet die Erinnerung aus).' );
+		}
+		if ( $this->result_reminder_hours < 1 ) {
+			throw new \InvalidArgumentException( 'result_reminder_hours muss mindestens 1 sein.' );
+		}
+		foreach ( $this->confirm_reminder_days as $days ) {
+			if ( ! is_int( $days ) || $days < 1 || $days >= $this->objection_days ) {
+				throw new \InvalidArgumentException( 'confirm_reminder_days: nur ganze Tage ab 1 und vor objection_days.' );
+			}
+		}
 	}
 
 	/**
-	 * Erzeugt Regeln aus einem (teilweisen) Array, z. B. aus rules_json.
+	 * Erzeugt Regeln aus einem (teilweisen) Array, z. B. aus rules_json. Fehlen die Stufen
+	 * confirm_reminder_days, gelten die Standardstufen, soweit sie vor objection_days liegen:
+	 * Gespeicherte Regeln mit kürzerer Einsprachefrist bleiben so gültig. Gesetzte Stufen prüft
+	 * der Konstruktor streng.
 	 *
 	 * @param array<string,mixed> $data Teilweise Regeln.
 	 */
 	public static function from_array( array $data ): self {
 		$defaults = ( new self() )->to_array();
 		$merged   = array_intersect_key( $data, $defaults ) + $defaults;
+		$confirm  = array_values( array_map( 'intval', (array) $merged['confirm_reminder_days'] ) );
+		if ( ! array_key_exists( 'confirm_reminder_days', $data ) ) {
+			$objection = (int) $merged['objection_days'];
+			$confirm   = array_values( array_filter( $confirm, static fn( int $days ): bool => $days < $objection ) );
+		}
 
 		return new self(
 			substitute_max: (int) $merged['substitute_max'],
@@ -106,6 +134,9 @@ final class SeasonRules {
 			rating_scale: (float) $merged['rating_scale'],
 			rating_doubles_weight: (float) $merged['rating_doubles_weight'],
 			rating_points_per_class: (float) $merged['rating_points_per_class'],
+			match_reminder_days: (int) $merged['match_reminder_days'],
+			result_reminder_hours: (int) $merged['result_reminder_hours'],
+			confirm_reminder_days: $confirm,
 		);
 	}
 
