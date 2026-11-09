@@ -162,18 +162,19 @@ final class ResultService {
 		$this->authorize( $ctx, $actor, Flow::ENTER );
 		$input = $this->input( $ctx, $payload );
 		$this->check_version( $ctx, $input->version );
+		$edited = Flow::PROVISIONAL === $ctx->status;
+		$now    = $this->now();
 
-		$validated = $this->validator( $ctx, $input )->validate( $input );
-		$warnings  = array_merge( $validated->warnings, $this->timing_warnings( $ctx ) );
-		$edited    = Flow::PROVISIONAL === $ctx->status;
-		$now       = $this->now();
-
-		$this->write(
+		// Die Spielberechtigung hängt von Einsätzen in anderen Begegnungen ab und wird deshalb erst
+		// unter der Sperre der Saison geprüft (write()). Ungültige Eingaben brechen die Transaktion ab.
+		[ $validated, $warnings ] = $this->write(
 			$ctx,
-			function () use ( $ctx, $validated, $warnings, $edited, $now, $actor, $input ): void {
-				$before  = $this->repo->snapshot( $ctx->id );
-				$players = $this->repo->lineup_players( $ctx->id );
-				$this->repo->save_result( $ctx->id, $validated, $ctx->scheduled_at );
+			function ( FixtureContext $current ) use ( $ctx, $edited, $now, $actor, $input ): array {
+				$validated = $this->validator( $current, $input )->validate( $input );
+				$warnings  = array_merge( $validated->warnings, $this->timing_warnings( $current ) );
+				$before    = $this->repo->snapshot( $ctx->id );
+				$players   = $this->repo->lineup_players( $ctx->id );
+				$this->repo->save_result( $ctx->id, $validated, $current->scheduled_at );
 				$this->repo->update_fixture(
 					$ctx->id,
 					array(
@@ -187,7 +188,7 @@ final class ResultService {
 						'confirmed_auto' => 0,
 					)
 				);
-				$this->sync_bindings( $ctx, array_merge( $players, $this->repo->lineup_players( $ctx->id ) ) );
+				$this->sync_bindings( $current, array_merge( $players, $this->repo->lineup_players( $ctx->id ) ) );
 				$this->repo->add_event(
 					$ctx->id,
 					$edited ? 'edited' : 'entered',
@@ -201,6 +202,7 @@ final class ResultService {
 					$now
 				);
 				$this->audit->record( 'fixture', $ctx->id, $edited ? 'result_edited' : 'result_entered', $actor->user_id, $before, $this->repo->snapshot( $ctx->id ) );
+				return array( $validated, $warnings );
 			}
 		);
 		$this->events->entered( $ctx->id, $actor->user_id, $edited );
@@ -287,7 +289,8 @@ final class ResultService {
 		if ( null !== $comment && mb_strlen( $comment ) > 2000 ) {
 			throw ResultException::invalid( array( ResultInput::error( 'comment', __( 'Die Bemerkung ist zu lang (höchstens 2000 Zeichen).', 'ttleague' ) ) ) );
 		}
-		$this->check_version( $ctx, is_string( $payload['version'] ?? null ) && '' !== $payload['version'] ? $payload['version'] : null );
+		$version = is_string( $payload['version'] ?? null ) && '' !== $payload['version'] ? $payload['version'] : null;
+		$this->check_version( $ctx, $version );
 		if ( ! Flow::allows( self::DECISIONS[ $action ], $ctx->status, array( Flow::ROLE_TK ) ) ) {
 			throw ResultException::conflict( $this->status_message( $ctx->status ) );
 		}
@@ -296,7 +299,7 @@ final class ResultService {
 			case 'confirm':
 				// Entscheid der TK: immer by_tk, mit Bemerkung; die Meldung an beide Seiten löst
 				// das Ereignis «confirmed» aus, ein zusätzliches «decided» braucht es nicht.
-				return $this->confirm_result( $fixture_id, $actor, null, $comment, true );
+				return $this->confirm_result( $fixture_id, $actor, $version, $comment, true );
 
 			case 'finalize':
 				if ( ! $ctx->has_result() ) {
@@ -310,22 +313,7 @@ final class ResultService {
 				if ( ! is_array( $result ) ) {
 					throw ResultException::invalid( array( ResultInput::error( 'result', __( 'Das korrigierte Resultat fehlt.', 'ttleague' ) ) ) );
 				}
-				$input     = $this->input( $ctx, $result );
-				$validated = $this->validator( $ctx, $input )->validate( $input, true );
-				$this->write_decision(
-					$ctx,
-					$actor,
-					Flow::FINAL,
-					'decided',
-					$comment,
-					array(
-						'action'   => 'correct',
-						'score'    => $validated->result->home_score . ':' . $validated->result->away_score,
-						'warnings' => $validated->warnings,
-					),
-					$validated->result,
-					$validated
-				);
+				$this->write_decision( $ctx, $actor, Flow::FINAL, 'decided', $comment, array( 'action' => 'correct' ), null, $this->input( $ctx, $result ) );
 				break;
 
 			case 'forfeit':
@@ -375,10 +363,11 @@ final class ResultService {
 		$now = $this->now();
 		$this->write(
 			$ctx,
-			function () use ( $ctx, $actor, $attachment_id, $now ): void {
+			function ( FixtureContext $current ) use ( $ctx, $actor, $attachment_id, $now ): void {
 				$this->repo->update_fixture( $ctx->id, array( 'photo_attachment_id' => $attachment_id ) );
 				$this->repo->add_event( $ctx->id, 'photo', $actor->user_id, $actor->person_id, null, array( 'attachment_id' => $attachment_id ), $now );
-				$this->audit->record( 'fixture', $ctx->id, 'photo', $actor->user_id, array( 'photo_attachment_id' => $ctx->photo_id ), array( 'photo_attachment_id' => $attachment_id ) );
+				// Vorheriger Wert aus dem gesperrt gelesenen Stand: Die Foto-ID gehört nicht zur Version.
+				$this->audit->record( 'fixture', $ctx->id, 'photo', $actor->user_id, array( 'photo_attachment_id' => $current->photo_id ), array( 'photo_attachment_id' => $attachment_id ) );
 			}
 		);
 		$this->events->photo_added( $ctx->id, $actor->user_id, $attachment_id );
@@ -564,7 +553,7 @@ final class ResultService {
 				);
 				continue;
 			}
-			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at );
+			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at ?? $this->clock->now()->setTimezone( $this->timezone )->format( 'Y-m-d H:i:s' ) );
 			$sides[ $side ] = new SideRoster( $loaded['players'] ?? array(), $loaded['checker'] ?? null, $info['team_id'], array(), $info['name'] );
 		}
 		return $sides;
@@ -617,23 +606,34 @@ final class ResultService {
 	}
 
 	/**
-	 * Entscheid mit neuem Resultat, Forfait oder Zurücksetzen.
+	 * Entscheid mit neuem Resultat (Korrektur), Forfait oder Zurücksetzen.
 	 *
-	 * @param array<string,mixed> $data Zusatzdaten für den Verlauf.
+	 * @param array<string,mixed>  $data       Zusatzdaten für den Verlauf.
+	 * @param TeamMatchResult|null $result     Resultat des Forfaits; null beim Zurücksetzen und bei der Korrektur.
+	 * @param ResultInput|null     $correction Korrigiertes Resultat; geprüft unter der Sperre der Saison
+	 *                                         wie in submit(), fehlende Spielberechtigungen als Hinweise.
 	 */
-	private function write_decision( FixtureContext $ctx, Actor $actor, string $status, string $event, ?string $comment, array $data, ?TeamMatchResult $result, ?ValidatedResult $validated ): void {
+	private function write_decision( FixtureContext $ctx, Actor $actor, string $status, string $event, ?string $comment, array $data, ?TeamMatchResult $result, ?ResultInput $correction ): void {
 		$now = $this->now();
 		$this->write(
 			$ctx,
-			function () use ( $ctx, $actor, $status, $event, $comment, $data, $result, $validated, $now ): void {
+			function ( FixtureContext $current ) use ( $ctx, $actor, $status, $event, $comment, $data, $result, $correction, $now ): void {
+				$validated = null === $correction ? null : $this->validator( $current, $correction )->validate( $correction, true );
+				if ( null !== $validated ) {
+					$result = $validated->result;
+					$data  += array(
+						'score'    => $result->home_score . ':' . $result->away_score,
+						'warnings' => $validated->warnings,
+					);
+				}
 				$before  = $this->repo->snapshot( $ctx->id );
 				$players = $this->repo->lineup_players( $ctx->id );
 				if ( null === $validated ) {
 					$this->repo->clear_result( $ctx->id );
 				} else {
-					$this->repo->save_result( $ctx->id, $validated, $ctx->scheduled_at );
+					$this->repo->save_result( $ctx->id, $validated, $current->scheduled_at );
 				}
-				$this->sync_bindings( $ctx, array_merge( $players, $this->repo->lineup_players( $ctx->id ) ) );
+				$this->sync_bindings( $current, array_merge( $players, $this->repo->lineup_players( $ctx->id ) ) );
 				$reset  = Flow::SCHEDULED === $status;
 				$fields = array(
 					'status'         => $status,
@@ -733,23 +733,34 @@ final class ResultService {
 	}
 
 	/**
-	 * Schreibt in einer Transaktion. Zuerst wird die Begegnung gesperrt und neu gelesen: Hat sie
-	 * sich seit der Prüfung von Rechten, Status und Version geändert, bricht die Aktion mit 409
-	 * ab. So setzt keine von zwei gleichzeitigen Aktionen eine veraltete Version oder einen
-	 * inzwischen unzulässigen Statuswechsel durch.
+	 * Schreibt in einer Transaktion. Zuerst werden Saison und Begegnung gesperrt und die
+	 * Begegnung neu gelesen: Hat sie sich seit der Prüfung von Rechten, Status und Version
+	 * geändert, bricht die Aktion mit 409 ab. So setzt keine von zwei gleichzeitigen Aktionen eine
+	 * veraltete Version oder einen inzwischen unzulässigen Statuswechsel durch.
 	 *
-	 * @param callable():void $work Schreibvorgänge.
-	 * @throws ResultException 409, wenn sich die Begegnung inzwischen geändert hat.
+	 * Die Sperre der Saison reiht alle Schreibvorgänge der Saison hintereinander. Prüfungen, die
+	 * von anderen Begegnungen abhängen (Spielberechtigung, Bindungen), gehören deshalb in $work:
+	 * Dort sehen sie alle vorher gespeicherten Einsätze, und bis zum Ende speichert niemand einen
+	 * weiteren.
+	 *
+	 * Rollen lädt die AccessPolicy getrennt; ändern sie sich genau während einer Anfrage, erkennt
+	 * das der Vergleich nicht. Das ist bewusst so (Rollen ändert nur die TK, selten).
+	 *
+	 * @template T
+	 * @param callable(FixtureContext):T $work Prüfungen und Schreibvorgänge; erhält den gesperrt gelesenen Stand.
+	 * @return T
+	 * @throws ResultException 409, wenn sich die Begegnung inzwischen geändert hat, und jede
+	 *                         Ausnahme aus $work (die Transaktion wird dann zurückgerollt).
 	 */
-	private function write( FixtureContext $ctx, callable $work ): void {
-		$this->db->transaction(
-			function () use ( $ctx, $work ): void {
-				$this->repo->lock( $ctx->id );
+	private function write( FixtureContext $ctx, callable $work ): mixed {
+		return $this->db->transaction(
+			function () use ( $ctx, $work ): mixed {
+				$this->repo->lock( $ctx->season_id, $ctx->id );
 				$current = $this->repo->context( $ctx->id );
 				if ( null === $current || ! hash_equals( $ctx->version(), $current->version() ) ) {
 					throw ResultException::conflict( __( 'Die Begegnung wurde inzwischen geändert. Bitte lade die Seite neu.', 'ttleague' ) );
 				}
-				$work();
+				return $work( $current );
 			}
 		);
 	}
