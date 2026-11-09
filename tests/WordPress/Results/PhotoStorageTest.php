@@ -187,6 +187,36 @@ final class PhotoStorageTest extends TestCase {
 		self::assertSame( 4, $this->checks() );
 	}
 
+	/**
+	 * Ein neuer Monat ergibt ein neues Upload-Unterverzeichnis. Das gemerkte Ergebnis des
+	 * Vormonats gilt dafür nicht; der nächste Upload prüft das neue Verzeichnis.
+	 */
+	public function test_a_new_upload_subdirectory_is_checked_again(): void {
+		$this->server = '403';
+		self::assertSame( PhotoStorage::PROTECTED, PhotoStorage::exposure() );
+
+		$month = static function ( array $dirs ): array {
+			$dirs['subdir'] = '/2099/01';
+			$dirs['path']   = $dirs['basedir'] . '/2099/01';
+			$dirs['url']    = $dirs['baseurl'] . '/2099/01';
+			return $dirs;
+		};
+		add_filter( 'upload_dir', $month );
+		$this->server = 'exposed';
+		try {
+			self::assertStringContainsString( 'von aussen erreichbar', $this->refusal()->getMessage() );
+			self::assertSame( 2, $this->checks() );
+			self::assertStringStartsWith( self::base_url() . '/2099/01/pruefung-', (string) end( $this->requests ) );
+		} finally {
+			remove_filter( 'upload_dir', $month );
+			foreach ( array( '/2099/01', '/2099' ) as $dir ) {
+				if ( is_dir( PhotoStorage::base_dir() . $dir ) ) {
+					rmdir( PhotoStorage::base_dir() . $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Verzeichnis aus dem Test.
+				}
+			}
+		}
+	}
+
 	public function test_uploads_land_in_the_private_directory_without_image_sizes(): void {
 		$this->server = '403';
 		$base         = PhotoStorage::base_dir();
@@ -344,6 +374,32 @@ final class PhotoStorageTest extends TestCase {
 		self::assertSame( $status, $result['status'] );
 		self::assertSame( $color, $result['badge']['color'] );
 		self::assertSame( 'ttleague_photo_storage', $result['test'] );
+	}
+
+	/**
+	 * @return array<string,array{0:string,1:string,2:string,3:string}>
+	 */
+	public static function reports(): array {
+		return array(
+			'geschützt'     => array( PhotoStorage::PROTECTED, 'good', 'blue', 'vor direktem Zugriff geschützt' ),
+			'ausserhalb'    => array( PhotoStorage::OUTSIDE, 'good', 'blue', 'ausserhalb von WordPress und Web-Root' ),
+			'offen'         => array( PhotoStorage::EXPOSED, 'critical', 'red', 'direkt erreichbar' ),
+			'nicht prüfbar' => array( PhotoStorage::UNKNOWN, 'recommended', 'blue', 'liess sich nicht prüfen' ),
+		);
+	}
+
+	/**
+	 * Bericht für «Website-Zustand» je Zustand. «Ausserhalb» (Verzeichnis der Konstante ohne
+	 * Adresse) gibt es nur mit TTLEAGUE_PRIVATE_UPLOADS; der Text verlangt dann eine Prüfung von Hand.
+	 */
+	#[DataProvider( 'reports' )]
+	public function test_site_health_report_per_state( string $state, string $status, string $color, string $label ): void {
+		$report = PhotoStorage::report( $state );
+
+		self::assertSame( $status, $report['status'] );
+		self::assertSame( $color, $report['badge']['color'] );
+		self::assertStringContainsString( $label, $report['label'] );
+		self::assertSame( PhotoStorage::OUTSIDE === $state, str_contains( $report['description'], 'auch nicht über einen Alias' ) );
 	}
 
 	/**
