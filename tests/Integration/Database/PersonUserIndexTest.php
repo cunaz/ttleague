@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Tests\Integration\Database;
 
+use TTLeague\Access\AccessPolicy;
 use TTLeague\Accounts\AccountService;
 use TTLeague\Infrastructure\Database\PersonUserIndex;
 use TTLeague\Tests\Integration\Frontend\Seeder;
@@ -65,7 +66,12 @@ final class PersonUserIndexTest extends IntegrationTestCase {
 			self::assertStringContainsString( 'bereinigt', $e->getMessage() );
 		}
 
+		$policy = new AccessPolicy( $this->db );
+		self::assertNull( $policy->person_for_user( 77 ), 'mehrdeutige Zuordnung ergibt keine Person' );
+
 		$accounts->unlink_user( $second );
+		$policy->reset();
+		self::assertSame( $first, $policy->person_for_user( 77 ) );
 		self::assertTrue( $this->index->migrate(), 'Nach der Bereinigung gelingt die Umwandlung' );
 		self::assertTrue( $this->index->is_unique() );
 
