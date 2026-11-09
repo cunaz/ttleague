@@ -68,11 +68,13 @@ check_file() {
 		return
 	fi
 	local content
+	# Nullbytes entfernen: Auch Binärdateien (Bilder mit Metadaten) werden durchsucht,
+	# ohne dass die Shell vor Nullbytes warnt.
 	if [ "$source" = "index" ]; then
-		content="$(git show ":$path" 2>/dev/null | grep -Ia '' 2>/dev/null)" || return 0
+		content="$(git show ":$path" 2>/dev/null | LC_ALL=C tr -d '\000')" || return 0
 	else
 		[ -f "$path" ] || return 0
-		content="$(grep -Ia '' -- "$path" 2>/dev/null)" || return 0
+		content="$(LC_ALL=C tr -d '\000' < "$path")" || return 0
 	fi
 	[ -n "$content" ] || return 0
 	for entry in "${PATTERNS[@]}"; do
