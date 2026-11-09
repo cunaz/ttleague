@@ -82,12 +82,20 @@ final class FixtureContext {
 	 * (result_stamp ist die höchste Spiel-ID, Spiele werden bei jeder Erfassung neu geschrieben).
 	 */
 	public function version(): string {
+		return self::version_of( $this->status, $this->home_score, $this->away_score, $this->entered_at, $this->confirmed_at, $this->entered_by, $this->confirmed_by, $this->result_stamp );
+	}
+
+	/**
+	 * Kennung aus den Rohwerten, für Listen, die keinen vollständigen Kontext laden (z. B. das
+	 * TK-Dashboard). Werte wie in version(): fehlende Konten null, kein Spiel 0.
+	 */
+	public static function version_of( string $status, ?int $home_score, ?int $away_score, ?string $entered_at, ?string $confirmed_at, ?int $entered_by, ?int $confirmed_by, int $result_stamp ): string {
 		return substr(
 			hash(
 				'sha256',
 				implode(
 					'|',
-					array( $this->status, (string) $this->home_score, (string) $this->away_score, (string) $this->entered_at, (string) $this->confirmed_at, (string) $this->entered_by, (string) $this->confirmed_by, (string) $this->result_stamp )
+					array( $status, (string) $home_score, (string) $away_score, (string) $entered_at, (string) $confirmed_at, (string) $entered_by, (string) $confirmed_by, (string) $result_stamp )
 				)
 			),
 			0,

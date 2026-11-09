@@ -40,6 +40,8 @@ final class Plugin {
 
 		// Benachrichtigungen per E-Mail und Web-Push, Fristen und Erinnerungen.
 		\TTLeague\Notifications\Notifications::register();
+		// Backend der TK: Menü «Spielbetrieb» mit Übersicht sowie Konten und Einladungen.
+		\TTLeague\Tk\Tk::register();
 
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
