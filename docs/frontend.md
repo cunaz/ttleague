@@ -11,6 +11,8 @@ Dieses Dokument beschreibt die lesende Darstellung des Plugins: Seiten und Adres
 | Ansichten | `src/Frontend/Views/` | Serverseitiges HTML pro Ansicht, escaped. |
 | Blöcke, Shortcode | `src/Frontend/Blocks.php`, `Shortcode.php`, `blocks/*/block.json`, `assets/js/editor.js` | Dynamische Blöcke mit `render_callback`, Shortcode `[ttleague view="…"]`, Editor ohne Build-Schritt. |
 | Gestaltung | `assets/css/frontend.css` | Mobile first, Tabellen werden unter 600px zu Karten, Farben und Abstände aus den Presets des aktiven Block-Themes. |
+| Kalender-Abos | `src/Calendar/` | iCal-Feeds (RFC 5545) für Mannschaft, Club und Spieler, siehe [Kalender-Abos](#kalender-abos-ical). |
+| Web-App | `src/Pwa/`, `assets/pwa/` | Manifest, Service Worker mit Offline-Rückfall, siehe [Web-App](#web-app-pwa). |
 
 Einstieg ist `TTLeague\Frontend\Frontend::register()`, aufgerufen von `TTLeague\Plugin::boot()`.
 
@@ -119,9 +121,82 @@ Fachliche Festlegungen:
 - Theme: Die Blöcke funktionieren mit jedem Block-Theme und übernehmen dessen Farben, Schriften und Abstände (getestet mit Twenty Twenty-Five). Ein eigenes Child-Theme mit Navigation, Startseite und Kontaktangaben gehört zur jeweiligen Instanz und wird in deren Repository gepflegt. Navigationslinks auf die Seiten des Plugins sind relative Pfade (`/meisterschaft/` …).
 
 
+## Kalender-Abos (iCal)
+
+Spielpläne lassen sich als Kalender abonnieren (Handy, Outlook, Google Kalender). Die Feeds sind öffentlich wie die Seiten und enthalten die ganze Saison inklusive vergangener Spiele.
+
+| Adresse | Inhalt |
+|---|---|
+| `/kalender/team/2026-27/seefeld-1.ics` | Begegnungen der Mannschaft in der Meisterschaft dieser Saison (jede Saison, auch archivierte) |
+| `/kalender/club/seefeld.ics` | Begegnungen aller Teams des Clubs in der aktiven Saison, Meisterschaft und Cup (über `cup_entry.club_id`) |
+| `/kalender/spieler/90001.ics` | Aktive Saison: Begegnungen aller Teams, in denen die Person Stammspieler, gebunden oder eingesetzt ist (Meisterschaft über `team_roster` und `lineup`, Cup über `cup_entry` und `lineup`), dazu ihre Ranglistenturnier-Gruppen mit `start_at` |
+
+Unbekannte Saison, Mannschaft, Club oder Lizenz und jede andere `.ics`-Adresse unter `/kalender/` antworten mit 404 (Text). Grossbuchstaben im Slug werden toleriert. Ein gemeldeter Spieler ohne Team erhält einen leeren, gültigen Kalender.
+
+**Ereignisse**
+
+- `UID` stabil: `fixture-{id}@{host}`, Ranglistenturnier `rlgroup-{id}@{host}` (Host der Website).
+- `DTSTART`/`DTEND` mit `TZID=Europe/Zurich` (Ortszeit aus der Datenbank), der Kalender enthält den `VTIMEZONE`-Block mit den Regeln für Sommer- und Winterzeit. Dauer: Meisterschaft 2½ h, Cup 2 h, Ranglistenturnier 3 h. Eine Anspielzeit 00:00 gilt als unbekannt: Ganztagesereignis (`VALUE=DATE`, frei statt besetzt) mit dem Hinweis «Anspielzeit noch offen». Begegnungen ohne Datum fehlen.
+- `SUMMARY` «Seefeld 1 – Altstetten 1 (Gruppe A)», nach dem Spiel mit Resultat «… 6:4» (Status mit erfasstem Resultat wie in der Tabelle), bei Forfait «… 0:10 Forfait». Verschobene Begegnungen: «Verschoben: …» mit `STATUS:TENTATIVE`; annullierte: «Annulliert: …» mit `STATUS:CANCELLED`. Ranglistenturnier: «Ranglistenturnier: 2. Runde, Kategorie 1, Gruppe 3».
+- `LOCATION` Lokal mit Adresse (Lokal der Begegnung, sonst Heimlokal des Heimteams; im Ranglistenturnier das Lokal der Gruppe, sonst der Platzclub), `GEO` wenn Koordinaten erfasst sind.
+- `URL` und letzte Zeile der `DESCRIPTION`: Link auf den Matchreport bzw. die Seite des Ranglistenturniers. Die Beschreibung nennt ausserdem Konkurrenz und Saison, Resultat mit Status (provisorisch, strittig, Forfait) und das Spiellokal.
+- `DTSTAMP` (UTC) ist der Zeitpunkt, zu dem die Daten berechnet und gecacht wurden; `CATEGORIES` Meisterschaft, Cup oder Ranglistenturnier.
+
+**Kalenderkopf**: `PRODID`, `VERSION:2.0`, `CALSCALE:GREGORIAN`, `METHOD:PUBLISH`, Name als `NAME` und `X-WR-CALNAME` («Seefeld 1 – Spiele 2026/27»), Beschreibung als `DESCRIPTION` und `X-WR-CALDESC`, `X-WR-TIMEZONE:Europe/Zurich`, `REFRESH-INTERVAL;VALUE=DURATION:PT6H` und `X-PUBLISHED-TTL:PT6H`.
+
+**Formalien** (`TTLeague\Calendar\IcsWriter`, reine Klasse ohne WordPress): Zeilenende CRLF, Faltung bei 75 Oktetten nur zwischen ganzen Zeichen (Graphem-Clustern, UTF-8-sicher), Maskierung von Backslash, Semikolon, Komma und Zeilenumbruch in Textwerten, Steuerzeichen werden entfernt.
+
+**Antwort**: `Content-Type: text/calendar; charset=utf-8`, `Content-Disposition: inline; filename="seefeld-1-2026-27.ics"`, `Cache-Control: public, max-age=900`, `X-Robots-Tag: noindex, nofollow`. Das schwache `ETag` entsteht aus Datenversion (`DataVersion::get()`), Feed-Typ und Parametern, Formatversion, Startadresse, Seitenpfaden und Sprache; passt `If-None-Match`, antwortet der Feed mit 304 ohne die Ereignisse zu laden.
+
+**Abschnitt «Kalender abonnieren»** (`SubscribeBox`): auf der Mannschaftsseite nach dem Spielplan (nicht in archivierten Saisons), auf der Clubseite nach den Teams (nur in der aktiven Saison, deren Spiele der Feed enthält) und am Ende des Spielerprofils (nur bei Meldung in der aktiven Saison). Er enthält einen Satz Erklärung, den Knopf «Im Kalender abonnieren» mit `webcal://`-Link (öffnet Apple Kalender, Outlook und andere Kalender-Apps zum Abonnieren) und die `https://`-Adresse in einem schreibgeschützten Feld zum Kopieren (Google Kalender «Per URL hinzufügen», Outlook im Web). Der Knopf «Adresse kopieren» erscheint nur mit JavaScript und Zwischenablage (`assets/js/calendar.js`, nur auf Seiten mit dem Abschnitt geladen) und meldet das Ergebnis über eine Live-Region; ohne JavaScript bleibt das Feld markierbar. Touch-Ziele mindestens 44px, sichtbarer Fokus, im Druck ausgeblendet.
+
+**Aufbau**
+
+| Klasse | Aufgabe |
+|---|---|
+| `Calendar` | Registrierung (aus `Plugin::boot()`), Query-Variablen `ttl_ical`, `ttl_ical_season`, `ttl_ical_key`, Rewrite-Regeln, Auslieferung bei `parse_request` (vor Hauptabfrage und Template) |
+| `FeedUrls` | Adressen, `webcal://`-Variante, Rewrite-Regeln als reine Funktion |
+| `Feeds` | Lesemodell: Auflösung der Adresse über die bestehenden Lesemodelle, eine Abfrage pro Feed, gecacht über den Cache des Lesemodells (Schlüssel mit `DataVersion::key()`, Name `ical_team`, `ical_club`, `ical_player`) |
+| `EventFactory` | Titel, Beschreibung, Ort, Status und Dauer der Ereignisse; Kalendername |
+| `IcsWriter`, `IcsEvent` | iCalendar-Text |
+| `ConditionalGet` | ETag und Vergleich mit `If-None-Match` |
+| `SubscribeBox` | Abschnitt «Kalender abonnieren» für Mannschafts-, Club- und Spielerseite |
+
+Neue oder geänderte Rewrite-Regeln erneuert das Plugin einmalig selbst (Option `ttleague_calendar_routes`); manuell mit `wp rewrite flush --hard`.
+
+## Web-App (PWA)
+
+Grundlage einer installierbaren Web-App, ohne Push-Benachrichtigungen. Registrierung aus `Plugin::boot()` über `TTLeague\Pwa\Pwa`; Manifest und Service Worker werden wie die Kalender bei `parse_request` ausgeliefert.
+
+| Adresse | Antwort |
+|---|---|
+| `/manifest.webmanifest` | `application/manifest+json`, `Cache-Control: public, max-age=3600` |
+| `/sw.js` | `application/javascript`, `Service-Worker-Allowed: /`, `Cache-Control: no-cache` |
+
+**Manifest** (`Manifest`, reine Klasse): `name` aus dem Seitentitel (Filter `ttleague_pwa_name`), `short_name` aus ganzen Wörtern bis zwölf Zeichen («Freizeitliga Tischtennis Seefeld» → «Freizeitliga», Filter `ttleague_pwa_short_name`), `description` aus dem Untertitel, `lang`, `dir`, `id` und `scope` = Pfad der Startadresse, `start_url` `/?quelle=app` (App-Starts in Statistiken erkennbar), `display: standalone`. `theme_color` aus dem Preset `accent-1` (sonst `primary`, `accent`), `background_color` aus `base` (sonst `background`, `white`); nur Hex-Werte, sonst `#0b4a9e` bzw. `#ffffff`. Liegt WordPress in einem Unterordner, gelten dessen Pfade (`/liga/?quelle=app`). Das ganze Manifest lässt sich mit `ttleague_pwa_manifest` anpassen.
+
+**Icons**: Ist ein Website-Icon gesetzt, stehen dessen Bilder für 192 und 512 px mit den tatsächlichen Abmessungen im Manifest (Zweck `any`, denn ein Website-Icon ist nicht für das Beschneiden auf Kreis oder Tropfen gestaltet; eigene `maskable`-Icons über den Filter). Sonst die mitgelieferten, neutralen Icons (Schläger und Ball) aus `assets/pwa/`: `icon-192.png`, `icon-512.png` (`any`) und `icon-maskable-192.png`, `icon-maskable-512.png` (`maskable`, Motiv innerhalb der Sicherheitszone von 80 %), dazu `apple-touch-icon.png` (180 px); Quellen `icon.svg` und `icon-maskable.svg`.
+
+**Kopfzeilen** (`wp_head`): `<link rel="manifest">`, `<meta name="theme-color">`, `<meta name="apple-mobile-web-app-title">` (Kurzname) und `<link rel="apple-touch-icon">` mit dem mitgelieferten Icon; mit Website-Icon gibt WordPress das apple-touch-icon selbst aus.
+
+**Service Worker** (`assets/pwa/sw.js` als Vorlage, `ServiceWorker` setzt die Konstante `CONFIG` davor):
+
+- Seitenaufrufe zuerst aus dem Netz; erfolgreiche HTML-Antworten werden gespeichert (höchstens 60 Seiten). Offline erscheint die zuletzt gespeicherte Fassung, sonst eine kleine Offline-Seite, die der Service Worker selbst erzeugt (Name der Website, «Erneut versuchen», «Zur Startseite», Farben aus der Palette).
+- Stile, Skripte, Schriften und Bilder der eigenen Website: stale-while-revalidate (höchstens 120 Dateien, die ältesten fallen weg).
+- Nie gespeichert: alles ausser GET, fremde Adressen, die Pfade `wp-admin`, `wp-login.php`, `wp-json`, `wp-cron.php`, `xmlrpc.php`, `anmelden`, `mein-bereich`, `erfassen`, `kalender` (Filter `ttleague_pwa_never_cache`), Vorschau, Customizer und REST über Abfrageparameter sowie Antworten mit `Cache-Control: private` oder `no-store` – WordPress sendet beides für angemeldete Personen. Ausgeschlossene Seiten kommen nur aus dem Netz, offline erscheint die Offline-Seite. Neue Module mit persönlichen Seiten tragen ihre Pfade in den Filter ein oder senden `nocache_headers()`.
+- Beim Installieren werden die Startadresse und bereits offene Seiten gespeichert, damit sie schon nach dem ersten Besuch offline verfügbar sind.
+- Cache-Namen `ttleague:{pfad}:pages:{version}` und `…:assets:{version}`; die Version ist ein Hash aus Vorlage und Konfiguration. Ein Update des Plugins ändert die Bytes von `/sw.js`, der neue Service Worker übernimmt sofort (`skipWaiting`, `clients.claim`) und löscht ältere Caches mit demselben Pfad; Caches anderer Websites auf derselben Domain bleiben.
+
+**Registrierung**: `assets/pwa/register.js` (verzögert, nach dem Laden) mit den Einstellungen aus `window.ttleaguePwa`. Nicht eingebunden für angemeldete Personen mit Redaktionsrechten (`edit_posts`), in Vorschau und Customizer; ganz abschaltbar mit `ttleague_pwa_service_worker`. Ohne Unterstützung für Service Worker oder ohne HTTPS bleibt die Website unverändert.
+
+**Server**: `/sw.js` und `/manifest.webmanifest` müssen WordPress erreichen. Im Webroot dürfen keine Dateien mit diesen Namen liegen, und nginx-Regeln, die `.js` mit `try_files $uri =404` statisch ausliefern, müssen `/sw.js` ausnehmen. Neue Rewrite-Regeln erneuert das Plugin einmalig selbst (Option `ttleague_pwa_routes`).
+
 ## Tests
 
 - `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
+- `tests/Unit/Calendar/`: Faltung (Grenzen, UTF-8, Graphem-Cluster), Maskierung, `VTIMEZONE` im Abgleich mit der Zeitzonendatenbank, Dauer über die Zeitumstellung, Ganztag, Titel und Status der Ereignisse, Adressen, Rewrite-Regeln, ETag.
+- `tests/Integration/Calendar/`: Feeds für Mannschaft, Club und Spieler gegen das Szenario (Forfait, provisorisch, Cup, Ranglistenturnier, Ersatzeinsatz, annulliert, Anspielzeit offen, unbekannte Adressen) und der Abschnitt «Kalender abonnieren» auf den Seiten.
+- `tests/Unit/Pwa/`: Manifest (Namen, Kurzname, Unterordner, Farben aus der Palette, mitgelieferte Icons mit Abmessungen, Website-Icon, Rewrite-Regeln) und Service Worker (Konfiguration, Cache-Namen pro Website, Version, ausgeschlossene Pfade, Strategien der Vorlage). Registrierung, Offline-Rückfall und Ausschlüsse im Browser lassen sich mit Playwright gegen eine Instanz prüfen (`context.setOffline(true)`).
 - `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping.
 
 ```bash

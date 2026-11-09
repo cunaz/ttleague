@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace TTLeague\Frontend\Views;
 
+use TTLeague\Calendar\FeedUrls;
+use TTLeague\Calendar\SubscribeBox;
 use TTLeague\Domain\Rating\ClassificationScale;
 use TTLeague\Frontend\Support\Format;
 use TTLeague\Frontend\Support\Html;
@@ -47,7 +49,24 @@ final class PlayerView extends View {
 		$filter_nav = $this->season_filter( $player, $profile['seasons'], $filter );
 		$out       .= Html::section( __( 'Klassierungsauswertung', 'ttleague' ), $filter_nav . $this->analysis( $games ), 'ttl-section--analysis', 'ttl-auswertung' );
 		$out       .= Html::section( __( 'Alle Spiele', 'ttleague' ), $filter_nav . $this->games_by_season( $games, '' !== $filter ), 'ttl-section--games', 'ttl-alle-spiele' );
+		$out       .= $this->subscribe( $player, $profile['seasons'] );
 		return $out;
+	}
+
+	/**
+	 * Kalender-Abo des Spielers, wenn er in der aktiven Saison gemeldet ist.
+	 *
+	 * @param array<string,mixed>       $player  Spieler.
+	 * @param list<array<string,mixed>> $seasons Saisons des Spielers, neueste zuerst.
+	 */
+	private function subscribe( array $player, array $seasons ): string {
+		$active = $this->model->seasons->active();
+		if ( null === $active || ( $seasons[0]['season_id'] ?? null ) !== $active['id'] ) {
+			return '';
+		}
+		/* translators: 1: Name des Spielers, 2: Saison. */
+		$text = sprintf( __( 'Mit einem Abo erscheinen die Begegnungen aller Teams von %1$s und die Gruppen im Ranglistenturnier der Saison %2$s im eigenen Kalender und werden automatisch nachgeführt.', 'ttleague' ), $player['name'], $active['name'] );
+		return SubscribeBox::render( ( new FeedUrls( $this->urls->home() ) )->player( (int) $player['license'] ), $text );
 	}
 
 	/**
