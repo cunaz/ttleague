@@ -13,6 +13,8 @@ namespace TTLeague\Infrastructure\Database;
 
 final class WpdbDb implements Db {
 
+	use InsertMany;
+
 	private int $depth = 0;
 
 	public function __construct( private readonly \wpdb $wpdb ) {}
@@ -81,13 +83,13 @@ final class WpdbDb implements Db {
 		return is_int( $result ) ? $result : 0;
 	}
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $work ): mixed {
 		if ( 0 === $this->depth ) {
 			$this->wpdb->query( 'START TRANSACTION' );
 		}
 		++$this->depth;
 		try {
-			$result = $fn( $this );
+			$result = $work( $this );
 			--$this->depth;
 			if ( 0 === $this->depth ) {
 				$this->wpdb->query( 'COMMIT' );
@@ -118,7 +120,7 @@ final class WpdbDb implements Db {
 		$out   = '';
 		$rest  = array();
 		foreach ( $parts['tokens'] as $i => $token ) {
-			$out .= $parts['literals'][ $i ];
+			$out  .= $parts['literals'][ $i ];
 			$value = $args[ $i ];
 			if ( null === $value ) {
 				$out .= 'NULL';
@@ -154,7 +156,7 @@ final class WpdbDb implements Db {
 
 	private function throw_on_error(): void {
 		if ( '' !== $this->wpdb->last_error ) {
-			$message = $this->wpdb->last_error;
+			$message                = $this->wpdb->last_error;
 			$this->wpdb->last_error = '';
 			throw new DbException( 'Datenbankfehler: ' . $message );
 		}

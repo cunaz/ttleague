@@ -11,6 +11,8 @@ namespace TTLeague\Infrastructure\Database;
 
 final class PdoDb implements Db {
 
+	use InsertMany;
+
 	private int $depth = 0;
 
 	public function __construct( private readonly \PDO $pdo, private readonly string $prefix = 'wp_' ) {
@@ -72,7 +74,7 @@ final class PdoDb implements Db {
 			implode( ', ', array_map( static fn( $c ) => '`' . $c . '`', $columns ) ),
 			implode( ', ', array_fill( 0, count( $columns ), '?' ) )
 		);
-		$stmt = $this->pdo->prepare( $sql );
+		$stmt    = $this->pdo->prepare( $sql );
 		$stmt->execute( array_values( array_map( array( $this, 'bindable' ), $data ) ) );
 		return (int) $this->pdo->lastInsertId();
 	}
@@ -85,25 +87,25 @@ final class PdoDb implements Db {
 			$values[] = $this->bindable( $value );
 		}
 		[ $where_sql, $where_values ] = $this->where( $where );
-		$stmt = $this->pdo->prepare( sprintf( 'UPDATE `%s` SET %s WHERE %s', $this->table( $table ), implode( ', ', $set ), $where_sql ) );
+		$stmt                         = $this->pdo->prepare( sprintf( 'UPDATE `%s` SET %s WHERE %s', $this->table( $table ), implode( ', ', $set ), $where_sql ) );
 		$stmt->execute( array_merge( $values, $where_values ) );
 		return $stmt->rowCount();
 	}
 
 	public function delete( string $table, array $where ): int {
 		[ $where_sql, $where_values ] = $this->where( $where );
-		$stmt = $this->pdo->prepare( sprintf( 'DELETE FROM `%s` WHERE %s', $this->table( $table ), $where_sql ) );
+		$stmt                         = $this->pdo->prepare( sprintf( 'DELETE FROM `%s` WHERE %s', $this->table( $table ), $where_sql ) );
 		$stmt->execute( $where_values );
 		return $stmt->rowCount();
 	}
 
-	public function transaction( callable $fn ): mixed {
+	public function transaction( callable $work ): mixed {
 		if ( 0 === $this->depth ) {
 			$this->pdo->beginTransaction();
 		}
 		++$this->depth;
 		try {
-			$result = $fn( $this );
+			$result = $work( $this );
 			--$this->depth;
 			if ( 0 === $this->depth ) {
 				$this->pdo->commit();

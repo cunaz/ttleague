@@ -39,8 +39,8 @@ abstract class IntegrationTestCase extends TestCase {
 		if ( null !== self::$shared ) {
 			return self::$shared;
 		}
-		$dsn  = getenv( 'TTLEAGUE_TEST_DB_DSN' ) ?: 'mysql:host=127.0.0.1;dbname=ttleague_test;charset=utf8mb4';
-		$user = getenv( 'TTLEAGUE_TEST_DB_USER' ) ?: 'ttleague';
+		$dsn  = self::env( 'TTLEAGUE_TEST_DB_DSN', 'mysql:host=127.0.0.1;dbname=ttleague_test;charset=utf8mb4' );
+		$user = self::env( 'TTLEAGUE_TEST_DB_USER', 'ttleague' );
 		$pass = getenv( 'TTLEAGUE_TEST_DB_PASS' );
 		$pass = false === $pass ? 'ttleague' : $pass;
 		try {
@@ -53,6 +53,11 @@ abstract class IntegrationTestCase extends TestCase {
 			self::$schema_created = true;
 		}
 		return self::$shared;
+	}
+
+	private static function env( string $name, string $fallback ): string {
+		$value = getenv( $name );
+		return false === $value || '' === $value ? $fallback : $value;
 	}
 
 	private static function create_schema( PdoDb $db ): void {

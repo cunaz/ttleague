@@ -39,7 +39,7 @@ final class RatingTest extends TestCase {
 	}
 
 	public function test_expected_score_and_symmetry(): void {
-		$elo = new EloRating( new SeasonRules() );
+		$elo = new EloRating( new SeasonRules( rating_scale: 400.0 ) );
 		self::assertEqualsWithDelta( 0.5, $elo->expected( 600, 600 ), 1e-9 );
 		self::assertEqualsWithDelta( 0.64, $elo->expected( 700, 600 ), 0.001 );
 		self::assertEqualsWithDelta( 1.0, $elo->expected( 700, 600 ) + $elo->expected( 600, 700 ), 1e-9 );
@@ -61,6 +61,11 @@ final class RatingTest extends TestCase {
 		self::assertEqualsWithDelta( 606.0, $pa[0], 1e-9 );
 		self::assertEqualsWithDelta( 606.0, $pa[1], 1e-9 );
 		self::assertEqualsWithDelta( 594.0, $pb[0], 1e-9 );
+	}
+
+	public function test_default_scale_makes_one_class_difference_clear(): void {
+		$elo = new EloRating( new SeasonRules() );
+		self::assertEqualsWithDelta( 0.76, $elo->expected( 700, 600 ), 0.01 );
 	}
 
 	public function test_initial_rating_and_classification_round_trip(): void {

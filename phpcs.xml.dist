@@ -29,6 +29,18 @@
     <!-- Die Domänenschicht ist reines PHP ohne WordPress; Exceptions dort sind Entwicklermeldungen. -->
     <rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
         <exclude-pattern>*/src/Domain/*</exclude-pattern>
+        <exclude-pattern>*/src/Infrastructure/*</exclude-pattern>
+        <exclude-pattern>*/src/Rating/*</exclude-pattern>
+    </rule>
+
+    <!-- PdoDb ist bewusst eine PDO-Implementierung (Integrationstests, Werkzeuge ausserhalb von WordPress). -->
+    <rule ref="WordPress.DB.RestrictedClasses">
+        <exclude-pattern>*/src/Infrastructure/Database/PdoDb.php</exclude-pattern>
+    </rule>
+
+    <!-- WP-CLI ruft Unterbefehle immer mit ($args, $assoc_args) auf. -->
+    <rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+        <exclude-pattern>*/src/Cli/*</exclude-pattern>
     </rule>
 
     <rule ref="WordPress.WP.I18n">

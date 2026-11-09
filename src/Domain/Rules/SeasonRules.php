@@ -36,8 +36,8 @@ final class SeasonRules {
 	 * @param list<int>           $rl_round_points          Punkte pro Rang in einer RL-Gruppe.
 	 * @param int                 $rl_seven_player_bonus    Zusatzpunkt für alle in einer 7er-Gruppe.
 	 * @param int                 $rl_finalists             Finalteilnehmer pro Kategorie.
-	 * @param float               $rating_k                 K-Faktor der Wertungszahl.
-	 * @param float               $rating_scale             Skalierung der Erwartungswertformel.
+	 * @param float               $rating_k                 K-Faktor der Wertungszahl (kalibriert an fünf Saisons: 16).
+	 * @param float               $rating_scale             Skalierung der Erwartungswertformel (kalibriert: 200, d. h. eine Klassierungsstufe Unterschied ergibt 76 % Siegerwartung).
 	 * @param float               $rating_doubles_weight    Gewicht eines Doppels für die Wertungszahl.
 	 * @param float               $rating_points_per_class  Wertungspunkte pro Klassierungsstufe.
 	 */
@@ -59,8 +59,8 @@ final class SeasonRules {
 		public readonly array $rl_round_points = array( 6, 5, 4, 3, 2, 1 ),
 		public readonly int $rl_seven_player_bonus = 1,
 		public readonly int $rl_finalists = 6,
-		public readonly float $rating_k = 24.0,
-		public readonly float $rating_scale = 400.0,
+		public readonly float $rating_k = 16.0,
+		public readonly float $rating_scale = 200.0,
 		public readonly float $rating_doubles_weight = 0.5,
 		public readonly float $rating_points_per_class = 100.0,
 	) {

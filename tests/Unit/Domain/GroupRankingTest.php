@@ -14,11 +14,11 @@ final class GroupRankingTest extends TestCase {
 	public function test_group_of_five_with_absent_player(): void {
 		// Fünfergruppe, eine Person spielt nicht: Punkte 6, 5, 4, 3 und 2 für die abwesende Person.
 		$players = array(
-			'Keller' => RlPlayerStatus::Played,
-			'Ammann'    => RlPlayerStatus::Played,
-			'Moser'  => RlPlayerStatus::Played,
-			'Weber'  => RlPlayerStatus::Played,
-			'Pfister'    => RlPlayerStatus::Played,
+			'Keller'  => RlPlayerStatus::Played,
+			'Ammann'  => RlPlayerStatus::Played,
+			'Moser'   => RlPlayerStatus::Played,
+			'Weber'   => RlPlayerStatus::Played,
+			'Pfister' => RlPlayerStatus::Played,
 		);
 		$games   = array(
 			new RlGame( 'Keller', 'Weber', 3, 1 ),

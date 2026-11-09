@@ -72,6 +72,14 @@ interface Db {
 	public function insert( string $table, array $data ): int;
 
 	/**
+	 * Fügt viele Zeilen mit denselben Spalten in Stapeln ein; liefert die Anzahl Zeilen.
+	 *
+	 * @param string                                     $table Kurzname.
+	 * @param list<array<string,int|float|string|null>> $rows  Zeilen mit identischen Schlüsseln.
+	 */
+	public function insert_many( string $table, array $rows, int $chunk = 500 ): int;
+
+	/**
 	 * Aktualisiert Zeilen; null in $where bedeutet IS NULL.
 	 *
 	 * @param string                               $table Kurzname.
@@ -90,10 +98,10 @@ interface Db {
 	 * Führt die Funktion in einer Transaktion aus; bei einer Ausnahme wird zurückgerollt.
 	 *
 	 * @template T
-	 * @param callable(Db):T $fn Arbeit.
+	 * @param callable(Db):T $work Arbeit.
 	 * @return T
 	 */
-	public function transaction( callable $fn ): mixed;
+	public function transaction( callable $work ): mixed;
 
 	/**
 	 * Aktuelle Zeit in UTC als 'Y-m-d H:i:s'.

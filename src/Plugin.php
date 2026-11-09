@@ -38,6 +38,7 @@ final class Plugin {
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'ttleague', \TTLeague\Cli\Command::class );
+			\WP_CLI::add_command( 'ttleague rating', \TTLeague\Cli\RatingCommand::class );
 		}
 	}
 }
