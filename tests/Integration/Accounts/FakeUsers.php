@@ -37,7 +37,8 @@ final class FakeUsers implements UserDirectory {
 			'last_login'   => $last_login,
 			'privileged'   => $privileged || $admin,
 			'admin'        => $admin,
-			'link_allowed' => ! $admin,
+			// Wie LoginFlow::link_allowed(): kein Anmeldelink für Konten mit erweiterten Rechten.
+			'link_allowed' => ! ( $privileged || $admin ),
 		);
 	}
 

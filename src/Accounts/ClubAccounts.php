@@ -119,9 +119,16 @@ final class ClubAccounts {
 		try {
 			$this->accounts->set_email( $person_id, $email );
 		} catch ( \RuntimeException $e ) {
-			// Gleichzeitig vergeben (person.email ist eindeutig): Konto zurücksetzen, verständlich melden.
-			if ( null !== $linked && '' !== $old ) {
-				$this->users->update_email( $linked, $old );
+			// Gleichzeitig vergeben (person.email ist eindeutig): das Konto auf seine bisherige
+			// Adresse zurücksetzen (nicht auf die der Person, die abweichen oder fehlen kann) und
+			// verständlich melden.
+			$previous = null === $account ? '' : $account['email'];
+			if ( null !== $linked && '' !== $previous ) {
+				$error = $this->users->update_email( $linked, $previous );
+				if ( null !== $error ) {
+					/* translators: 1: Name der Person, 2: bisherige Adresse des Kontos, 3: Fehlermeldung von WordPress */
+					return Outcome::error( sprintf( __( 'Die Adresse von %1$s liess sich nicht speichern, und das Konto liess sich nicht auf %2$s zurücksetzen: %3$s. Bitte in der Benutzerverwaltung prüfen.', 'ttleague' ), $name, $previous, $error ) );
+				}
 			}
 			$owner = $this->accounts->email_owner( $email );
 			if ( null !== $owner && $owner !== $person_id ) {
@@ -159,7 +166,7 @@ final class ClubAccounts {
 		$account = $this->account( $person );
 		if ( null !== $account && ! $account['link_allowed'] ) {
 			/* translators: %s: Name der Person */
-			return Outcome::info( sprintf( __( '%s hat ein Administratorkonto und meldet sich mit Passwort an. Eine Einladung per Link gibt es dafür nicht.', 'ttleague' ), $name ) );
+			return Outcome::info( sprintf( __( '%s hat ein Konto mit erweiterten Rechten und meldet sich mit Passwort an. Eine Einladung per Link gibt es dafür nicht.', 'ttleague' ), $name ) );
 		}
 		if ( ! $by->is_tk && ! $this->limiter->hit( 'invite', (string) $by->user_id, self::INVITE_LIMIT, self::INVITE_WINDOW ) ) {
 			/* translators: %d: Anzahl Einladungen */
@@ -224,7 +231,7 @@ final class ClubAccounts {
 	/**
 	 * Grund, warum das handelnde Konto die Adresse nicht ändern darf, oder null.
 	 *
-	 * @param array{id:int,linked:bool,privileged:bool,admin:bool,link_allowed:bool}|null $account Konto der Person.
+	 * @param array{id:int,linked:bool,email:string,last_login:int|null,privileged:bool,admin:bool,link_allowed:bool}|null $account Konto der Person.
 	 */
 	private function email_denied( Actor $by, int $person_id, string $name, ?array $account ): ?string {
 		if ( $by->is_tk ) {
@@ -252,7 +259,7 @@ final class ClubAccounts {
 	 * Konto der Person: verknüpft, sonst über die hinterlegte E-Mail-Adresse.
 	 *
 	 * @param array<string,string|null> $person Person.
-	 * @return array{id:int,linked:bool,privileged:bool,admin:bool,link_allowed:bool}|null
+	 * @return array{id:int,linked:bool,email:string,last_login:int|null,privileged:bool,admin:bool,link_allowed:bool}|null
 	 */
 	private function account( array $person ): ?array {
 		$linked = (int) ( $person['user_id'] ?? 0 );

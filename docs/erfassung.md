@@ -222,7 +222,7 @@ Regeln (`TTLeague\Accounts\ClubAccounts`):
 
 - TK-Chefs ändern Adressen nur für Personen ihres Clubs ohne erweiterte Rechte (siehe Rechte); als Konto zählt das verknüpfte, sonst das Konto mit der hinterlegten Adresse. Die TK ändert alle ausser Administratorkonten.
 - Die neue Adresse ist gültig (`is_email`) und weder bei einer anderen Person noch bei einem anderen Konto hinterlegt; sonst eine Meldung statt eines Datenbankfehlers. Ein verknüpftes Konto erhält sie ebenfalls (`wp_update_user`, ohne die Standardmitteilung von WordPress). Die bisherige Adresse erhält eine Mitteilung mit der gekürzten neuen Adresse.
-- Einladungen (`Invitations::invite`) nur an gültige Adressen. Administratorkonten (`LoginFlow::link_allowed`) erhalten keinen Link, die einladende Person sieht einen Hinweis. TK-Chefs verschicken höchstens 50 Einladungen pro Stunde (`RateLimiter`, wie beim Anmeldelink nicht atomar).
+- Einladungen (`Invitations::invite`) nur an gültige Adressen. Konten mit erweiterten Rechten (`LoginFlow::link_allowed`, siehe Anmeldung) erhalten keinen Link, die einladende Person sieht einen Hinweis. TK-Chefs verschicken höchstens 50 Einladungen pro Stunde (`RateLimiter`, wie beim Anmeldelink nicht atomar).
 - `audit_log`: `email_changed` mit Adresse vorher und nachher, `invited` für jede Einladung.
 
 ## Tests

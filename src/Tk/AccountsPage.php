@@ -136,7 +136,7 @@ final class AccountsPage {
 	 */
 	private static function invite_cell( array $person, int $club_id ): string {
 		if ( ! $person['link_allowed'] ) {
-			return '<span class="ttl-tk-muted">' . esc_html__( 'Administratorkonto: Anmeldung nur mit Passwort, keine Einladung per Link.', 'ttleague' ) . '</span>';
+			return '<span class="ttl-tk-muted">' . esc_html__( 'Konto mit erweiterten Rechten: Anmeldung nur mit Passwort, keine Einladung per Link.', 'ttleague' ) . '</span>';
 		}
 		if ( ClubPeople::NO_EMAIL === $person['status'] ) {
 			return '<span class="ttl-tk-muted">' . esc_html__( 'Zuerst E-Mail-Adresse hinterlegen.', 'ttleague' ) . '</span>';

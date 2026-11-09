@@ -154,7 +154,7 @@ final class MyClub {
 	 */
 	private static function invite_form( int $club_id, array $person ): string {
 		if ( ! $person['link_allowed'] ) {
-			return '<p class="ttl-muted ttl-club__hint">' . esc_html__( 'Administratorkonto: Anmeldung nur mit Passwort.', 'ttleague' ) . '</p>';
+			return '<p class="ttl-muted ttl-club__hint">' . esc_html__( 'Konto mit erweiterten Rechten: Anmeldung nur mit Passwort.', 'ttleague' ) . '</p>';
 		}
 		if ( ClubPeople::NO_EMAIL === $person['status'] ) {
 			return '';

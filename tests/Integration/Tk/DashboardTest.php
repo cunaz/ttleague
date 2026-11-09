@@ -388,16 +388,36 @@ final class DashboardTest extends IntegrationTestCase {
 		self::assertSame( array( 'confirm' ), array_column( $this->dashboard->decisions( $this->id['season'] ), 'action' ) );
 	}
 
+	/**
+	 * Jede der sechs Listen kostet eine Abfrage, auch mit mehreren Zeilen.
+	 */
 	public function test_each_list_is_one_query(): void {
-		foreach ( range( 1, 6 ) as $i ) {
+		foreach ( range( 1, 3 ) as $i ) {
 			$f = $this->provisional( '2026-11-0' . $i . ' 10:00:00', 'disputed' );
 			$this->repo->add_event( $f, 'disputed', 102, $this->id['captain'], 'Grund ' . $i, array(), '2026-11-1' . $i . ' 10:00:00' );
 			$this->repo->add_event( $f, 'entered', 101, null, null, array( 'warnings' => array( 'Hinweis ' . $i ) ), '2026-11-1' . $i . ' 09:00:00' );
+			$this->repo->add_event( $f, 'decided', 103, null, null, array( 'action' => 'finalize' ), '2026-11-1' . $i . ' 11:00:00' );
+			$this->provisional( '2026-11-0' . $i . ' 10:00:00' );
+			$this->fixture( array( 'scheduled_at' => '2026-11-1' . $i . ' 20:00:00' ) );
+			$this->fixture( array( 'scheduled_at' => '2026-10-1' . $i . ' 20:00:00' ) );
 		}
-		$before = $this->queries();
-		$this->dashboard->disputed( $this->id['season'] );
-		$this->dashboard->warnings( $this->id['season'] );
-		self::assertSame( 2, $this->queries() - $before );
+		$season = $this->id['season'];
+		$rules  = $this->dashboard->season()['rules'];
+		$lists  = array(
+			'disputed'          => fn(): array => $this->dashboard->disputed( $season ),
+			'confirmation_due'  => fn(): array => $this->dashboard->confirmation_due( $season, $rules ),
+			'missing_results'   => fn(): array => $this->dashboard->missing_results( $season, $rules ),
+			'forfeit_proposals' => fn(): array => $this->dashboard->forfeit_proposals( $season, $rules ),
+			'warnings'          => fn(): array => $this->dashboard->warnings( $season ),
+			'decisions'         => fn(): array => $this->dashboard->decisions( $season ),
+		);
+
+		foreach ( $lists as $name => $list ) {
+			$before = $this->queries();
+			$rows   = $list();
+			self::assertSame( 1, $this->queries() - $before, $name );
+			self::assertCount( 3, $rows, $name . ': mehrere Zeilen' );
+		}
 	}
 
 	/**

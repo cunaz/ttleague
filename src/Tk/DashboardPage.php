@@ -195,7 +195,7 @@ final class DashboardPage {
 			$out .= '<th scope="col" class="' . esc_attr( 'ttl-col-' . $key . ( 'fixture' === $key ? ' column-primary' : '' ) ) . '">' . esc_html( $label ) . '</th>';
 		}
 		$out .= '</tr></thead><tbody>';
-		foreach ( $rows as $row ) {
+		foreach ( $rows as $index => $row ) {
 			$out .= '<tr>'
 				. '<td class="column-primary">' . self::fixture( $row ) . '</td>'
 				. '<td>' . esc_html( Format::datetime( $row['scheduled_at'] ) ) . '</td>'
@@ -203,7 +203,7 @@ final class DashboardPage {
 				. '<td>' . esc_html( ResultService::status_label( $row['status'] ) ) . '</td>'
 				. '<td' . self::since_title( $row['since'] ) . '>' . esc_html( self::age( $row['age_hours'] ) ) . '</td>'
 				. '<td>' . self::details( $row, $kind, $rules ) . '</td>'
-				. ( $actions ? '<td>' . self::actions( $row, $kind ) . '</td>' : '' )
+				. ( $actions ? '<td>' . self::actions( $row, $kind, (int) $index ) . '</td>' : '' )
 				. '</tr>';
 		}
 		return $out . '</tbody></table>';
@@ -261,14 +261,16 @@ final class DashboardPage {
 	 * @param array<string,mixed> $row  Zeile.
 	 * @param string              $kind Liste.
 	 */
-	private static function actions( array $row, string $kind ): string {
-		$id     = (int) $row['id'];
+	private static function actions( array $row, string $kind, int $index ): string {
 		$status = (string) $row['status'];
+		// Dieselbe Begegnung kann in mehreren Listen und in «Hinweise» mehrfach stehen: Die IDs der
+		// Felder enthalten deshalb Liste und Zeile, damit jedes Label auf sein eigenes Feld zeigt.
+		$uid = $kind . '-' . $index . '-' . (int) $row['id'];
 		if ( Flow::PROVISIONAL === $status ) {
 			return self::form( $row, 'confirm', '<button type="submit" class="button button-primary button-small">' . esc_html__( 'Bestätigen', 'ttleague' ) . '</button>' );
 		}
 		if ( in_array( $status, array( Flow::DISPUTED, Flow::CONFIRMED ), true ) ) {
-			$field = 'ttl-finalize-' . $id;
+			$field = 'ttl-finalize-' . $uid;
 			return '<details><summary class="button button-small">' . esc_html__( 'Abschliessen …', 'ttleague' ) . '</summary>'
 				. self::form(
 					$row,
@@ -280,8 +282,8 @@ final class DashboardPage {
 				. '</details>';
 		}
 		if ( in_array( $kind, array( 'missing', 'forfeit' ), true ) && in_array( $status, array( Flow::SCHEDULED, Flow::POSTPONED ), true ) ) {
-			$winner  = 'ttl-winner-' . $id;
-			$comment = 'ttl-forfeit-' . $id;
+			$winner  = 'ttl-winner-' . $uid;
+			$comment = 'ttl-forfeit-' . $uid;
 			return '<details><summary class="button button-small">' . esc_html__( 'Forfait …', 'ttleague' ) . '</summary>'
 				. self::form(
 					$row,

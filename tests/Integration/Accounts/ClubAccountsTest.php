@@ -296,6 +296,53 @@ final class ClubAccountsTest extends IntegrationTestCase {
 		self::assertSame( array(), $this->audit( 'email_changed' ) );
 	}
 
+	/**
+	 * Konto und Person können verschiedene Adressen haben (Altdaten) oder die Person hat keine.
+	 * Scheitert das Speichern bei der Person, erhält das Konto seine eigene bisherige Adresse zurück.
+	 */
+	public function test_concurrent_assignment_resets_the_account_to_its_own_previous_address(): void {
+		$concurrent                       = function ( int $user_id, string $email ): void {
+			unset( $user_id );
+			if ( 'kurt.neu@example.org' === $email ) {
+				$this->contact( 'olga', 'kurt.neu@example.org' );
+			}
+		};
+		$this->users->users[302]['email'] = 'kurt.alt@example.org';
+		$this->users->on_update           = $concurrent;
+
+		$outcome = $this->service->change_email( $this->chef, $this->id['kurt'], 'kurt.neu@example.org' );
+
+		self::assertSame( Outcome::ERROR, $outcome->type );
+		self::assertSame( 'kurt.alt@example.org', $this->users->users[302]['email'], 'bisherige Adresse des Kontos, nicht die der Person' );
+
+		// Ohne Adresse bei der Person wird das Konto ebenfalls zurückgesetzt.
+		$this->contact( 'olga', null );
+		$this->contact( 'kurt', null, 302 );
+		$this->users->users[302]['email'] = 'kurt@example.org';
+		$outcome                          = $this->service->change_email( $this->chef, $this->id['kurt'], 'kurt.neu@example.org' );
+
+		self::assertSame( Outcome::ERROR, $outcome->type );
+		self::assertSame( 'kurt@example.org', $this->users->users[302]['email'] );
+		self::assertNull( $this->email_of( 'kurt' ) );
+	}
+
+	public function test_failed_reset_of_the_account_is_reported(): void {
+		$this->users->on_update = function ( int $user_id, string $email ): void {
+			unset( $user_id );
+			if ( 'kurt.neu@example.org' === $email ) {
+				$this->contact( 'olga', 'kurt.neu@example.org' );
+				// Das Zurücksetzen danach scheitert.
+				$this->users->fail_with = 'Datenbank nicht erreichbar.';
+			}
+		};
+
+		$outcome = $this->service->change_email( $this->chef, $this->id['kurt'], 'kurt.neu@example.org' );
+
+		self::assertSame( Outcome::ERROR, $outcome->type );
+		self::assertSame( 'Die Adresse von Kurt Konto liess sich nicht speichern, und das Konto liess sich nicht auf kurt@example.org zurücksetzen: Datenbank nicht erreichbar.. Bitte in der Benutzerverwaltung prüfen.', $outcome->message );
+		self::assertSame( 'kurt@example.org', $this->email_of( 'kurt' ), 'Person unverändert' );
+	}
+
 	public function test_invitation_by_chef_and_tk(): void {
 		$outcome = $this->service->invite( $this->chef, $this->id['paul'] );
 
@@ -322,6 +369,15 @@ final class ClubAccountsTest extends IntegrationTestCase {
 
 		self::assertSame( Outcome::INFO, $outcome->type );
 		self::assertStringContainsString( 'meldet sich mit Passwort an', $outcome->message );
+		self::assertSame( array(), $this->invited );
+	}
+
+	public function test_accounts_with_extended_rights_get_a_hint_instead_of_a_link(): void {
+		// Rita hat erweiterte Rechte (z. B. TK oder Redaktion), aber kein Administratorkonto.
+		$outcome = $this->service->invite( $this->tk, $this->id['rita'] );
+
+		self::assertSame( Outcome::INFO, $outcome->type );
+		self::assertSame( 'Rita Rechte hat ein Konto mit erweiterten Rechten und meldet sich mit Passwort an. Eine Einladung per Link gibt es dafür nicht.', $outcome->message );
 		self::assertSame( array(), $this->invited );
 	}
 
