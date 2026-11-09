@@ -18,6 +18,9 @@ final class PersonUserIndex {
 
 	public const INDEX = 'user_id';
 
+	/** Fehlermeldung des letzten misslungenen Umbaus (leer, wenn keiner). */
+	public string $last_error = '';
+
 	public function __construct( private readonly Db $db ) {}
 
 	public function is_unique(): bool {
@@ -58,7 +61,13 @@ final class PersonUserIndex {
 			array( $table, self::INDEX )
 		);
 		$drop   = $exists > 0 ? 'DROP INDEX `' . self::INDEX . '`, ' : '';
-		$this->db->query( "ALTER TABLE `{$table}` {$drop}ADD UNIQUE KEY `" . self::INDEX . '` (`user_id`)' );
+		try {
+			$this->db->query( "ALTER TABLE `{$table}` {$drop}ADD UNIQUE KEY `" . self::INDEX . '` (`user_id`)' );
+		} catch ( \RuntimeException $e ) {
+			// Z. B. Sperre auf einer ausgelasteten Seite oder fehlende Rechte: später erneut versuchen.
+			$this->last_error = $e->getMessage();
+			return false;
+		}
 		return $this->is_unique();
 	}
 }

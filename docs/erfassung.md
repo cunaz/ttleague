@@ -17,7 +17,7 @@ Dieses Dokument ist der Vertrag für Phase 2: Konten, Anmeldung, Rechte, Status�
 3. Der Link führt auf `/anmelden/?anmeldung={token}`. Diese Seite meldet nicht sofort an, sondern zeigt einen Knopf «Jetzt anmelden» (POST). So verbrauchen Link-Scanner von E-Mail-Programmen das Token nicht. Der POST muss von der eigenen Seite kommen: Schema, Host und Port aus Origin oder Referer müssen zur Website passen (Schutz vor Login-CSRF, denn der Nonce ist für alle abgemeldeten Besucher gleich).
 4. Nach dem POST: Token prüfen und verbrauchen, Konto anlegen falls nötig, anmelden mit «angemeldet bleiben» (60 Tage), weiter zu `redirect_to` (nur eigene Seiten) oder `/mein-bereich/`.
 5. Rückfall: Anmeldung mit Passwort über `wp-login.php` bleibt möglich (Passwort setzen über «Passwort vergessen»). Passkeys und Zwei-Faktor für die TK über ein etabliertes Plugin.
-6. Administratorkonten melden sich nie per Link an, nur mit Passwort (und gegebenenfalls zweitem Faktor). Fordert eine Person mit Administratorkonto einen Link an, erhält sie stattdessen einen Hinweis mit dem Link zur Passwort-Anmeldung. Anpassbar über den Filter `ttleague_magic_link_allowed` (`bool $allowed`, `int $user_id`).
+6. Konten mit erweiterten Rechten (Verwaltung `manage_options`, Redaktion `edit_posts`, TK `ttl_tk`) melden sich nie per Link an, nur mit Passwort (und gegebenenfalls zweitem Faktor): Wer ihr Postfach liest, bekäme sonst diese Rechte. Fordert eine solche Person einen Link an, erhält sie stattdessen einen Hinweis mit dem Link zur Passwort-Anmeldung. Anpassbar über den Filter `ttleague_magic_link_allowed` (`bool $allowed`, `int $user_id`).
 7. Auf `/anmelden/` und `/mein-bereich/` gelten `noindex`, keine Zwischenspeicherung und `Referrer-Policy: same-origin`, damit das Token in der Adresse nicht an fremde Seiten gelangt.
 8. Konten ohne redaktionelle Rechte (`edit_posts`) und ohne `ttl_tk` sehen keine Werkzeugleiste und werden aus dem Backend nach `/mein-bereich/` umgeleitet (`admin-ajax.php` und `admin-post.php` bleiben erreichbar).
 9. Block `ttleague/account-link` für die Kopfzeile: Symbol mit «Anmelden» für Gäste, «Mein Bereich» für Angemeldete.
@@ -83,7 +83,7 @@ Basis `/wp-json/ttleague/v1`, Authentifizierung über das WordPress-Cookie mit `
 
 ### `GET fixtures/{id}/entry`
 
-Liefert alles für das Formular:
+Liefert alles für das Formular. Das Beispiel ist gekürzt: `order` enthält die ganze Spielfolge (Meisterschaft 10, Cup 5 Spiele), `candidates` alle Spieler beider Clubs.
 
 ```json
 {
@@ -102,6 +102,8 @@ Liefert alles für das Formular:
 `candidates` enthält alle Spieler des Clubs mit Spielberechtigung für dieses Team (`EligibilityChecker`), sortiert nach Stammspielern, dann Klassierung.
 
 ### `POST fixtures/{id}/result`
+
+Gekürztes Beispiel: Eine Meisterschaftsbegegnung braucht alle 10 Spiele (Cup bis zur Entscheidung). `set_points` werden nur mit `set_points_enabled: true` gespeichert, sonst ignoriert.
 
 ```json
 {

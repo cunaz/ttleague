@@ -85,12 +85,20 @@ final class AccountCommand {
 		if ( null === $person ) {
 			\WP_CLI::error( 'Person nicht gefunden.' );
 		}
-		Services::db()->transaction(
-			static function () use ( $person_id, $person ): void {
-				Services::accounts()->unlink_user( $person_id );
-				Services::audit()->record( 'person', $person_id, 'unlinked', self::actor(), array( 'user_id' => $person['user_id'] ), null, 'wp-cli' );
-			}
-		);
+		if ( empty( $person['user_id'] ) ) {
+			\WP_CLI::error( 'Die Person ist mit keinem Konto verknüpft.' );
+		}
+		$before = array( 'user_id' => (int) $person['user_id'] );
+		try {
+			Services::db()->transaction(
+				static function () use ( $person_id, $before ): void {
+					Services::accounts()->unlink_user( $person_id );
+					Services::audit()->record( 'person', $person_id, 'unlinked', self::actor(), $before, null, 'wp-cli' );
+				}
+			);
+		} catch ( \RuntimeException $e ) {
+			\WP_CLI::error( $e->getMessage() );
+		}
 		\WP_CLI::success( sprintf( 'Verknüpfung von Person %d aufgehoben.', $person_id ) );
 		if ( ! \TTLeague\Infrastructure\Database\Installer::ensure_unique_person_user() ) {
 			\WP_CLI::warning( 'Es gibt weiterhin Konten mit mehreren Personen; Verknüpfen bleibt gesperrt.' );
