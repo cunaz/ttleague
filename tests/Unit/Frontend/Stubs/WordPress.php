@@ -76,3 +76,9 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 		return parse_url( $url, $component ); // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url
 	}
 }
+
+if ( ! function_exists( 'is_email' ) ) {
+	function is_email( string $email ): string|false {
+		return false !== filter_var( $email, FILTER_VALIDATE_EMAIL ) ? $email : false;
+	}
+}

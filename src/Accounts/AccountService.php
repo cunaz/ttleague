@@ -58,6 +58,18 @@ final class AccountService {
 		);
 	}
 
+	/**
+	 * Person, bei der diese E-Mail-Adresse hinterlegt ist (jeder Status; person.email ist eindeutig).
+	 */
+	public function email_owner( string $email ): ?int {
+		$email = trim( $email );
+		if ( '' === $email ) {
+			return null;
+		}
+		$id = $this->db->get_var( "SELECT id FROM {$this->db->table( 'person' )} WHERE LOWER(email) = LOWER(%s) ORDER BY id LIMIT 1", array( $email ) );
+		return null === $id ? null : (int) $id;
+	}
+
 	public function set_consent( int $person_id ): void {
 		$now = $this->db->now();
 		$this->db->update(
