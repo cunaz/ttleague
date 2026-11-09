@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026111005';
+	public const VERSION = '2026111006';
 
 	/**
 	 * Indizes, die eine neuere Schemaversion ersetzt hat. dbDelta() entfernt keine Indizes;
@@ -526,6 +526,7 @@ final class Schema {
   ref_id bigint(20) unsigned NOT NULL,
   ref_key varchar(32) NOT NULL DEFAULT '',
   channel varchar(8) NOT NULL,
+  status varchar(8) NOT NULL DEFAULT 'sent',
   sent_at datetime NOT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY recipient_once (person_id,user_id,event_type,ref_type,ref_id,ref_key,channel),

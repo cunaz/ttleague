@@ -14,7 +14,7 @@ use TTLeague\Accounts\Preferences;
 /**
  * Pro Empfänger und Kanal: Einstellung prüfen (Preferences, ohne Eintrag E-Mail an und Push aus;
  * Konten ohne Person immer diese Vorgabe), Erreichbarkeit prüfen, im Protokoll reservieren,
- * versenden, bei Misserfolg die Reservierung freigeben.
+ * versenden, den Versand bestätigen oder bei Misserfolg die Reservierung freigeben.
  *
  * Rückfall: Wer für ein Ereignis nur Push gewählt hat, aber kein gültiges Abo besitzt oder bei
  * dem der Push-Versand scheitert, erhält eine E-Mail. So geht keine Frist verloren.
@@ -104,7 +104,8 @@ final class Notifier {
 	}
 
 	private function attempt( Channel $channel, Recipient $recipient, Notification $notification ): string {
-		if ( ! $this->log->claim( $recipient, $notification, $channel->name() ) ) {
+		$token = $this->log->claim( $recipient, $notification, $channel->name() );
+		if ( null === $token ) {
 			return self::DUPLICATE;
 		}
 		try {
@@ -114,9 +115,10 @@ final class Notifier {
 			$ok = false;
 		}
 		if ( ! $ok ) {
-			$this->log->release( $recipient, $notification, $channel->name() );
+			$this->log->release( $recipient, $notification, $channel->name(), $token );
 			return self::FAILED;
 		}
+		$this->log->confirm( $recipient, $notification, $channel->name(), $token );
 		return self::SENT;
 	}
 

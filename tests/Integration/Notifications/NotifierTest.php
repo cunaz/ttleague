@@ -150,6 +150,63 @@ final class NotifierTest extends NotificationTestCase {
 		self::assertSame( '108', $this->db->get_var( "SELECT user_id FROM {$this->db->table( 'notification_log' )} WHERE person_id = 0" ) );
 	}
 
+	public function test_reservation_of_an_aborted_delivery_is_retried_after_the_lease(): void {
+		$recipient = $this->recipients->persons( array( $this->person['captain_a1'] ) );
+		// Ein Lauf reserviert und endet vor dem Versand (Zeitlimit, schwerer Fehler).
+		self::assertNotNull( ( new NotificationLog( $this->db, $this->clock ) )->claim( $recipient[0], $this->reminder(), 'email' ) );
+
+		$this->clock->advance( '+' . ( NotificationLog::LEASE_MINUTES - 1 ) . ' minutes' );
+		self::assertSame( 'duplicate', $this->notifier->send( $this->reminder(), $recipient )[0]['status'], 'ein laufender Versand wird nicht doppelt ausgeführt' );
+		self::assertSame( array(), $this->email->sent );
+
+		$this->clock->advance( '+1 minute' );
+		self::assertSame( 'sent', $this->notifier->send( $this->reminder(), $recipient )[0]['status'] );
+		self::assertSame( array( $this->p( 'captain_a1' ) ), $this->email->recipients( 'match_reminder' ) );
+		self::assertSame( array( 'sent' ), $this->db->get_col( "SELECT status FROM {$this->db->table( 'notification_log' )}" ) );
+
+		$this->clock->advance( '+1 day' );
+		self::assertSame( 'duplicate', $this->notifier->send( $this->reminder(), $recipient )[0]['status'], 'bestätigt bleibt versendet' );
+		self::assertCount( 1, $this->email->sent );
+	}
+
+	public function test_aborted_push_falls_back_to_email_after_the_lease(): void {
+		( new Preferences( $this->db ) )->set( $this->person['captain_h1'], EventTypes::MATCH_REMINDER, false, true );
+		$this->push->push_people = array( $this->person['captain_h1'] );
+		$recipient               = $this->recipients->persons( array( $this->person['captain_h1'] ) );
+		( new NotificationLog( $this->db, $this->clock ) )->claim( $recipient[0], $this->reminder(), 'push' );
+
+		$report = $this->notifier->send( $this->reminder(), $recipient );
+		self::assertSame( array( 'duplicate' ), array_column( $report, 'status' ), 'kein Rückfall, solange der Push noch laufen kann' );
+
+		$this->push->fail = true;
+		$this->clock->advance( '+' . NotificationLog::LEASE_MINUTES . ' minutes' );
+		$report = $this->notifier->send( $this->reminder(), $recipient );
+		self::assertSame( array( 'push', 'email' ), array_column( $report, 'channel' ) );
+		self::assertSame( array( 'failed', 'sent' ), array_column( $report, 'status' ) );
+		self::assertSame( array( $this->p( 'captain_h1' ) ), $this->email->recipients( 'match_reminder' ) );
+	}
+
+	public function test_an_expired_reservation_is_taken_over_once_and_stays_with_the_new_owner(): void {
+		$log       = new NotificationLog( $this->db, $this->clock );
+		$recipient = $this->recipients->persons( array( $this->person['captain_a1'] ) )[0];
+		$first     = $log->claim( $recipient, $this->reminder(), 'email' );
+		self::assertNotNull( $first );
+		$this->clock->advance( '+' . NotificationLog::LEASE_MINUTES . ' minutes' );
+
+		$second = $log->claim( $recipient, $this->reminder(), 'email' );
+		self::assertNotNull( $second );
+		self::assertNull( $log->claim( $recipient, $this->reminder(), 'email' ), 'nur ein Lauf übernimmt' );
+
+		// Der hängende erste Versuch meldet sich spät zurück: Er ändert die übernommene Reservierung nicht.
+		$log->release( $recipient, $this->reminder(), 'email', $first );
+		$log->confirm( $recipient, $this->reminder(), 'email', $first );
+		self::assertFalse( $log->was_sent( $recipient, $this->reminder(), 'email' ) );
+		self::assertSame( 1, $this->log_count() );
+
+		$log->confirm( $recipient, $this->reminder(), 'email', $second );
+		self::assertTrue( $log->was_sent( $recipient, $this->reminder(), 'email' ) );
+	}
+
 	public function test_old_log_entries_are_purged(): void {
 		$log = new NotificationLog( $this->db, $this->clock );
 		$this->notifier->send( $this->reminder(), $this->recipients->persons( array( $this->person['captain_a1'] ) ) );
