@@ -733,7 +733,7 @@ final class ResultServiceTest extends IntegrationTestCase {
 	 */
 	public static function write_paths(): array {
 		$paths = array();
-		foreach ( array( 'submit', 'confirm', 'object', 'correct', 'finalize', 'forfeit', 'reset', 'photo' ) as $path ) {
+		foreach ( array( 'submit', 'confirm', 'tk_confirm', 'object', 'correct', 'finalize', 'forfeit', 'reset', 'photo' ) as $path ) {
 			$paths[ $path ] = array( $path );
 		}
 		return $paths;
@@ -759,6 +759,7 @@ final class ResultServiceTest extends IntegrationTestCase {
 		$call                             = match ( $path ) {
 			'submit'   => fn() => $service->submit( $f1, $this->six_four(), $this->actor['chef_home'] ),
 			'confirm'  => fn() => $service->confirm( $f1, $this->actor['captain_a1'] ),
+			'tk_confirm' => fn() => $service->decide( $f1, $tk, array( 'action' => 'confirm' ) ),
 			'object'   => fn() => $service->object( $f1, $this->actor['captain_a1'], 'Das Doppel ging an uns.' ),
 			'correct'  => fn() => $service->decide(
 				$f1,

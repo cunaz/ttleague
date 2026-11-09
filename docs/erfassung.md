@@ -176,7 +176,7 @@ Der `ResultService` löst WordPress-Aktionen aus; Benachrichtigungen, Dashboard 
 
 `ttleague_result_confirmed` kommt auch, wenn die TK über `decision` mit `action: confirm` bestätigt (`$by_tk = true`).
 
-Nach jeder Änderung: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten).
+Nach jeder Änderung: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten). Beides läuft vor den Aktionen. Die Aktionen kommen erst nach dem Speichern; wirft ein Listener eine Ausnahme, landet sie im Fehlerprotokoll (`ttleague: Fehler in …`), und die Antwort bleibt erfolgreich. So wiederholt niemand eine gespeicherte Aktion.
 
 ## Benachrichtigungen und Fristen
 
