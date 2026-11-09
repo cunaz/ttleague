@@ -26,6 +26,8 @@ final class Results {
 	public static function register(): void {
 		add_action( 'rest_api_init', array( ResultController::class, 'register_routes' ) );
 		add_action( self::RECALC_HOOK, array( self::class, 'recalc_ratings' ) );
+		EntryBlock::register();
+		MyGames::register();
 		if ( defined( 'TTLEAGUE_FILE' ) ) {
 			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
 		}

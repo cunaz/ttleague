@@ -67,6 +67,29 @@ Tabellen zählen `provisional`, `confirmed`, `disputed`, `final` und `forfeit`. 
 
 Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttleague/result-entry`), Aufruf mit `?begegnung={id}`. Adresse immer über `Results::entry_url( $fixture_id )`. Dort erfasst die Heimseite, die Gastseite bestätigt oder erhebt Einsprache, die TK entscheidet.
 
+- Wie Anmelden und Mein Bereich: `noindex`, keine Zwischenspeicherung, `Referrer-Policy: same-origin`.
+- Abgemeldet: Hinweis und Link zur Anmeldung mit `redirect_to` zurück auf die Seite. Ohne Rolle für die Begegnung (oder ohne verknüpfte Person): verständlicher Hinweis mit Links zum Matchreport und zu «Mein Bereich».
+- Mit Rolle rendert der Block den Startzustand aus `ResultService::entry()` serverseitig; danach übernimmt das Skriptmodul `@ttleague/entry` (`assets/js/entry.js`, Interactivity API, Namensraum `ttleague/entry`, ohne Build-Schritt). Es spricht nur die REST-API an (Cookie mit `X-WP-Nonce`). Bis es bereit ist, bleiben Knöpfe und Felder gesperrt; ohne JavaScript erscheint ein Hinweis.
+
+**Formular (Heimseite, TK):**
+
+- Aufstellung: pro Slot eine Auswahl aus `candidates`, gruppiert nach Stammspieler, gebunden, Ersatz und nicht spielberechtigt. Nicht berechtigte Spieler sind sichtbar, aber gesperrt (Kurzgrund in der Option, volle Begründung in der aufklappbaren Liste); im Korrekturmodus der TK sind sie wählbar, weil die API dort nur Hinweise gibt. «fehlt (nicht angetreten)» sendet den Slot als `null`; ein leerer Slot ist ein Fehler.
+- Spiele in Spielfolge (Cup fünf): Schnellknöpfe 3:0 bis 0:3 (nochmals tippen hebt die Wahl auf), Schalter «kampflos» mit Siegerseite, Doppelpaarung pro Seite (bei genau zwei Spielern automatisch, dann nicht gesendet), Satzpunkte nur bei `set_points_enabled` (freiwillig, nur vollständig gesendet).
+- Fehlt ein Spieler, schlägt das Formular «kampflos» für die andere Seite vor (fehlen beide: «nicht gespielt»), solange das Spiel nicht ausdrücklich erfasst ist. Widerspricht ein erfasstes Spiel der Aufstellung, erscheint ein Hinweis mit «Übernehmen». Im Cup mit `first_to_three` sind die Spiele nach dem dritten Sieg freiwillig; nicht erfasste werden nicht gesendet.
+- Laufendes Gesamtresultat (`aria-live`) in der Fusszeile mit «Speichern», Bemerkung, Foto des Spielberichts (`capture="environment"`, Upload über `POST photo` gleich nach der Auswahl).
+- Absenden: `POST result` mit `version`, im Korrekturmodus der TK `POST decision` mit `action: correct`. Pflichtangaben prüft schon der Browser. Feldfehler (422) erscheinen am Feld und in einer Übersicht mit Sprungmarken, 409 mit «Seite neu laden», abgelaufene Anmeldung mit Link zur Anmeldung. Nach jedem Erfolg lädt die Seite neu (Meldung über `sessionStorage`); Status, Hinweise und Verlauf kommen dann vom Server.
+- Entwurf im `localStorage` (pro Begegnung und Konto), gelöscht nach dem Speichern. Beruht er auf dem aktuellen Stand (`version`), wird er wiederhergestellt, sonst angeboten.
+
+**Gastseite:** das erfasste Resultat zum Lesen (Aufstellung, Spiele, Hinweise, Foto) und der Verlauf aus `history`. «Resultat bestätigen» (`POST confirm` mit `version`) und «Einsprache erheben» (Begründung 10 bis 2000 Zeichen, `POST objection`), je nach `can.confirm` und `can.object`.
+
+**TK:** Bei `can.decide` ein Bereich «Entscheid der TK» mit den im Status erlaubten Entscheiden (`FixtureWorkflow`, «abschliessen» nur mit Resultat), Forfait mit Sieger und Bemerkung (`POST decision`). «Korrigieren» öffnet das Formular im Korrekturmodus.
+
+**Meine Spiele:** Abschnitt in «Mein Bereich» über `ttleague_my_area_sections`, serverseitig aus `ResultService::my_fixtures()`: zu erfassen, zu bestätigen, demnächst, jeweils mit Link auf die Erfassungsseite. Nur für Personen mit Funktion in der aktiven Saison.
+
+**Matchreport:** Angemeldete Personen mit `ttl_enter_result` oder `ttl_confirm_result` (Fixture-ID) oder `ttl_tk` sehen einen Knopf «Resultat erfassen», «Resultat ändern», «Resultat bestätigen» bzw. «Entscheid der TK». Für Gäste bleibt die Ausgabe gleich, damit sie zwischengespeichert werden kann.
+
+**Technik:** Unveränderliches (Spielfolge, Kandidaten, Texte, Adressen, Nonce) kommt über `wp_interactivity_config`, der Zustand über `wp_interactivity_state`. Das Ansichtsmodell, an das die Direktiven gebunden sind, rechnet `EntryForm::view()` in PHP für den Startzustand und `buildView()` in `entry.js` im Browser; beide müssen übereinstimmen. Stile in `assets/css/entry.css`, geladen nur auf der Erfassungsseite und in «Mein Bereich». `current.warnings` gehört zur letzten Erfassung; nach einem Zurücksetzen oder Forfait (keine Spiele) zeigt die Seite sie nicht an.
+
 ## REST-API
 
 Basis `/wp-json/ttleague/v1`, Authentifizierung über das WordPress-Cookie mit `X-WP-Nonce`. Fehlertexte auf Deutsch. Validierungsfehler: HTTP 422 mit `{ "code": "ttl_invalid", "message": "...", "data": { "status": 422, "errors": [ { "field": "...", "message": "..." } ] } }`.

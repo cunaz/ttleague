@@ -11,6 +11,7 @@ namespace TTLeague\Frontend\Views;
 
 use TTLeague\Frontend\Support\Format;
 use TTLeague\Frontend\Support\Html;
+use TTLeague\Results\EntryLinks;
 
 final class MatchReportView extends View {
 
@@ -91,6 +92,8 @@ final class MatchReportView extends View {
 		if ( null !== $report['note'] && '' !== trim( (string) $report['note'] ) ) {
 			$out .= '<p class="ttl-note">' . esc_html( (string) $report['note'] ) . '</p>';
 		}
+		// Nur für angemeldete Personen mit Recht; die Ausgabe für Gäste bleibt gleich (Cache).
+		$out .= EntryLinks::report_button( (int) $report['id'], (string) $report['status'] );
 		return $out . '</div>';
 	}
 

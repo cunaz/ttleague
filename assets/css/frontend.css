@@ -1531,6 +1531,18 @@
 	color: var(--ttl-surface);
 }
 
+/* Links im Stil eines Knopfs (Matchreport «Resultat erfassen», «Meine Spiele»). */
+.ttl a.ttl-button,
+.ttl a.ttl-button:hover {
+	color: var(--ttl-surface);
+	text-decoration: none;
+}
+
+.ttl a.ttl-button--secondary,
+.ttl a.ttl-button--secondary:hover {
+	color: var(--ttl-accent);
+}
+
 .ttl-actions {
 	display: flex;
 	flex-wrap: wrap;
