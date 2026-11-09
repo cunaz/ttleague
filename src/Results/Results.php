@@ -25,6 +25,7 @@ final class Results {
 
 	public static function register(): void {
 		add_action( 'rest_api_init', array( ResultController::class, 'register_routes' ) );
+		add_filter( 'rest_pre_serve_request', array( ResultController::class, 'serve_photo' ), 10, 3 );
 		add_action( self::RECALC_HOOK, array( self::class, 'recalc_ratings' ) );
 		if ( defined( 'TTLEAGUE_FILE' ) ) {
 			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
@@ -51,6 +52,20 @@ final class Results {
 	 */
 	public static function entry_url( int $fixture_id ): string {
 		return add_query_arg( 'begegnung', (string) $fixture_id, \TTLeague\Frontend\Frontend::urls()->page( 'entry' ) );
+	}
+
+	/**
+	 * Geschützte Adresse des Fotos einer Begegnung. Der REST-Nonce in der Adresse lässt sie
+	 * auch in `<img>` funktionieren; er gilt nur zusammen mit dem Anmelde-Cookie derselben Person.
+	 *
+	 * @param int|null $attachment_id Früheres Foto (nur für die TK), sonst das aktuelle.
+	 */
+	public static function photo_url( int $fixture_id, ?int $attachment_id = null ): string {
+		$args = array( '_wpnonce' => wp_create_nonce( 'wp_rest' ) );
+		if ( null !== $attachment_id ) {
+			$args['attachment'] = (string) $attachment_id;
+		}
+		return add_query_arg( $args, rest_url( ResultController::NAMESPACE . '/fixtures/' . $fixture_id . '/photo' ) );
 	}
 
 	/**
