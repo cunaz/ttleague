@@ -21,7 +21,7 @@ final class PageInstaller {
 
 	public const OPTION         = 'ttleague_pages';
 	public const VERSION_OPTION = 'ttleague_pages_version';
-	public const VERSION        = '1';
+	public const VERSION        = '2';
 
 	/**
 	 * Seitendefinitionen: Schlüssel => Titel, Slug, Elternseite, Block.
@@ -113,6 +113,20 @@ final class PageInstaller {
 				'parent'     => null,
 				'block'      => 'ttleague/archive',
 				'menu_order' => 60,
+			),
+			'login'        => array(
+				'title'      => __( 'Anmelden', 'ttleague' ),
+				'slug'       => 'anmelden',
+				'parent'     => null,
+				'block'      => 'ttleague/login',
+				'menu_order' => 90,
+			),
+			'my_area'      => array(
+				'title'      => __( 'Mein Bereich', 'ttleague' ),
+				'slug'       => 'mein-bereich',
+				'parent'     => null,
+				'block'      => 'ttleague/my-area',
+				'menu_order' => 91,
 			),
 		);
 	}

@@ -1,0 +1,33 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ttleague/account-link",
+	"version": "0.2.0",
+	"title": "Anmelden / Mein Bereich (Link)",
+	"category": "ttleague",
+	"icon": "admin-users",
+	"description": "Link für die Kopfzeile: «Anmelden» für Gäste, «Mein Bereich» für angemeldete Personen.",
+	"keywords": [
+		"ttleague",
+		"konto",
+		"login"
+	],
+	"textdomain": "ttleague",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"color": {
+			"text": true,
+			"link": true
+		},
+		"typography": {
+			"fontSize": true
+		},
+		"spacing": {
+			"margin": true,
+			"padding": true
+		}
+	},
+	"editorScript": "ttleague-editor",
+	"style": "ttleague-frontend"
+}

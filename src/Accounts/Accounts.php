@@ -1,0 +1,71 @@
+<?php
+/**
+ * Einstieg des Kontenmoduls.
+ *
+ * @package TTLeague
+ */
+
+declare(strict_types=1);
+
+namespace TTLeague\Accounts;
+
+final class Accounts {
+
+	public const PURGE_HOOK = 'ttleague_purge_tokens';
+
+	public static function register(): void {
+		LoginFlow::register();
+		add_action( 'init', array( Blocks::class, 'register' ) );
+		add_action( 'init', array( self::class, 'schedule' ) );
+		add_action( self::PURGE_HOOK, array( self::class, 'purge_tokens' ) );
+		add_filter( 'show_admin_bar', array( self::class, 'show_admin_bar' ) );
+		add_action( 'admin_init', array( self::class, 'keep_out_of_admin' ) );
+		if ( defined( 'TTLEAGUE_FILE' ) ) {
+			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
+		}
+	}
+
+	/**
+	 * Tägliches Aufräumen abgelaufener Anmeldelinks einplanen.
+	 */
+	public static function schedule(): void {
+		if ( ! wp_next_scheduled( self::PURGE_HOOK ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', self::PURGE_HOOK );
+		}
+	}
+
+	/**
+	 * Spielerinnen und Spieler brauchen das Backend nicht: keine Werkzeugleiste.
+	 */
+	public static function show_admin_bar( bool $show ): bool {
+		return $show && self::uses_backend();
+	}
+
+	/**
+	 * Konten ohne redaktionelle Rechte und ohne TK-Rolle landen in «Mein Bereich» statt im Backend.
+	 * admin-ajax.php und admin-post.php bleiben erreichbar.
+	 */
+	public static function keep_out_of_admin(): void {
+		if ( wp_doing_ajax() || ! is_user_logged_in() || self::uses_backend() ) {
+			return;
+		}
+		$script = isset( $_SERVER['SCRIPT_NAME'] ) ? basename( sanitize_text_field( wp_unslash( (string) $_SERVER['SCRIPT_NAME'] ) ) ) : '';
+		if ( 'admin-post.php' === $script ) {
+			return;
+		}
+		wp_safe_redirect( LoginFlow::my_area_url() );
+		exit;
+	}
+
+	private static function uses_backend(): bool {
+		return current_user_can( 'edit_posts' ) || current_user_can( \TTLeague\Access\Capabilities::TK );
+	}
+
+	public static function purge_tokens(): void {
+		Services::links()->purge();
+	}
+
+	public static function deactivate(): void {
+		wp_clear_scheduled_hook( self::PURGE_HOOK );
+	}
+}

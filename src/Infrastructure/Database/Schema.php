@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026110902';
+	public const VERSION = '2026111002';
 
 	public const TABLES = array(
 		'season',
@@ -51,6 +51,8 @@ final class Schema {
 		'login_token',
 		'push_subscription',
 		'notification_pref',
+		'notification_log',
+		'fixture_event',
 		'audit_log',
 	);
 
@@ -68,6 +70,10 @@ final class Schema {
 	 */
 	public static function statements( string $prefix, string $charset_collate ): array {
 		$t = static fn( string $name ): string => self::table( $name, $prefix );
+
+		// Transaktionen (Erfassung, Verknüpfungen mit Änderungsprotokoll) brauchen InnoDB;
+		// ausdrücklich, damit ein anderer Server-Standard nichts ändert.
+		$charset_collate = 'ENGINE=InnoDB ' . $charset_collate;
 
 		$source_ref = "source_site varchar(64) DEFAULT NULL,\n  source_type varchar(32) DEFAULT NULL,\n  source_id varchar(128) DEFAULT NULL,";
 
@@ -146,7 +152,7 @@ final class Schema {
   $source_ref
   PRIMARY KEY  (id),
   UNIQUE KEY email (email),
-  KEY user_id (user_id),
+  UNIQUE KEY user_id (user_id),
   KEY last_name (last_name,first_name)
 ) $charset_collate;",
 
@@ -498,6 +504,33 @@ final class Schema {
   push tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   UNIQUE KEY person_event (person_id,event_type)
+) $charset_collate;",
+
+			$t( 'notification_log' )        => "CREATE TABLE {$t('notification_log')} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  person_id bigint(20) unsigned NOT NULL,
+  event_type varchar(48) NOT NULL,
+  ref_type varchar(16) NOT NULL,
+  ref_id bigint(20) unsigned NOT NULL,
+  channel varchar(8) NOT NULL,
+  sent_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY once (person_id,event_type,ref_type,ref_id,channel),
+  KEY ref (ref_type,ref_id)
+) $charset_collate;",
+
+			$t( 'fixture_event' )           => "CREATE TABLE {$t('fixture_event')} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  fixture_id bigint(20) unsigned NOT NULL,
+  type varchar(16) NOT NULL,
+  user_id bigint(20) unsigned DEFAULT NULL,
+  person_id bigint(20) unsigned DEFAULT NULL,
+  comment text,
+  data_json longtext,
+  created_at datetime NOT NULL,
+  PRIMARY KEY  (id),
+  KEY fixture_id (fixture_id,created_at),
+  KEY type_created (type,created_at)
 ) $charset_collate;",
 
 			$t( 'audit_log' )               => "CREATE TABLE {$t('audit_log')} (

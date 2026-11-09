@@ -32,6 +32,8 @@ final class Urls {
 		'cup'          => 'cup',
 		'documents'    => 'dokumente',
 		'archive'      => 'archiv',
+		'login'        => 'anmelden',
+		'my_area'      => 'mein-bereich',
 	);
 
 	private readonly string $home;

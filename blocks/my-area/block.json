@@ -1,0 +1,29 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ttleague/my-area",
+	"version": "0.2.0",
+	"title": "Mein Bereich",
+	"category": "ttleague",
+	"icon": "id-alt",
+	"description": "Persönlicher Bereich: Einwilligung, Profil, Benachrichtigungen und Abschnitte der Module.",
+	"keywords": [
+		"ttleague",
+		"konto"
+	],
+	"textdomain": "ttleague",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"multiple": false,
+		"align": [
+			"wide",
+			"full"
+		],
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "ttleague-editor",
+	"style": "ttleague-frontend"
+}

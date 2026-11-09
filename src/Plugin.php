@@ -31,6 +31,10 @@ final class Plugin {
 			\TTLeague\Frontend\Frontend::register();
 		}
 
+		// Fachliche Rechte (Meta-Capabilities) und Konten (Anmeldelink, Mein Bereich).
+		\TTLeague\Access\Capabilities::register();
+		\TTLeague\Accounts\Accounts::register();
+
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
 			\TTLeague\Content\Content::register();
@@ -49,6 +53,7 @@ final class Plugin {
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'ttleague', \TTLeague\Cli\Command::class );
 			\WP_CLI::add_command( 'ttleague rating', \TTLeague\Cli\RatingCommand::class );
+			\WP_CLI::add_command( 'ttleague account', \TTLeague\Cli\AccountCommand::class );
 		}
 	}
 }

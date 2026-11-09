@@ -23,6 +23,10 @@ reviews:
     - "!composer.lock"
     - "!**/*.min.js"
     - "!**/*.min.css"
+  pre_merge_checks:
+    docstrings:
+      # WPCS prüft die Dokumentation dort, wo sie zählt; Docblocks für jede kleine Methode wären Lärm.
+      mode: "off"
   path_instructions:
     - path: "**/*"
       instructions: >-
@@ -49,6 +53,16 @@ reviews:
         Jede Ausgabe muss escaped sein (esc_html, esc_attr, esc_url, wp_kses). Prüfe Barrierefreiheit
         (semantische Tabellen, Beschriftungen, Kontraste) und die Darstellung auf schmalen Bildschirmen.
         Keine Kontaktdaten von Personen öffentlich ausgeben.
+    - path: "src/{Access,Accounts}/**"
+      instructions: >-
+        Sicherheitskritisch: Anmeldung per Link, Rechte über map_meta_cap, Einwilligung. Prüfe Nonces,
+        Herkunftsprüfung, Weiterleitungen nur auf die eigene Seite, Escaping, Rate-Limits und dass keine
+        Konten mit erweiterten Rechten per Link angemeldet werden können.
+    - path: "src/{Results,Rest}/**"
+      instructions: >-
+        Resultaterfassung: Rechte und Statusübergänge nach docs/erfassung.md, Schreibvorgänge in einer
+        Transaktion mit Verlauf und Änderungsprotokoll, feldgenaue Fehler. Prüfe Uploads (Typ, Grösse,
+        private Anhänge) und dass niemand das eigene Resultat bestätigen kann.
     - path: "tests/**"
       instructions: >-
         Nur erfundene Personen und Clubs. Integrationstests laufen gegen MariaDB mit eigenem Tabellenpräfix.
