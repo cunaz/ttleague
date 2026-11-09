@@ -96,9 +96,12 @@ final class ResultService {
 		$lineup = $this->repo->lineup( $fixture_id );
 		$events = $this->repo->events( $fixture_id );
 
+		// Hinweise der letzten Erfassung; Forfait und Zurücksetzen verwerfen sie mit dem Resultat.
 		$warnings = array();
 		foreach ( $events as $event ) {
-			if ( in_array( $event['type'], array( 'entered', 'edited', 'decided' ), true ) && isset( $event['data']['warnings'] ) ) {
+			if ( in_array( $event['type'], array( 'forfeit', 'reset' ), true ) ) {
+				$warnings = array();
+			} elseif ( in_array( $event['type'], array( 'entered', 'edited', 'decided' ), true ) && isset( $event['data']['warnings'] ) ) {
 				$warnings = (array) $event['data']['warnings'];
 			}
 		}
@@ -165,9 +168,11 @@ final class ResultService {
 		$edited    = Flow::PROVISIONAL === $ctx->status;
 		$now       = $this->now();
 
-		$this->db->transaction(
+		$this->write(
+			$ctx,
 			function () use ( $ctx, $validated, $warnings, $edited, $now, $actor, $input ): void {
-				$before = $this->repo->snapshot( $ctx->id );
+				$before  = $this->repo->snapshot( $ctx->id );
+				$players = $this->repo->lineup_players( $ctx->id );
 				$this->repo->save_result( $ctx->id, $validated, $ctx->scheduled_at );
 				$this->repo->update_fixture(
 					$ctx->id,
@@ -182,7 +187,7 @@ final class ResultService {
 						'confirmed_auto' => 0,
 					)
 				);
-				$this->repo->add_bindings( $validated->newly_bound, $ctx->scheduled_at ?? $now );
+				$this->sync_bindings( $ctx, array_merge( $players, $this->repo->lineup_players( $ctx->id ) ) );
 				$this->repo->add_event(
 					$ctx->id,
 					$edited ? 'edited' : 'entered',
@@ -215,14 +220,25 @@ final class ResultService {
 	 * @return array{status:string,version:string}
 	 */
 	public function confirm( int $fixture_id, Actor $actor, ?string $version = null ): array {
+		return $this->confirm_result( $fixture_id, $actor, $version, null, null );
+	}
+
+	/**
+	 * Bestätigung durch die Gastseite oder als Entscheid der TK.
+	 *
+	 * @param bool|null $by_tk true für den Entscheid der TK; null leitet es aus den Rollen ab
+	 *                         (die Gastseite bestätigt als Gastseite, auch wenn sie zur TK gehört).
+	 * @return array{status:string,version:string}
+	 */
+	private function confirm_result( int $fixture_id, Actor $actor, ?string $version, ?string $comment, ?bool $by_tk ): array {
 		$ctx   = $this->context( $fixture_id );
 		$roles = $this->authorize( $ctx, $actor, Flow::CONFIRM );
 		$this->check_version( $ctx, $version );
 		if ( ! $actor->is_tk && $ctx->entered_by === $actor->user_id ) {
 			throw ResultException::forbidden( __( 'Wer das Resultat erfasst hat, kann es nicht selbst bestätigen.', 'ttleague' ) );
 		}
-		$by_tk = ! in_array( Flow::ROLE_AWAY, $roles, true );
-		$this->change_status( $ctx, $actor, Flow::CONFIRMED, 'confirmed', null, array( 'by_tk' => $by_tk ), true );
+		$by_tk ??= ! in_array( Flow::ROLE_AWAY, $roles, true );
+		$this->change_status( $ctx, $actor, Flow::CONFIRMED, 'confirmed', $comment, array( 'by_tk' => $by_tk ), true );
 		$this->events->confirmed( $ctx->id, $actor->user_id, $by_tk );
 		return array(
 			'status'  => Flow::CONFIRMED,
@@ -278,7 +294,9 @@ final class ResultService {
 
 		switch ( $action ) {
 			case 'confirm':
-				return $this->confirm( $fixture_id, $actor );
+				// Entscheid der TK: immer by_tk, mit Bemerkung; die Meldung an beide Seiten löst
+				// das Ereignis «confirmed» aus, ein zusätzliches «decided» braucht es nicht.
+				return $this->confirm_result( $fixture_id, $actor, null, $comment, true );
 
 			case 'finalize':
 				if ( ! $ctx->has_result() ) {
@@ -355,7 +373,8 @@ final class ResultService {
 			throw ResultException::forbidden( __( 'Du kannst zu dieser Begegnung kein Foto hochladen.', 'ttleague' ) );
 		}
 		$now = $this->now();
-		$this->db->transaction(
+		$this->write(
+			$ctx,
 			function () use ( $ctx, $actor, $attachment_id, $now ): void {
 				$this->repo->update_fixture( $ctx->id, array( 'photo_attachment_id' => $attachment_id ) );
 				$this->repo->add_event( $ctx->id, 'photo', $actor->user_id, $actor->person_id, null, array( 'attachment_id' => $attachment_id ), $now );
@@ -545,7 +564,7 @@ final class ResultService {
 				);
 				continue;
 			}
-			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id );
+			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at );
 			$sides[ $side ] = new SideRoster( $loaded['players'] ?? array(), $loaded['checker'] ?? null, $info['team_id'], array(), $info['name'] );
 		}
 		return $sides;
@@ -580,7 +599,8 @@ final class ResultService {
 	 */
 	private function change_status( FixtureContext $ctx, Actor $actor, string $status, string $event, ?string $comment, array $data, bool $confirm ): void {
 		$now = $this->now();
-		$this->db->transaction(
+		$this->write(
+			$ctx,
 			function () use ( $ctx, $actor, $status, $event, $comment, $data, $confirm, $now ): void {
 				$before = $this->repo->snapshot( $ctx->id );
 				$fields = array( 'status' => $status );
@@ -603,15 +623,17 @@ final class ResultService {
 	 */
 	private function write_decision( FixtureContext $ctx, Actor $actor, string $status, string $event, ?string $comment, array $data, ?TeamMatchResult $result, ?ValidatedResult $validated ): void {
 		$now = $this->now();
-		$this->db->transaction(
+		$this->write(
+			$ctx,
 			function () use ( $ctx, $actor, $status, $event, $comment, $data, $result, $validated, $now ): void {
-				$before = $this->repo->snapshot( $ctx->id );
+				$before  = $this->repo->snapshot( $ctx->id );
+				$players = $this->repo->lineup_players( $ctx->id );
 				if ( null === $validated ) {
 					$this->repo->clear_result( $ctx->id );
 				} else {
 					$this->repo->save_result( $ctx->id, $validated, $ctx->scheduled_at );
-					$this->repo->add_bindings( $validated->newly_bound, $ctx->scheduled_at ?? $now );
 				}
+				$this->sync_bindings( $ctx, array_merge( $players, $this->repo->lineup_players( $ctx->id ) ) );
 				$reset  = Flow::SCHEDULED === $status;
 				$fields = array(
 					'status'         => $status,
@@ -622,8 +644,11 @@ final class ResultService {
 					'confirmed_auto' => 0,
 				);
 				if ( $reset ) {
-					$fields['entered_by'] = null;
-					$fields['entered_at'] = null;
+					// Zurück zum Ausgangszustand: Das Foto gehört zur verworfenen Erfassung. Der Anhang
+					// bleibt in der Mediathek, der Verlauf nennt ihn weiterhin.
+					$fields['entered_by']          = null;
+					$fields['entered_at']          = null;
+					$fields['photo_attachment_id'] = null;
 				}
 				$this->repo->update_fixture( $ctx->id, $fields );
 				$this->repo->add_event( $ctx->id, $event, $actor->user_id, $actor->person_id, $comment, $data, $now );
@@ -705,6 +730,45 @@ final class ResultService {
 			Flow::CANCELLED   => __( 'abgesagt', 'ttleague' ),
 			default           => $status,
 		};
+	}
+
+	/**
+	 * Schreibt in einer Transaktion. Zuerst wird die Begegnung gesperrt und neu gelesen: Hat sie
+	 * sich seit der Prüfung von Rechten, Status und Version geändert, bricht die Aktion mit 409
+	 * ab. So setzt keine von zwei gleichzeitigen Aktionen eine veraltete Version oder einen
+	 * inzwischen unzulässigen Statuswechsel durch.
+	 *
+	 * @param callable():void $work Schreibvorgänge.
+	 * @throws ResultException 409, wenn sich die Begegnung inzwischen geändert hat.
+	 */
+	private function write( FixtureContext $ctx, callable $work ): void {
+		$this->db->transaction(
+			function () use ( $ctx, $work ): void {
+				$this->repo->lock( $ctx->id );
+				$current = $this->repo->context( $ctx->id );
+				if ( null === $current || ! hash_equals( $ctx->version(), $current->version() ) ) {
+					throw ResultException::conflict( __( 'Die Begegnung wurde inzwischen geändert. Bitte lade die Seite neu.', 'ttleague' ) );
+				}
+				$work();
+			}
+		);
+	}
+
+	/**
+	 * Bindungen (Art. 12.5) der Spieler neu bestimmen, deren Einsätze sich geändert haben. Eine
+	 * Bindung folgt allein aus den Einsätzen: Sie entsteht mit dem Einsatz, der die Höchstzahl
+	 * der Ersatzeinsätze in einem Team erreicht, und entfällt, wenn ein Zurücksetzen, ein
+	 * Forfait oder eine Korrektur diesen Einsatz entfernt.
+	 *
+	 * @param list<int> $player_ids Spieler der bisherigen und der neuen Aufstellung.
+	 */
+	private function sync_bindings( FixtureContext $ctx, array $player_ids ): void {
+		if ( $ctx->is_cup() ) {
+			return;
+		}
+		foreach ( array_values( array_unique( $player_ids ) ) as $player_id ) {
+			$this->repo->replace_binding( $ctx->season_id, $player_id, $this->eligibility->binding( $ctx->season_id, $player_id, $ctx->rules ) );
+		}
 	}
 
 	private function now(): string {
