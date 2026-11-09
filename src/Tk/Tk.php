@@ -38,6 +38,26 @@ final class Tk {
 		add_action( 'admin_post_' . self::EMAIL, array( Actions::class, 'email' ) );
 		add_action( 'admin_post_' . self::INVITE, array( Actions::class, 'invite' ) );
 		add_action( 'admin_post_' . self::INVITE_OFFICIALS, array( Actions::class, 'invite_officials' ) );
+		add_filter( 'login_redirect', array( self::class, 'login_redirect' ), 10, 3 );
+	}
+
+	/**
+	 * TK-Konten landen nach der Anmeldung in der Übersicht «Spielbetrieb» statt in ihrem Profil,
+	 * wohin WordPress Konten ohne edit_posts sonst schickt. Ein ausdrücklich angefragtes Ziel
+	 * (redirect_to) bleibt; Konten der Verwaltung behalten das Dashboard.
+	 *
+	 * @param string                 $redirect  Ziel nach WordPress.
+	 * @param string                 $requested Angefragtes Ziel.
+	 * @param \WP_User|\WP_Error|mixed $user      Angemeldetes Konto.
+	 */
+	public static function login_redirect( $redirect, $requested, $user ): string {
+		$redirect = (string) $redirect;
+		if ( ! $user instanceof \WP_User || ! $user->has_cap( Capabilities::TK ) || $user->has_cap( 'manage_options' ) ) {
+			return $redirect;
+		}
+		$requested = (string) $requested;
+		$default   = array( '', 'wp-admin/', admin_url(), admin_url( 'profile.php' ) );
+		return in_array( $requested, $default, true ) ? self::overview_url() : $redirect;
 	}
 
 	public static function dashboard(): Dashboard {
