@@ -185,3 +185,22 @@ Nach jeder Änderung: `DataVersion::bump()` und eine entprellte Neuberechnung de
 | Forfait-Vorschlag | TK | 16 Tage nach Anspielzeit ohne Resultat |
 
 Jede Benachrichtigung wird pro Person, Ereignis, Bezug und Kanal genau einmal versendet (`notification_log`). Personen wählen pro Ereignistyp E-Mail und Push (`notification_pref`); ohne Eintrag gilt E-Mail an.
+
+## Tests
+
+| Ebene | Ordner | Inhalt |
+|---|---|---|
+| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, ohne WordPress |
+| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks` und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
+| WordPress | `tests/WordPress/` | mit echtem WordPress (wp-phpunit, `composer test:wp`, siehe README), siehe unten |
+
+Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
+
+- `AccountService::ensure_user()` mit echten Konten: Ein bestehendes Konto mit erweiterten Rechten (Rollen `administrator`, `editor`, `contributor`, `ttl_tk` sowie Abonnenten mit `manage_options`, `edit_posts` oder zusätzlicher Rolle `ttl_tk`) und das Konto einer anderen Person werden nicht verknüpft; ein freies Abonnenten-Konto wird verknüpft, sonst wird ein Konto angelegt.
+- Anmeldung per Link: Anfrage (Link oder Passwort-Hinweis, neutrale Antwort, Rate-Limit), Einlösen mit Konto und 60 Tagen «angemeldet bleiben», abgelaufene und verbrauchte Tokens, Herkunftsprüfung über Origin und Referer, Nonce, Weiterleitung nur auf eigene Seiten, Einwilligung und Profil.
+- Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison).
+- REST-API über den REST-Server von WordPress: 401, 403, 404, 422 mit Feldfehlern, 409 bei veralteter `version`, Erfassen und Bestätigen mit Verlauf und Ereignissen, `me/fixtures`, Rechte und fehlende Datei beim Foto.
+- Blöcke `ttleague/login`, `ttleague/my-area` und `ttleague/account-link` für Gäste und Angemeldete; Umleitung aus dem Backend und Werkzeugleiste.
+- Schema über `dbDelta()` (vollständig, InnoDB, ohne Änderungen bei einem erneuten Lauf) und die Rolle der TK.
+
+Weiterhin von Hand: Speichern eines Fotos (`POST fixtures/{id}/photo` verlangt eine echte Upload-Datei, `is_uploaded_file()`), Anmeldung mit echten Cookies und `X-WP-Nonce` im Browser, Versand über einen echten Mailserver.

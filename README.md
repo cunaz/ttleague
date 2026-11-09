@@ -13,7 +13,7 @@ Status: in Entwicklung, noch nicht einsatzbereit.
 | `src/Infrastructure/` | Datenbankzugriff (`Db` mit wpdb- und PDO-Implementierung), Schema (`wp_ttl_*`), Installer, Cache-Version |
 | `src/Frontend/`, `src/ReadModel/`, `blocks/`, `assets/` | Öffentliche Darstellung: Routing, Seiten, Blöcke, Shortcodes |
 | `src/Cli/` | WP-CLI-Befehle (`wp ttleague …`) |
-| `tests/` | PHPUnit: Unit-Tests ohne WordPress, Integrationstests gegen MariaDB/MySQL |
+| `tests/` | PHPUnit: Unit-Tests ohne WordPress, Integrationstests gegen MariaDB/MySQL, WordPress-Tests mit wp-phpunit |
 | `docs/` | Datenmodell und Konventionen, Entwicklung |
 
 ## Theme
@@ -47,6 +47,19 @@ WordPress lokal mit dem Plugin starten, wenn Docker verfügbar ist:
 ```bash
 npx @wordpress/env start
 ```
+
+### WordPress-Tests
+
+Was echtes WordPress braucht (Rollen und Konten, Anmeldung per Link, Rechte über `map_meta_cap`, REST-API, Blöcke), prüfen die Tests in `tests/WordPress/` mit der Testbibliothek von WordPress ([wp-phpunit](https://github.com/wp-phpunit/wp-phpunit)) gegen ein WordPress aus Composer (`vendor/roots/wordpress-full`). Der Bootstrap lädt das Plugin vor `plugins_loaded` und legt Schema und Rolle wie bei der Aktivierung an; jeder Test läuft in einer Transaktion, die am Ende zurückgerollt wird.
+
+Die Testsuite löscht und installiert ihre Tabellen (Präfix `wptests_`) bei jedem Lauf, deshalb braucht sie eine eigene, leere Datenbank:
+
+```bash
+mariadb -uroot -e "CREATE DATABASE ttleague_wptest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON ttleague_wptest.* TO 'ttleague'@'localhost';"
+composer test:wp
+```
+
+Verbindung über Umgebungsvariablen: `TTLEAGUE_WP_TEST_DB_NAME` (Standard `ttleague_wptest`), `TTLEAGUE_WP_TEST_DB_HOST` (`127.0.0.1`, auch mit Port wie `127.0.0.1:3306`), `TTLEAGUE_WP_TEST_DB_USER` und `TTLEAGUE_WP_TEST_DB_PASS` (beide `ttleague`). Ist die Datenbank nicht erreichbar, bricht der Lauf mit der Meldung von WordPress ab. Die CI führt `composer test` und `composer test:wp` für jede PHP-Version aus.
 
 ## Fachliche Grundlagen
 
