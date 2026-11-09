@@ -30,12 +30,16 @@ final class AccessPolicy {
 
 	public function __construct( private readonly Db $db ) {}
 
+	/**
+	 * Person zum Konto. Ist ein Konto (aus Altdaten) mehreren Personen zugeordnet, ist die
+	 * Zuordnung mehrdeutig und es gibt keine Person: lieber keine Rechte als die einer anderen.
+	 */
 	public function person_for_user( int $user_id ): ?int {
 		if ( $user_id <= 0 ) {
 			return null;
 		}
-		$id = $this->db->get_var( "SELECT id FROM {$this->db->table( 'person' )} WHERE user_id = %d ORDER BY id LIMIT 1", array( $user_id ) );
-		return null === $id ? null : (int) $id;
+		$ids = $this->db->get_col( "SELECT id FROM {$this->db->table( 'person' )} WHERE user_id = %d ORDER BY id LIMIT 2", array( $user_id ) );
+		return 1 === count( $ids ) ? (int) $ids[0] : null;
 	}
 
 	public function active_season_id(): ?int {

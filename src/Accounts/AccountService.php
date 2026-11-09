@@ -217,6 +217,10 @@ final class AccountService {
 			throw new \RuntimeException( 'Person nicht gefunden.' );
 		}
 		if ( ! empty( $person['user_id'] ) && false !== get_userdata( (int) $person['user_id'] ) ) {
+			// Altdaten: Ist das Konto noch einer weiteren Person zugeordnet, nicht anmelden.
+			if ( null !== $this->linked_person( (int) $person['user_id'], $person_id ) ) {
+				throw new \RuntimeException( 'Das Konto ist mehreren Personen zugeordnet. Bitte wende dich an die TK.' );
+			}
 			return (int) $person['user_id'];
 		}
 		$email = (string) ( $person['email'] ?? '' );
