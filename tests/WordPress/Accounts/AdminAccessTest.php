@@ -38,7 +38,8 @@ final class AdminAccessTest extends TestCase {
 	}
 
 	/**
-	 * Massgebend sind edit_posts und ttl_tk; ein Recht wie upload_files öffnet das Backend nicht.
+	 * Massgebend sind manage_options, edit_posts und ttl_tk; ein Recht wie upload_files öffnet
+	 * das Backend nicht.
 	 */
 	#[DataProvider( 'player_accounts' )]
 	public function test_accounts_without_editorial_or_tk_rights_are_sent_to_my_area( string $role, ?string $capability ): void {
@@ -62,6 +63,19 @@ final class AdminAccessTest extends TestCase {
 			'Mitarbeit'     => array( 'contributor' ),
 			'TK'            => array( 'ttl_tk' ),
 		);
+	}
+
+	/**
+	 * Ein Konto, das nur manage_options hat, meldet sich mit Passwort an (kein Anmeldelink) und
+	 * muss deshalb auch ins Backend dürfen.
+	 */
+	public function test_account_with_only_manage_options_stays_in_the_backend(): void {
+		$user_id = $this->account( 'subscriber', 'verwaltung@example.invalid' );
+		get_userdata( $user_id )->add_cap( 'manage_options' );
+		wp_set_current_user( $user_id );
+
+		$this->assert_stays( 'nur manage_options' );
+		self::assertTrue( Accounts::show_admin_bar( true ) );
 	}
 
 	#[DataProvider( 'backend_roles' )]
