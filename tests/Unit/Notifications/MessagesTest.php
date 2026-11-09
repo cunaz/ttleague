@@ -172,7 +172,11 @@ final class MessagesTest extends TestCase {
 		$ctx      = self::ctx();
 		self::assertSame( 'Die TK hat die Begegnung Seefeld 1 – Wollishofen 1 (Meisterschaft, Gruppe B, Di, 10.11.2026, 20:00) forfait gewertet: 6:4 für Wollishofen 1.', $messages->result_decided( $ctx, 3, 'forfeit', null, 'away' )->paragraphs[0] );
 		self::assertSame( 'Bemerkung der TK: «Gemäss Matchblatt»', $messages->result_decided( $ctx, 3, 'correct', 'Gemäss Matchblatt', null )->paragraphs[1] );
-		self::assertSame( 'Resultat zurückgesetzt: Seefeld 1 – Wollishofen 1', $messages->result_decided( $ctx, 3, 'reset', null, null )->subject );
+		$reset = $messages->result_decided( $ctx, 3, 'reset', null, null );
+		self::assertSame( 'Resultat zurückgesetzt: Seefeld 1 – Wollishofen 1', $reset->subject );
+		self::assertSame( 'Resultat zurückgesetzt: Seefeld 1 – Wollishofen 1', $reset->push['title'] );
+		self::assertSame( 'Die Begegnung ist wieder offen, die Heimmannschaft erfasst das Resultat neu.', $reset->push['body'] );
+		self::assertSame( 'Forfait: 6:4 für Wollishofen 1.', $messages->result_decided( $ctx, 3, 'forfeit', null, 'away' )->push['body'] );
 
 		$reminder = $messages->confirm_reminder( $ctx, 12, 3 );
 		self::assertSame( array( 'confirm_reminder', 'fixture_event', 12, '3' ), array( $reminder->event, $reminder->ref_type, $reminder->ref_id, $reminder->ref_key ) );

@@ -11,6 +11,14 @@ namespace TTLeague\Notifications;
 
 use TTLeague\Accounts\Services;
 use TTLeague\Infrastructure\Time\Clock;
+use TTLeague\Notifications\Push\PushChannel;
+use TTLeague\Notifications\Push\PushUi;
+use TTLeague\Notifications\Push\SubscriptionController;
+use TTLeague\Notifications\Push\Subscriptions;
+use TTLeague\Notifications\Push\SubscriptionValidator;
+use TTLeague\Notifications\Push\VapidKeys;
+use TTLeague\Notifications\Push\WebPush;
+use TTLeague\Notifications\Push\WordPressTransport;
 use TTLeague\Results\ResultRepository;
 
 /**
@@ -20,7 +28,12 @@ use TTLeague\Results\ResultRepository;
  * Versand brechen die auslösende Aktion nie ab, sie landen im Fehlerprotokoll und in der
  * Aktion ttleague_notification_error.
  *
- * Filter: ttleague_notification_hours (Versandfenster und Stunde der TK-Übersicht).
+ * Web Push ist verfügbar, sobald VAPID-Schlüssel bereitstehen (Filter ttleague_push_available);
+ * dann gibt es die REST-API der Abos und in «Mein Bereich» den Knopf für das Gerät.
+ *
+ * Filter: ttleague_notification_hours (Versandfenster und Stunde der TK-Übersicht),
+ * ttleague_push_endpoint_allowed (zulässige Endpunkte), ttleague_push_max_subscriptions
+ * (Abos pro Person), ttleague_vapid_subject (Kontakt im VAPID-JWT).
  */
 final class Notifications {
 
@@ -33,6 +46,9 @@ final class Notifications {
 		add_action( 'ttleague_result_decided', array( self::class, 'on_decided' ), 10, 4 );
 		add_action( 'init', array( self::class, 'schedule' ) );
 		add_action( self::CRON_HOOK, array( self::class, 'run_deadlines' ) );
+		add_filter( 'ttleague_push_available', array( self::class, 'push_available' ) );
+		add_filter( 'ttleague_push_controls', array( PushUi::class, 'controls' ), 10, 2 );
+		add_action( 'rest_api_init', array( SubscriptionController::class, 'register_routes' ) );
 		if ( defined( 'TTLEAGUE_FILE' ) ) {
 			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
 		}
@@ -49,6 +65,13 @@ final class Notifications {
 
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( self::CRON_HOOK );
+	}
+
+	/**
+	 * Filter ttleague_push_available: Push ist verfügbar, wenn VAPID-Schlüssel bereitstehen.
+	 */
+	public static function push_available( bool $available ): bool {
+		return $available || null !== VapidKeys::get();
 	}
 
 	/**
@@ -143,8 +166,42 @@ final class Notifications {
 	 * @return list<Channel>
 	 */
 	public static function channels(): array {
-		$mailer = Services::mailer();
-		return array( new EmailChannel( array( $mailer, 'send' ) ) );
+		$mailer   = Services::mailer();
+		$channels = array( new EmailChannel( array( $mailer, 'send' ) ) );
+		$vapid    = VapidKeys::get();
+		if ( null !== $vapid ) {
+			$icon       = get_site_icon_url( 192 );
+			$channels[] = new PushChannel(
+				self::subscriptions(),
+				new WebPush( $vapid, new WordPressTransport(), Services::clock(), VapidKeys::subject() ),
+				'' !== $icon ? $icon : TTLEAGUE_URL . 'assets/pwa/icon-192.png'
+			);
+		}
+		return $channels;
+	}
+
+	public static function subscriptions(): Subscriptions {
+		/**
+		 * Höchstzahl der Push-Abos pro Person; ältere fallen beim Überschreiten weg.
+		 *
+		 * @param int $max Standard 10.
+		 */
+		return new Subscriptions( Services::db(), Services::clock(), max( 1, (int) apply_filters( 'ttleague_push_max_subscriptions', Subscriptions::MAX_PER_PERSON ) ) );
+	}
+
+	public static function validator(): SubscriptionValidator {
+		return new SubscriptionValidator(
+			static function ( string $endpoint, bool $allowed ): bool {
+				/**
+				 * Darf an diesen Endpunkt gesendet werden? Standard: https bei einem bekannten
+				 * Push-Dienst (Google, Mozilla, Apple, Microsoft). Für lokale Tests erweiterbar.
+				 *
+				 * @param bool   $allowed  Standardentscheid.
+				 * @param string $endpoint Adresse des Abos.
+				 */
+				return (bool) apply_filters( 'ttleague_push_endpoint_allowed', $allowed, $endpoint );
+			}
+		);
 	}
 
 	/**

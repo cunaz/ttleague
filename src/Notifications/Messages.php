@@ -270,18 +270,24 @@ final class Messages {
 				$subject = sprintf( __( 'Resultat bestätigt: %s', 'ttleague' ), $title );
 				/* translators: 1: Resultat, 2: Begegnung mit Wettbewerb und Termin */
 				$first = sprintf( __( 'Die TK hat das Resultat %1$s der Begegnung %2$s bestätigt.', 'ttleague' ), $score, $describe );
+				/* translators: %s: Resultat */
+				$push = sprintf( __( 'Die TK hat das Resultat %s bestätigt.', 'ttleague' ), $score );
 				break;
 			case 'finalize':
 				/* translators: %s: Begegnung */
 				$subject = sprintf( __( 'Resultat abgeschlossen: %s', 'ttleague' ), $title );
 				/* translators: 1: Resultat, 2: Begegnung mit Wettbewerb und Termin */
 				$first = sprintf( __( 'Die TK hat das Resultat %1$s der Begegnung %2$s abgeschlossen. Es ist jetzt definitiv.', 'ttleague' ), $score, $describe );
+				/* translators: %s: Resultat */
+				$push = sprintf( __( 'Das Resultat %s ist jetzt definitiv.', 'ttleague' ), $score );
 				break;
 			case 'correct':
 				/* translators: %s: Begegnung */
 				$subject = sprintf( __( 'Resultat korrigiert: %s', 'ttleague' ), $title );
 				/* translators: 1: Begegnung mit Wettbewerb und Termin, 2: Resultat */
 				$first = sprintf( __( 'Die TK hat das Resultat der Begegnung %1$s korrigiert. Neues Resultat: %2$s.', 'ttleague' ), $describe, $score );
+				/* translators: %s: Resultat */
+				$push = sprintf( __( 'Neues Resultat: %s.', 'ttleague' ), $score );
 				break;
 			case 'forfeit':
 				$team = 'away' === $winner ? $ctx->away['name'] : $ctx->home['name'];
@@ -289,12 +295,15 @@ final class Messages {
 				$subject = sprintf( __( 'Forfait: %s', 'ttleague' ), $title );
 				/* translators: 1: Begegnung mit Wettbewerb und Termin, 2: Resultat, 3: siegreiches Team */
 				$first = sprintf( __( 'Die TK hat die Begegnung %1$s forfait gewertet: %2$s für %3$s.', 'ttleague' ), $describe, $score, $team );
+				/* translators: 1: Resultat, 2: siegreiches Team */
+				$push = sprintf( __( 'Forfait: %1$s für %2$s.', 'ttleague' ), $score, $team );
 				break;
 			default:
 				/* translators: %s: Begegnung */
 				$subject = sprintf( __( 'Resultat zurückgesetzt: %s', 'ttleague' ), $title );
 				/* translators: %s: Begegnung mit Wettbewerb und Termin */
 				$first = sprintf( __( 'Die TK hat das Resultat der Begegnung %s zurückgesetzt. Die Begegnung ist wieder offen, die Heimmannschaft erfasst das Resultat neu.', 'ttleague' ), $describe );
+				$push  = __( 'Die Begegnung ist wieder offen, die Heimmannschaft erfasst das Resultat neu.', 'ttleague' );
 				break;
 		}
 		$paragraphs = array( $first );
@@ -302,7 +311,7 @@ final class Messages {
 			/* translators: %s: Bemerkung */
 			$paragraphs[] = sprintf( __( 'Bemerkung der TK: «%s»', 'ttleague' ), trim( $comment ) );
 		}
-		return $this->build( $ctx, EventTypes::RESULT_DECIDED, self::RESULT_DECIDED, 'fixture_event', $event_id, $action, $subject, $paragraphs, __( 'Begegnung öffnen', 'ttleague' ), $subject, $first );
+		return $this->build( $ctx, EventTypes::RESULT_DECIDED, self::RESULT_DECIDED, 'fixture_event', $event_id, $action, $subject, $paragraphs, __( 'Begegnung öffnen', 'ttleague' ), $subject, $push );
 	}
 
 	/**
