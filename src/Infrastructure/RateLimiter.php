@@ -14,6 +14,12 @@ use TTLeague\Infrastructure\Time\Clock;
 /**
  * Zählt Versuche pro Schlüssel in einem Zeitfenster. Speicherung über zwei Callbacks
  * (in WordPress Transients, in Tests ein Array), damit die Klasse ohne WordPress testbar ist.
+ *
+ * Bewusste Vereinfachung: Lesen und Schreiben sind nicht atomar. Gleichzeitige Anfragen können
+ * denselben Stand lesen und das Limit um die Zahl paralleler Anfragen überschreiten. Das Limit
+ * bremst Mail-Fluten und Ausprobieren von Adressen, es ist keine harte Grenze. Für eine harte
+ * Grenze bräuchte es einen atomaren Zähler (persistenter Objekt-Cache mit wp_cache_incr oder
+ * eine Tabelle mit INSERT … ON DUPLICATE KEY UPDATE).
  */
 final class RateLimiter {
 

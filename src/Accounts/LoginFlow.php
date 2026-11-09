@@ -293,16 +293,34 @@ final class LoginFlow {
 		);
 	}
 
+	/**
+	 * Kommt die Anfrage von dieser Website (Schema, Host und Port aus Origin oder Referer)?
+	 * Schützt vor Login-CSRF; der Nonce allein genügt nicht, weil er für alle abgemeldeten
+	 * Besucher gleich ist.
+	 */
 	private static function same_origin(): bool {
-		$home   = wp_parse_url( home_url() );
-		$source = (string) ( $_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_REFERER'] ?? '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- nur Vergleich von Host und Schema.
+		$source = (string) ( $_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_REFERER'] ?? '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- nur Vergleich von Schema, Host und Port.
+		return self::origin_matches( $source, home_url() );
+	}
+
+	/**
+	 * Gleiche Herkunft: Schema und Host ohne Beachtung der Gross-/Kleinschreibung, Port mit
+	 * Standardport des Schemas.
+	 */
+	public static function origin_matches( string $source, string $home ): bool {
 		if ( '' === $source ) {
 			return false;
 		}
-		$parts = wp_parse_url( $source );
-		return is_array( $parts ) && is_array( $home )
-			&& strtolower( (string) ( $parts['host'] ?? '' ) ) === strtolower( (string) ( $home['host'] ?? '' ) )
-			&& ( $parts['port'] ?? null ) === ( $home['port'] ?? null );
+		$a = wp_parse_url( $source );
+		$b = wp_parse_url( $home );
+		if ( ! is_array( $a ) || ! is_array( $b ) || empty( $a['scheme'] ) || empty( $a['host'] ) || empty( $b['scheme'] ) || empty( $b['host'] ) ) {
+			return false;
+		}
+		$scheme = strtolower( (string) $a['scheme'] );
+		$port   = static fn( array $url, string $scheme ): int => (int) ( $url['port'] ?? ( 'https' === $scheme ? 443 : 80 ) );
+		return strtolower( (string) $b['scheme'] ) === $scheme
+			&& strtolower( (string) $a['host'] ) === strtolower( (string) $b['host'] )
+			&& $port( $a, $scheme ) === $port( $b, strtolower( (string) $b['scheme'] ) );
 	}
 
 	private static function client_ip(): string {
