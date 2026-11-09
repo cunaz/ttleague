@@ -35,6 +35,9 @@ final class Plugin {
 		\TTLeague\Access\Capabilities::register();
 		\TTLeague\Accounts\Accounts::register();
 
+		// Resultaterfassung (REST-API, Neuberechnung der Wertungszahl).
+		\TTLeague\Results\Results::register();
+
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
 			\TTLeague\Content\Content::register();

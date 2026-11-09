@@ -105,4 +105,13 @@ final class EligibilityCheckerTest extends TestCase {
 		self::assertSame( EligibilityReason::BlockedOtherClub, $this->checker()->check( 'ox', 'T1' )->reason );
 		self::assertSame( EligibilityReason::BlockedOtherClub, $this->checker()->check( 'unknown', 'T1' )->reason );
 	}
+
+	public function test_explicit_binding_from_roster(): void {
+		$c = $this->checker();
+		$c->bind( 'p4', 'T2' );
+
+		self::assertSame( 'T2', $c->bound_team( 'p4' ) );
+		self::assertSame( EligibilityReason::Bound, $c->check( 'p4', 'T2' )->reason );
+		self::assertFalse( $c->check( 'p4', 'T4' )->allowed, 'Stammteam ist nach der Bindung gesperrt' );
+	}
 }

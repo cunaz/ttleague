@@ -66,6 +66,16 @@ Tabellen zählen `provisional`, `confirmed`, `disputed`, `final` und `forfeit`. 
 
 Basis `/wp-json/ttleague/v1`, Authentifizierung über das WordPress-Cookie mit `X-WP-Nonce`. Fehlertexte auf Deutsch. Validierungsfehler: HTTP 422 mit `{ "code": "ttl_invalid", "message": "...", "data": { "status": 422, "errors": [ { "field": "...", "message": "..." } ] } }`.
 
+| HTTP | Code | Bedeutung |
+|---|---|---|
+| 401 | `rest_forbidden` | nicht angemeldet |
+| 403 | `ttl_forbidden` | keine Rolle für diese Aktion (z. B. Gastseite will erfassen, eigene Erfassung bestätigen) |
+| 404 | `ttl_not_found` | Begegnung gibt es nicht |
+| 409 | `ttl_conflict` | Status erlaubt die Aktion nicht, oder `version` ist veraltet |
+| 422 | `ttl_invalid` | Eingabe ungültig, mit Feldfehlern (`lineup.home.A`, `games.7.home_players`, `games.1.set_points`, `reason`, `file` …) |
+
+**Gleichzeitige Änderungen:** `GET entry` liefert `version`. Wird sie bei `result`, `confirm`, `objection` oder `decision` mitgeschickt und hat sich die Begegnung inzwischen geändert, antwortet der Server mit 409. So bestätigt niemand ein Resultat, das er nicht gesehen hat.
+
 ### `GET fixtures/{id}/entry`
 
 Liefert alles für das Formular:
@@ -104,8 +114,11 @@ Liefert alles für das Formular:
 - Ein Spieler pro Slot, jeder Spieler höchstens einmal pro Seite, mindestens zwei Spieler pro Seite.
 - Alle Spiele der Spielfolge müssen vorhanden sein (MM 10, Cup 5). Im Cup dürfen Spiele nach dem dritten Sieg fehlen oder als `not_played` kommen.
 - `status` `played` (Sätze nach Gewinnsätzen), `walkover` (mit `winner`), `not_played`. Fehlt ein Spieler, sind seine Einzel `walkover` für die Gegenseite (`LineupValidator`).
-- Doppel: `home_players` und `away_players` aus der Aufstellung der Seite.
-- `set_points` nur, wenn `set_points_enabled`.
+- Doppel: `home_players` und `away_players` aus der Aufstellung der Seite. Pflicht bei einem gespielten Doppel, ausser die Seite hat genau zwei Spieler (dann automatisch).
+- `set_points` sind freiwillig und werden nur gespeichert, wenn `set_points_enabled`. Ein Satz geht auf 11, ab 10:10 mit zwei Punkten Vorsprung; die Sätze müssen das Spielresultat ergeben.
+- `photo_id` wird ignoriert; das Foto verknüpft `POST fixtures/{id}/photo`.
+- Spielberechtigung (Meisterschaft): Stammspieler, Ersatz aus einem tieferen Team (höchstens drei Einsätze, beim dritten wird der Spieler an das Team gebunden und im Kader als `bound` eingetragen), Bindung aus dem Kader. Cup: alle für den Club gemeldeten Spieler, Spieler ausserhalb der gemeldeten Cup-Mannschaft als Hinweis.
+- Die TK korrigiert über `decision` mit `action: correct`; fehlende Spielberechtigungen sind dann Hinweise statt Fehler.
 - Antwort 200: `{ "status": "provisional", "home_score": 6, "away_score": 4, "warnings": [ ... ] }`.
 
 **Harte Fehler (422):** Spieler nicht spielberechtigt (anderer Club, an anderes Team gebunden, Stammspieler eines höheren Teams), unvollständige oder widersprüchliche Spiele, Status erlaubt keine Erfassung.
@@ -119,12 +132,16 @@ Liefert alles für das Formular:
 | `POST fixtures/{id}/confirm` | `{}` | `ttl_confirm_result` oder `ttl_tk` |
 | `POST fixtures/{id}/objection` | `{ "reason": "…" }` (Pflicht, 10 bis 2000 Zeichen) | `ttl_confirm_result` |
 | `POST fixtures/{id}/decision` | `{ "action": "confirm"\|"finalize"\|"correct"\|"forfeit"\|"reset", "winner": "home"\|"away", "result": { wie POST result }, "comment": "…" }` | `ttl_tk` |
-| `POST fixtures/{id}/photo` | Multipart `file` (JPEG, PNG, HEIC, höchstens 10 MB) → `{ "attachment_id": 5, "url": "…" }` | `ttl_enter_result` |
-| `GET me/fixtures` | `{ "to_enter": [], "to_confirm": [], "upcoming": [] }` für die angemeldete Person | angemeldet |
+| `POST fixtures/{id}/photo` | Multipart `file` (JPEG, PNG, WebP, HEIC, höchstens 10 MB) → `{ "attachment_id": 5, "url": "…" }`. Gespeichert als privater Anhang mit zufälligem Dateinamen, nicht in der öffentlichen Medienliste. | Heimseite bis zur Bestätigung, TK immer |
+| `GET me/fixtures` | `{ "to_enter": [], "to_confirm": [], "upcoming": [] }` für die angemeldete Person: zu erfassen (Heimseite, Anspielzeit vorbei), zu bestätigen (Gastseite, provisorisch, nicht selbst erfasst), demnächst (21 Tage) | angemeldet |
+
+Antwort von `confirm` und `objection`: `{ "status": "...", "version": "..." }`; von `decision`: `{ "status", "home_score", "away_score", "version" }`.
+
+**Hinweise zur Zeit:** Erfassung nach Ablauf von `entry_deadline_hours` (48 h) nach Anspielzeit oder mehr als zwei Stunden vor dem Termin ergibt einen Hinweis, keinen Fehler.
 
 ## Protokoll
 
-- `fixture_event`: jedes fachliche Ereignis (`entered`, `edited`, `confirmed`, `disputed`, `decided`, `forfeit`, `reset`) mit Person, Kommentar, Zusatzdaten (z. B. Hinweise) und Zeitpunkt. Wird im Matchreport als Verlauf gezeigt.
+- `fixture_event`: jedes fachliche Ereignis (`entered`, `edited`, `confirmed`, `disputed`, `decided`, `forfeit`, `reset`, `photo`) mit Konto, Person, Kommentar, Zusatzdaten (`score`, `warnings`, `action`, `winner`, `by_tk`) und Zeitpunkt (UTC). `GET entry` liefert ihn als `history`.
 - `audit_log`: technische Nachvollziehbarkeit jeder Änderung an `fixture`, `lineup`, `game` mit Zustand vorher und nachher als JSON.
 
 ## Ereignisse
@@ -137,7 +154,10 @@ Der `ResultService` löst WordPress-Aktionen aus; Benachrichtigungen, Dashboard 
 | `ttleague_result_confirmed` | Fixture-ID, User-ID, `bool $by_tk` |
 | `ttleague_result_disputed` | Fixture-ID, User-ID, Begründung |
 | `ttleague_result_decided` | Fixture-ID, User-ID, Aktion, Kommentar |
+| `ttleague_result_photo` | Fixture-ID, User-ID, Anhang-ID |
 | `ttleague_data_changed` | Bereich (z. B. `fixture`), ID |
+
+`ttleague_result_confirmed` kommt auch, wenn die TK über `decision` mit `action: confirm` bestätigt (`$by_tk = true`).
 
 Nach jeder Änderung: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten).
 

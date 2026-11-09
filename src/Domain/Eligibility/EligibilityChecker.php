@@ -66,6 +66,16 @@ final class EligibilityChecker {
 	}
 
 	/**
+	 * Bereits festgestellte Bindung an ein Team (z. B. Kadereintrag «gebunden»), unabhängig
+	 * von den hier gezählten Einsätzen.
+	 */
+	public function bind( int|string $player_id, int|string $team_id ): self {
+		$current = $this->substitute_counts[ $player_id ][ $team_id ] ?? 0;
+		$this->substitute_counts[ $player_id ][ $team_id ] = max( $current, $this->rules->substitute_max );
+		return $this;
+	}
+
+	/**
 	 * Team, an das der Spieler durch Ersatzeinsätze gebunden ist, oder null.
 	 */
 	public function bound_team( int|string $player_id ): int|string|null {
