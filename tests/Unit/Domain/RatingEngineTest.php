@@ -97,11 +97,12 @@ final class RatingEngineTest extends TestCase {
 	}
 
 	public function test_rating_does_not_fall_below_zero(): void {
+		// Spieler 1 (D1, Wertungszahl 100) verliert gegen dreissig verschiedene, gleich klassierte Gegner.
 		$games = array();
-		for ( $i = 1; $i <= 20; $i++ ) {
-			$games[] = new RatingGame( $i, sprintf( '2026-09-%02d 20:00:00', $i ), 1, array( 2 ), array( 1 ), true );
+		for ( $i = 1; $i <= 30; $i++ ) {
+			$games[] = new RatingGame( $i, sprintf( '2026-09-%02d 20:00:00', $i ), 1, array( 100 + $i ), array( 1 ), true );
 		}
-		$result = ( new RatingEngine( $this->rules() ) )->run( $games, static fn( int $p ) => 1 === $p ? 1 : 3 );
+		$result = ( new RatingEngine( $this->rules() ) )->run( $games, static fn() => 1 );
 		self::assertSame( 0.0, $result->ratings[1] );
 		self::assertGreaterThanOrEqual( 0.0, min( array_map( static fn( $e ) => $e->after, $result->events ) ) );
 	}
