@@ -376,10 +376,11 @@ final class ResultService {
 		$now = $this->now();
 		$this->write(
 			$ctx,
-			function () use ( $ctx, $actor, $attachment_id, $now ): void {
+			function ( FixtureContext $current ) use ( $ctx, $actor, $attachment_id, $now ): void {
 				$this->repo->update_fixture( $ctx->id, array( 'photo_attachment_id' => $attachment_id ) );
 				$this->repo->add_event( $ctx->id, 'photo', $actor->user_id, $actor->person_id, null, array( 'attachment_id' => $attachment_id ), $now );
-				$this->audit->record( 'fixture', $ctx->id, 'photo', $actor->user_id, array( 'photo_attachment_id' => $ctx->photo_id ), array( 'photo_attachment_id' => $attachment_id ) );
+				// Vorheriger Wert aus dem gesperrt gelesenen Stand: Die Foto-ID gehört nicht zur Version.
+				$this->audit->record( 'fixture', $ctx->id, 'photo', $actor->user_id, array( 'photo_attachment_id' => $current->photo_id ), array( 'photo_attachment_id' => $attachment_id ) );
 			}
 		);
 		$this->events->photo_added( $ctx->id, $actor->user_id, $attachment_id );
@@ -739,7 +740,10 @@ final class ResultService {
 	 * ab. So setzt keine von zwei gleichzeitigen Aktionen eine veraltete Version oder einen
 	 * inzwischen unzulässigen Statuswechsel durch.
 	 *
-	 * @param callable():void $work Schreibvorgänge.
+	 * Rollen lädt die AccessPolicy getrennt; ändern sie sich genau während einer Anfrage, erkennt
+	 * das der Vergleich nicht. Das ist bewusst so (Rollen ändert nur die TK, selten).
+	 *
+	 * @param callable(FixtureContext):void $work Schreibvorgänge; erhält den gesperrt gelesenen Stand.
 	 * @throws ResultException 409, wenn sich die Begegnung inzwischen geändert hat.
 	 */
 	private function write( FixtureContext $ctx, callable $work ): void {
@@ -750,7 +754,7 @@ final class ResultService {
 				if ( null === $current || ! hash_equals( $ctx->version(), $current->version() ) ) {
 					throw ResultException::conflict( __( 'Die Begegnung wurde inzwischen geändert. Bitte lade die Seite neu.', 'ttleague' ) );
 				}
-				$work();
+				$work( $current );
 			}
 		);
 	}
