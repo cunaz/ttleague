@@ -158,8 +158,9 @@ final class ResultNotificationsTest extends NotificationTestCase {
 	public function test_the_deciding_tk_member_is_left_out_when_also_on_a_side(): void {
 		$service = $this->service();
 		$service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
-		$this->db->update( 'person', array( 'user_id' => 110 ), array( 'id' => $this->person['chef_away'] ) );
+		// Konto 110 wandert von der Person «admin» zum TK-Chef des Gasts (person.user_id ist eindeutig).
 		$this->db->update( 'person', array( 'user_id' => null ), array( 'id' => $this->person['admin'] ) );
+		$this->db->update( 'person', array( 'user_id' => 110 ), array( 'id' => $this->person['chef_away'] ) );
 		$service->decide(
 			$this->id['f1'],
 			new \TTLeague\Results\Actor( 110, $this->person['chef_away'], true ),
