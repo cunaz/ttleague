@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<ruleset name="ttleague">
+    <description>WordPress Coding Standards für ttleague, angepasst für PSR-4-Klassen.</description>
+
+    <file>ttleague.php</file>
+    <file>uninstall.php</file>
+    <file>src</file>
+    <file>tests</file>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <config name="minimum_wp_version" value="6.7"/>
+    <config name="testVersion" value="8.2-"/>
+
+    <rule ref="WordPress-Extra">
+        <!-- PSR-4: Klassen heissen wie die Datei, nicht class-foo.php -->
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+        <exclude name="WordPress.Files.FileName.NotHyphenatedLowercase"/>
+        <!-- Reine Domänenklassen dürfen kurze Array-Syntax nutzen -->
+        <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
+        <!-- Eigene Tabellen brauchen direkte Datenbankabfragen -->
+        <exclude name="WordPress.DB.DirectDatabaseQuery"/>
+    </rule>
+
+    <!-- Die Domänenschicht ist reines PHP ohne WordPress; Exceptions dort sind Entwicklermeldungen. -->
+    <rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
+        <exclude-pattern>*/src/Domain/*</exclude-pattern>
+    </rule>
+
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="ttleague"/>
+            </property>
+        </properties>
+    </rule>
+
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="ttleague"/>
+                <element value="TTLeague"/>
+            </property>
+        </properties>
+    </rule>
+</ruleset>

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '8.2', '8.3', '8.4' ]
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_DATABASE: ttleague_test
+          MARIADB_USER: ttleague
+          MARIADB_PASSWORD: ttleague
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      TTLEAGUE_TEST_DB_DSN: mysql:host=127.0.0.1;port=3306;dbname=ttleague_test;charset=utf8mb4
+      TTLEAGUE_TEST_DB_USER: ttleague
+      TTLEAGUE_TEST_DB_PASS: ttleague
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP einrichten
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, mbstring, json, intl, pdo_mysql
+          coverage: none
+
+      - name: Abhängigkeiten installieren
+        uses: ramsey/composer-install@v3
+
+      - name: Tests
+        run: composer test
+
+      - name: Coding Standards
+        if: matrix.php == '8.3'
+        run: composer lint

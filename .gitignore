@@ -1,0 +1,9 @@
+/vendor/
+/node_modules/
+/.phpunit.cache/
+/build/
+*.log
+.DS_Store
+Thumbs.db
+/.idea/
+/.vscode/
