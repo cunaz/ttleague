@@ -12,6 +12,7 @@ Dieses Dokument beschreibt die lesende Darstellung des Plugins: Seiten und Adres
 | Blöcke, Shortcode | `src/Frontend/Blocks.php`, `Shortcode.php`, `blocks/*/block.json`, `assets/js/editor.js` | Dynamische Blöcke mit `render_callback`, Shortcode `[ttleague view="…"]`, Editor ohne Build-Schritt. |
 | Gestaltung | `assets/css/frontend.css` | Mobile first, Tabellen werden unter 600px zu Karten, Farben und Abstände aus den Presets des aktiven Block-Themes. |
 | Kalender-Abos | `src/Calendar/` | iCal-Feeds (RFC 5545) für Mannschaft, Club und Spieler, siehe [Kalender-Abos](#kalender-abos-ical). |
+| Web-App | `src/Pwa/`, `assets/pwa/` | Manifest, Service Worker mit Offline-Rückfall, siehe [Web-App](#web-app-pwa). |
 
 Einstieg ist `TTLeague\Frontend\Frontend::register()`, aufgerufen von `TTLeague\Plugin::boot()`.
 
@@ -163,11 +164,39 @@ Unbekannte Saison, Mannschaft, Club oder Lizenz und jede andere `.ics`-Adresse u
 
 Neue oder geänderte Rewrite-Regeln erneuert das Plugin einmalig selbst (Option `ttleague_calendar_routes`); manuell mit `wp rewrite flush --hard`.
 
+## Web-App (PWA)
+
+Grundlage einer installierbaren Web-App, ohne Push-Benachrichtigungen. Registrierung aus `Plugin::boot()` über `TTLeague\Pwa\Pwa`; Manifest und Service Worker werden wie die Kalender bei `parse_request` ausgeliefert.
+
+| Adresse | Antwort |
+|---|---|
+| `/manifest.webmanifest` | `application/manifest+json`, `Cache-Control: public, max-age=3600` |
+| `/sw.js` | `application/javascript`, `Service-Worker-Allowed: /`, `Cache-Control: no-cache` |
+
+**Manifest** (`Manifest`, reine Klasse): `name` aus dem Seitentitel (Filter `ttleague_pwa_name`), `short_name` aus ganzen Wörtern bis zwölf Zeichen («Freizeitliga Tischtennis Seefeld» → «Freizeitliga», Filter `ttleague_pwa_short_name`), `description` aus dem Untertitel, `lang`, `dir`, `id` und `scope` = Pfad der Startadresse, `start_url` `/?quelle=app` (App-Starts in Statistiken erkennbar), `display: standalone`. `theme_color` aus dem Preset `accent-1` (sonst `primary`, `accent`), `background_color` aus `base` (sonst `background`, `white`); nur Hex-Werte, sonst `#0b4a9e` bzw. `#ffffff`. Liegt WordPress in einem Unterordner, gelten dessen Pfade (`/liga/?quelle=app`). Das ganze Manifest lässt sich mit `ttleague_pwa_manifest` anpassen.
+
+**Icons**: Ist ein Website-Icon gesetzt, stehen dessen Bilder für 192 und 512 px mit den tatsächlichen Abmessungen im Manifest (Zweck `any`, denn ein Website-Icon ist nicht für das Beschneiden auf Kreis oder Tropfen gestaltet; eigene `maskable`-Icons über den Filter). Sonst die mitgelieferten, neutralen Icons (Schläger und Ball) aus `assets/pwa/`: `icon-192.png`, `icon-512.png` (`any`) und `icon-maskable-192.png`, `icon-maskable-512.png` (`maskable`, Motiv innerhalb der Sicherheitszone von 80 %), dazu `apple-touch-icon.png` (180 px); Quellen `icon.svg` und `icon-maskable.svg`.
+
+**Kopfzeilen** (`wp_head`): `<link rel="manifest">`, `<meta name="theme-color">`, `<meta name="apple-mobile-web-app-title">` (Kurzname) und `<link rel="apple-touch-icon">` mit dem mitgelieferten Icon; mit Website-Icon gibt WordPress das apple-touch-icon selbst aus.
+
+**Service Worker** (`assets/pwa/sw.js` als Vorlage, `ServiceWorker` setzt die Konstante `CONFIG` davor):
+
+- Seitenaufrufe zuerst aus dem Netz; erfolgreiche HTML-Antworten werden gespeichert (höchstens 60 Seiten). Offline erscheint die zuletzt gespeicherte Fassung, sonst eine kleine Offline-Seite, die der Service Worker selbst erzeugt (Name der Website, «Erneut versuchen», «Zur Startseite», Farben aus der Palette).
+- Stile, Skripte, Schriften und Bilder der eigenen Website: stale-while-revalidate (höchstens 120 Dateien, die ältesten fallen weg).
+- Nie gespeichert: alles ausser GET, fremde Adressen, die Pfade `wp-admin`, `wp-login.php`, `wp-json`, `wp-cron.php`, `xmlrpc.php`, `anmelden`, `mein-bereich`, `erfassen`, `kalender` (Filter `ttleague_pwa_never_cache`), Vorschau, Customizer und REST über Abfrageparameter sowie Antworten mit `Cache-Control: private` oder `no-store` – WordPress sendet beides für angemeldete Personen. Ausgeschlossene Seiten kommen nur aus dem Netz, offline erscheint die Offline-Seite. Neue Module mit persönlichen Seiten tragen ihre Pfade in den Filter ein oder senden `nocache_headers()`.
+- Beim Installieren werden die Startadresse und bereits offene Seiten gespeichert, damit sie schon nach dem ersten Besuch offline verfügbar sind.
+- Cache-Namen `ttleague:{pfad}:pages:{version}` und `…:assets:{version}`; die Version ist ein Hash aus Vorlage und Konfiguration. Ein Update des Plugins ändert die Bytes von `/sw.js`, der neue Service Worker übernimmt sofort (`skipWaiting`, `clients.claim`) und löscht ältere Caches mit demselben Pfad; Caches anderer Websites auf derselben Domain bleiben.
+
+**Registrierung**: `assets/pwa/register.js` (verzögert, nach dem Laden) mit den Einstellungen aus `window.ttleaguePwa`. Nicht eingebunden für angemeldete Personen mit Redaktionsrechten (`edit_posts`), in Vorschau und Customizer; ganz abschaltbar mit `ttleague_pwa_service_worker`. Ohne Unterstützung für Service Worker oder ohne HTTPS bleibt die Website unverändert.
+
+**Server**: `/sw.js` und `/manifest.webmanifest` müssen WordPress erreichen. Im Webroot dürfen keine Dateien mit diesen Namen liegen, und nginx-Regeln, die `.js` mit `try_files $uri =404` statisch ausliefern, müssen `/sw.js` ausnehmen. Neue Rewrite-Regeln erneuert das Plugin einmalig selbst (Option `ttleague_pwa_routes`).
+
 ## Tests
 
 - `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
 - `tests/Unit/Calendar/`: Faltung (Grenzen, UTF-8, Graphem-Cluster), Maskierung, `VTIMEZONE` im Abgleich mit der Zeitzonendatenbank, Dauer über die Zeitumstellung, Ganztag, Titel und Status der Ereignisse, Adressen, Rewrite-Regeln, ETag.
 - `tests/Integration/Calendar/`: Feeds für Mannschaft, Club und Spieler gegen das Szenario (Forfait, provisorisch, Cup, Ranglistenturnier, Ersatzeinsatz, annulliert, Anspielzeit offen, unbekannte Adressen) und der Abschnitt «Kalender abonnieren» auf den Seiten.
+- `tests/Unit/Pwa/`: Manifest (Namen, Kurzname, Unterordner, Farben aus der Palette, mitgelieferte Icons mit Abmessungen, Website-Icon, Rewrite-Regeln) und Service Worker (Konfiguration, Cache-Namen pro Website, Version, ausgeschlossene Pfade, Strategien der Vorlage). Registrierung, Offline-Rückfall und Ausschlüsse im Browser lassen sich mit Playwright gegen eine Instanz prüfen (`context.setOffline(true)`).
 - `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping.
 
 ```bash
