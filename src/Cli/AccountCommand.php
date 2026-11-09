@@ -82,6 +82,9 @@ final class AccountCommand {
 		Services::accounts()->unlink_user( $person_id );
 		Services::audit()->record( 'person', $person_id, 'unlinked', self::actor(), array( 'user_id' => $person['user_id'] ), null, 'wp-cli' );
 		\WP_CLI::success( sprintf( 'Verknüpfung von Person %d aufgehoben.', $person_id ) );
+		if ( ! \TTLeague\Infrastructure\Database\Installer::ensure_unique_person_user() ) {
+			\WP_CLI::warning( 'Es gibt weiterhin Konten mit mehreren Personen; Verknüpfen bleibt gesperrt.' );
+		}
 	}
 
 	/**
