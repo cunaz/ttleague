@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Keine Links auf KI-Sitzungen oder andere sensible Inhalte in Commit-Nachrichten.
+ROOT="$(git rev-parse --show-toplevel)"
+"$ROOT/bin/check-sensitive.sh" --message "$1"

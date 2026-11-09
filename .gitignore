@@ -1,9 +1,117 @@
+# ttleague (öffentlich): Hier gehören nur generischer Code, Doku und Tests mit erfundenen Daten hinein.
+# Keine Personendaten, keine KI-Verläufe, keine Zugangsdaten. Prüfung: bin/check-sensitive.sh
+
+# ---------------------------------------------------------------------------
+# KI-Werkzeuge: Verläufe, Sitzungen, Gedächtnis, lokale Einstellungen
+# ---------------------------------------------------------------------------
+.claude/
+CLAUDE.local.md
+.aider*
+.specstory/
+.cursor/
+.cursorignore
+.cursorindexingignore
+.continue/
+.codeium/
+.windsurf/
+.cline/
+.clinerules
+.roo/
+.roomodes
+memory-bank/
+.gemini/
+.codex/
+.junie/
+.copilot/
+.tabnine/
+*.jsonl
+scratchpad/
+.scratch/
+
+# ---------------------------------------------------------------------------
+# Zugangsdaten, Schlüssel, Umgebungsvariablen
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+auth.json
+.npmrc
+.yarnrc.yml
+.netrc
+.htpasswd
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.kdbx
+id_rsa*
+id_ecdsa*
+id_ed25519*
+secrets.*
+credentials*.json
+service-account*.json
+
+# ---------------------------------------------------------------------------
+# Datenbanken, Exporte, Sicherungen
+# ---------------------------------------------------------------------------
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+*.bundle
+backups/
+
+# ---------------------------------------------------------------------------
+# Lokale WordPress-Instanz und Uploads (können Personendaten enthalten)
+# ---------------------------------------------------------------------------
+wp-config.php
+wp-config-local.php
+/wordpress/
+/wp-dev/
+/uploads/
+/wp-content/uploads/
+.wp-env.override.json
+
+# ---------------------------------------------------------------------------
+# Abhängigkeiten, Build, Tests
+# ---------------------------------------------------------------------------
 /vendor/
-/node_modules/
-/.phpunit.cache/
+node_modules/
 /build/
+/dist/
+*.zip
+*.tar.gz
+*.tgz
+.phpunit.cache/
+.phpunit.result.cache
+/coverage/
+test-results/
+playwright-report/
+.playwright/
+.php-cs-fixer.cache
+.phpcs-cache
+
+# ---------------------------------------------------------------------------
+# Protokolle
+# ---------------------------------------------------------------------------
 *.log
+debug.log
+error_log
+npm-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------------------
+# Editoren und Betriebssysteme
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
-/.idea/
-/.vscode/
+desktop.ini

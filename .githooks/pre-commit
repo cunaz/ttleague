@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Verhindert, dass KI-Verläufe, Zugangsdaten oder lokale Pfade versioniert werden.
+ROOT="$(git rev-parse --show-toplevel)"
+"$ROOT/bin/check-sensitive.sh" --staged || exit 1
+# Optionale lokale Zusatzprüfung, z. B. ein Abgleich mit Namenslisten:
+#   git config ttleague.extracheck "<befehl>"
+extra="$(git config --get ttleague.extracheck || true)"
+if [ -n "$extra" ]; then
+	sh -c "$extra" || exit 1
+fi

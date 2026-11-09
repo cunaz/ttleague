@@ -5,7 +5,25 @@ on:
     branches: [ main ]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  sensitive:
+    name: Sensible Inhalte
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Keine KI-Verläufe, Zugangsdaten oder lokalen Pfade
+        run: bin/check-sensitive.sh --all
+
   test:
     name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
@@ -31,17 +49,19 @@ jobs:
       TTLEAGUE_TEST_DB_USER: ttleague
       TTLEAGUE_TEST_DB_PASS: ttleague
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: PHP einrichten
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: ${{ matrix.php }}
           extensions: dom, mbstring, json, intl, pdo_mysql
           coverage: none
 
       - name: Abhängigkeiten installieren
-        uses: ramsey/composer-install@v3
+        uses: ramsey/composer-install@a8d0d959dab41457692a5e2041bd9b757a119e3f # 3.2.1
 
       - name: Tests
         run: composer test

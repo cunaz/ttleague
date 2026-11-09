@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit prüft Pull Requests auf main automatisch (für öffentliche Repositories kostenlos).
+language: "de-CH"
+tone_instructions: "Sachlich, knapp und konkret. Schweizer Schreibweise (ss statt ß). Begründe Funde mit Datei und Zeile."
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!vendor/**"
+    - "!node_modules/**"
+    - "!composer.lock"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        Dieses Repository ist öffentlich. Melde als Fehler: echte Personendaten (Namen, Lizenznummern,
+        Klassierungen realer Spielerinnen und Spieler, E-Mail-Adressen, Telefonnummern, Adressen),
+        Zugangsdaten, Links auf KI-Sitzungen oder KI-Verläufe, lokale Pfade sowie Inhalte, die nur zu einer
+        bestimmten Liga gehören. Tests und Beispiele verwenden ausschliesslich erfundene Namen.
+    - path: "src/Domain/**"
+      instructions: >-
+        Reine Domänenlogik ohne WordPress. Prüfe die Regeln gegen docs/datenmodell.md und die Kommentare
+        (Spielfolge, Tiebreaks nach Art. 14.4, Ersatz und Bindung nach Art. 12, Cup, Ranglistenturnier).
+        Achte auf Randfälle (Gleichstand, Forfait, Zweierteams, fehlende Spieler) und auf passende Tests.
+    - path: "src/Infrastructure/**"
+      instructions: >-
+        SQL läuft über Db mit Platzhaltern %d, %s, %f; Tabellennamen nur über table(). Melde eingesetzte Werte
+        in SQL-Strings, fehlende Transaktionen bei zusammengehörigen Schreibvorgängen und Abweichungen
+        zwischen WpdbDb und PdoDb.
+    - path: "src/ReadModel/**"
+      instructions: >-
+        Nur lesende Abfragen über Db, Cache-Schlüssel mit DataVersion. Achte auf N+1-Abfragen und
+        unnötige Volltabellen-Scans.
+    - path: "src/Frontend/**"
+      instructions: >-
+        Jede Ausgabe muss escaped sein (esc_html, esc_attr, esc_url, wp_kses). Prüfe Barrierefreiheit
+        (semantische Tabellen, Beschriftungen, Kontraste) und die Darstellung auf schmalen Bildschirmen.
+        Keine Kontaktdaten von Personen öffentlich ausgeben.
+    - path: "tests/**"
+      instructions: >-
+        Nur erfundene Personen und Clubs. Integrationstests laufen gegen MariaDB mit eigenem Tabellenpräfix.
+    - path: ".github/workflows/**"
+      instructions: >-
+        Minimale Berechtigungen, Actions auf Commit-Hashes gepinnt, keine Geheimnisse in Logs.
+  tools:
+    phpcs:
+      enabled: false
+    phpstan:
+      enabled: false
+    phpmd:
+      enabled: false
+    languagetool:
+      enabled: false
+    markdownlint:
+      enabled: false
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    presidio:
+      enabled: true
+    osvScanner:
+      enabled: true
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    yamllint:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  opt_out: false
