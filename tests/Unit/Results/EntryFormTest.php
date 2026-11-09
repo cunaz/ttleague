@@ -1,6 +1,6 @@
 <?php
 /**
- * Startzustand und Ansichtsmodell des Erfassungsformulars (Gegenstück zu buildView in entry.js).
+ * Startzustand und Ansichtsmodell des Erfassungsformulars (Gegenstück zu buildView in entry-view.js).
  *
  * @package TTLeague
  */
@@ -10,12 +10,11 @@ declare(strict_types=1);
 namespace TTLeague\Tests\Unit\Results;
 
 use PHPUnit\Framework\TestCase;
-use TTLeague\Domain\Match\GameOrder;
 use TTLeague\Results\EntryForm;
 use TTLeague\Results\EntryLinks;
 
 /**
- * Arbeitet mit einer Antwort im Format von ResultService::entry() mit erfundenen Spielern.
+ * Arbeitet mit einer Antwort im Format von ResultService::entry() mit erfundenen Spielern (EntryScenario).
  */
 final class EntryFormTest extends TestCase {
 
@@ -23,138 +22,10 @@ final class EntryFormTest extends TestCase {
 		require_once dirname( __DIR__ ) . '/Frontend/Stubs/WordPress.php';
 	}
 
-	/**
-	 * @param array<string,mixed> $current Gespeichertes Resultat.
-	 * @param array<string,mixed> $rules   Abweichende Regeln.
-	 * @return array<string,mixed>
-	 */
-	private static function entry( string $type = 'MM', array $current = array(), array $rules = array() ): array {
-		$cup        = 'CUP' === $type;
-		$candidate  = static fn( int $id, string $name, int $rank, string $reason = 'stamm', bool $ok = true, string $message = 'Stammspieler.', int $subs = 0 ): array => array(
-			'player_id'              => $id,
-			'name'                   => $name,
-			'license_no'             => 90000 + $id,
-			'classification'         => $rank,
-			'label'                  => 'C' . $rank,
-			'eligible'               => $ok,
-			'reason'                 => $reason,
-			'message'                => $message,
-			'substitute_appearances' => $subs,
-			'remaining'              => null,
-		);
-		$candidates = array(
-			'home' => array(
-				$candidate( 11, 'Hanna Heim', 8 ),
-				$candidate( 12, 'Hugo Heim', 7 ),
-				$candidate( 13, 'Hilde Heim', 7 ),
-				$candidate( 14, 'Hans Ersatz', 6, 'substitute', true, '2. Einsatz als Ersatz von maximal 3, danach gebunden.', 1 ),
-				$candidate( 15, 'Herta Gesperrt', 9, 'blocked_lower_team', false, 'Stammspieler sind für tiefer klassierte Mannschaften nicht spielberechtigt (Art. 12.2).' ),
-			),
-			'away' => array(
-				$candidate( 21, 'Gabi Gast', 8 ),
-				$candidate( 22, 'Gerd Gast', 7 ),
-				$candidate( 23, 'Greta Gast', 6 ),
-			),
-		);
-		return array(
-			'fixture'    => array(
-				'id'           => 1,
-				'type'         => $type,
-				'status'       => 'scheduled',
-				'status_label' => 'angesetzt',
-				'scheduled_at' => '2026-11-10 20:00:00',
-				'competition'  => $cup ? 'Cup A' : 'Gruppe B1',
-				'season'       => '2026-27',
-				'home'         => array( 'name' => 'Seefeld 1' ),
-				'away'         => array( 'name' => 'Wollishofen 1' ),
-				'home_score'   => null,
-				'away_score'   => null,
-			),
-			'can'        => array(
-				'enter'   => true,
-				'confirm' => false,
-				'object'  => false,
-				'decide'  => false,
-				'photo'   => true,
-			),
-			'roles'      => array( 'home' ),
-			'rules'      => array(
-				'sets_to_win'        => 3,
-				'set_points_enabled' => $rules['set_points_enabled'] ?? false,
-				'cup_mode'           => $rules['cup_mode'] ?? 'first_to_three',
-				'substitute_max'     => 3,
-				'slots'              => array(
-					'home' => $cup ? array( 'A', 'B' ) : array( 'A', 'B', 'C' ),
-					'away' => $cup ? array( 'Y', 'Z' ) : array( 'X', 'Y', 'Z' ),
-				),
-			),
-			'order'      => $cup ? GameOrder::cup() : GameOrder::team_match(),
-			'candidates' => $candidates,
-			'current'    => $current + array(
-				'lineup'      => array(
-					'home' => (object) array(),
-					'away' => (object) array(),
-				),
-				'substitutes' => array(),
-				'games'       => array(),
-				'warnings'    => array(),
-				'photo_id'    => null,
-			),
-			'history'    => array(),
-			'version'    => 'abc',
-		);
-	}
-
-	/**
-	 * Formular mit voller Aufstellung, optional mit fehlenden Slots.
-	 *
-	 * @param array<string,array<string,string>> $lineup Abweichungen pro Seite.
-	 * @return array{0:array<string,mixed>,1:array<string,mixed>} Daten und Zustand.
-	 */
-	private static function form( array $lineup = array(), string $type = 'MM', array $rules = array() ): array {
-		$entry          = self::entry( $type, array(), $rules );
-		$data           = EntryForm::data( $entry );
-		$form           = EntryForm::initial( $entry, $data );
-		$full           = 'CUP' === $type
-			? array(
-				'home' => array(
-					'A' => '11',
-					'B' => '12',
-				),
-				'away' => array(
-					'Y' => '21',
-					'Z' => '22',
-				),
-			)
-			: array(
-				'home' => array(
-					'A' => '11',
-					'B' => '12',
-					'C' => '13',
-				),
-				'away' => array(
-					'X' => '21',
-					'Y' => '22',
-					'Z' => '23',
-				),
-			);
-		$form['lineup'] = array_replace_recursive( $full, $lineup );
-		return array( $data, $form );
-	}
-
-	/**
-	 * @param array<string,mixed> $form Zustand.
-	 */
-	private static function play( array &$form, int $seq, int $home, int $away ): void {
-		$form['games'][ (string) $seq ]['st'] = 'played';
-		$form['games'][ (string) $seq ]['sh'] = $home;
-		$form['games'][ (string) $seq ]['sa'] = $away;
-	}
-
 	public function test_scores_and_data(): void {
 		self::assertSame( array( array( 3, 0 ), array( 3, 1 ), array( 3, 2 ), array( 2, 3 ), array( 1, 3 ), array( 0, 3 ) ), EntryForm::scores( 3 ) );
 
-		$data = EntryForm::data( self::entry(), array( 99 => 'Paul Extra' ) );
+		$data = EntryForm::data( EntryScenario::entry(), array( 99 => 'Paul Extra' ) );
 		self::assertNull( $data['cupTarget'] );
 		self::assertSame( 5, $data['maxSets'] );
 		self::assertSame( array( 'Seefeld 1', 'Wollishofen 1' ), array_values( $data['teams'] ) );
@@ -164,12 +35,12 @@ final class EntryFormTest extends TestCase {
 		self::assertFalse( $data['eligibility']['home']['15']['ok'] );
 		self::assertArrayHasKey( 'progress', $data['strings'] );
 
-		self::assertSame( 3, EntryForm::data( self::entry( 'CUP' ) )['cupTarget'] );
-		self::assertNull( EntryForm::data( self::entry( 'CUP', array(), array( 'cup_mode' => 'all_games' ) ) )['cupTarget'] );
+		self::assertSame( 3, EntryForm::data( EntryScenario::entry( 'CUP' ) )['cupTarget'] );
+		self::assertNull( EntryForm::data( EntryScenario::entry( 'CUP', array(), array( 'cup_mode' => 'all_games' ) ) )['cupTarget'] );
 	}
 
 	public function test_initial_state_from_saved_result(): void {
-		$entry = self::entry(
+		$entry = EntryScenario::entry(
 			'MM',
 			array(
 				'lineup' => array(
@@ -237,13 +108,13 @@ final class EntryFormTest extends TestCase {
 		self::assertSame( '', $form['games']['2']['st'], 'nicht erfasst' );
 		self::assertSame( array( 'AB', 'XZ' ), array( $form['games']['7']['hp'], $form['games']['7']['ap'] ), 'Paarung als Slots' );
 
-		$empty = EntryForm::initial( self::entry(), $data );
+		$empty = EntryForm::initial( EntryScenario::entry(), $data );
 		self::assertSame( '', $empty['lineup']['away']['Z'], 'ohne Resultat noch nicht gewählt' );
 		self::assertCount( 10, $empty['games'] );
 	}
 
 	public function test_view_of_empty_form(): void {
-		$entry = self::entry();
+		$entry = EntryScenario::entry();
 		$data  = EntryForm::data( $entry );
 		$view  = EntryForm::view( $data, EntryForm::initial( $entry, $data ) );
 
@@ -261,8 +132,8 @@ final class EntryFormTest extends TestCase {
 	}
 
 	public function test_missing_player_suggests_walkover(): void {
-		[ $data, $form ] = self::form( array( 'home' => array( 'C' => EntryForm::MISSING ) ) );
-		self::play( $form, 1, 3, 1 );
+		[ $data, $form ] = EntryScenario::form( array( 'home' => array( 'C' => EntryForm::MISSING ) ) );
+		EntryScenario::play( $form, 1, 3, 1 );
 		$view = EntryForm::view( $data, $form );
 
 		foreach ( array( 3, 6, 9 ) as $seq ) {
@@ -276,14 +147,14 @@ final class EntryFormTest extends TestCase {
 		self::assertSame( '4 von 10 erfasst', $view['progress'] );
 		self::assertTrue( $view['g1']['p31'] );
 		self::assertSame( 'Hanna Heim', $view['g1']['home'] );
-		self::assertSame( 'Paarung: Hanna Heim / Hugo Heim (automatisch)', $view['g7']['autoHome'] );
+		self::assertSame( 'Doppel Seefeld 1: Hanna Heim / Hugo Heim (automatisch)', $view['g7']['autoHome'] );
 		self::assertFalse( $view['g7']['pairHome'] );
 		self::assertTrue( $view['g7']['pairAway'], 'Gast mit drei Spielern wählt die Paarung' );
 	}
 
 	public function test_explicit_result_against_missing_player_can_be_fixed(): void {
-		[ $data, $form ] = self::form( array( 'away' => array( 'Z' => EntryForm::MISSING ) ) );
-		self::play( $form, 3, 1, 3 );
+		[ $data, $form ] = EntryScenario::form( array( 'away' => array( 'Z' => EntryForm::MISSING ) ) );
+		EntryScenario::play( $form, 3, 1, 3 );
 		$view = EntryForm::view( $data, $form );
 
 		self::assertFalse( $view['g3']['sug'] );
@@ -291,7 +162,7 @@ final class EntryFormTest extends TestCase {
 		self::assertSame( array( 'walkover', 'home' ), array( $view['g3']['fixSt'], $view['g3']['fixWin'] ) );
 		self::assertSame( 'Z fehlt in der Aufstellung: Das Spiel ist kampflos für Seefeld 1.', $view['g3']['hint'] );
 
-		[ $data, $form ] = self::form(
+		[ $data, $form ] = EntryScenario::form(
 			array(
 				'home' => array( 'C' => EntryForm::MISSING ),
 				'away' => array( 'Z' => EntryForm::MISSING ),
@@ -303,10 +174,10 @@ final class EntryFormTest extends TestCase {
 	}
 
 	public function test_cup_is_decided_after_third_win(): void {
-		[ $data, $form ] = self::form( array(), 'CUP' );
-		self::play( $form, 1, 3, 0 );
-		self::play( $form, 2, 3, 1 );
-		self::play( $form, 3, 3, 2 );
+		[ $data, $form ] = EntryScenario::form( array(), 'CUP' );
+		EntryScenario::play( $form, 1, 3, 0 );
+		EntryScenario::play( $form, 2, 3, 1 );
+		EntryScenario::play( $form, 3, 3, 2 );
 		$view = EntryForm::view( $data, $form );
 
 		self::assertTrue( $view['decided'] );
@@ -315,23 +186,23 @@ final class EntryFormTest extends TestCase {
 		self::assertFalse( $view['g3']['opt'] );
 		self::assertTrue( $view['g4']['opt'] && $view['g5']['opt'] );
 
-		self::play( $form, 4, 0, 3 );
+		EntryScenario::play( $form, 4, 0, 3 );
 		self::assertSame( '3:0', EntryForm::view( $data, $form )['total'], 'Spiele nach der Entscheidung zählen nicht' );
 
-		[ $data, $form ] = self::form( array( 'home' => array( 'B' => EntryForm::MISSING ) ), 'CUP' );
+		[ $data, $form ] = EntryScenario::form( array( 'home' => array( 'B' => EntryForm::MISSING ) ), 'CUP' );
 		$view            = EntryForm::view( $data, $form );
 		self::assertTrue( $view['g3']['woAway'], 'Doppel mit nur einem Spieler: kampflos' );
 		self::assertSame( 'Vorschlag: Für das Doppel fehlt ein Spieler, kampflos für Wollishofen 1.', $view['g3']['hint'] );
 
-		[ $data, $form ] = self::form( array(), 'CUP', array( 'cup_mode' => 'all_games' ) );
-		self::play( $form, 1, 3, 0 );
-		self::play( $form, 2, 3, 1 );
-		self::play( $form, 3, 3, 2 );
+		[ $data, $form ] = EntryScenario::form( array(), 'CUP', array( 'cup_mode' => 'all_games' ) );
+		EntryScenario::play( $form, 1, 3, 0 );
+		EntryScenario::play( $form, 2, 3, 1 );
+		EntryScenario::play( $form, 3, 3, 2 );
 		self::assertFalse( EntryForm::view( $data, $form )['g4']['opt'], 'alle Spiele werden gewertet' );
 	}
 
 	public function test_errors_and_modes(): void {
-		[ $data, $form ] = self::form();
+		[ $data, $form ] = EntryScenario::form();
 		$view            = EntryForm::view(
 			$data,
 			$form,
@@ -361,8 +232,8 @@ final class EntryFormTest extends TestCase {
 	}
 
 	public function test_set_points_rows_follow_the_result(): void {
-		[ $data, $form ] = self::form( array(), 'MM', array( 'set_points_enabled' => true ) );
-		self::play( $form, 1, 3, 1 );
+		[ $data, $form ] = EntryScenario::form( array(), 'MM', array( 'set_points_enabled' => true ) );
+		EntryScenario::play( $form, 1, 3, 1 );
 		$form['games']['1']['pts'][0] = array( '11', '8' );
 		$view                         = EntryForm::view( $data, $form );
 

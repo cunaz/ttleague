@@ -14,9 +14,10 @@ use TTLeague\Domain\Rules\SeasonRules;
 /**
  * Baut aus der Antwort von ResultService::entry() die Daten für das Formular (Spielfolge,
  * Kandidaten, Texte), den Startzustand und das Ansichtsmodell, an das die Direktiven der
- * Interactivity API gebunden sind. assets/js/entry.js rechnet dasselbe Modell im Browser nach
- * (buildView); beide müssen übereinstimmen, damit die serverseitig gerenderte Seite beim
- * Hydrieren gleich bleibt. Reine Klasse ohne WordPress ausser den Übersetzungen.
+ * Interactivity API gebunden sind. assets/js/entry-view.js rechnet dasselbe Modell im Browser
+ * nach (buildView); beide müssen übereinstimmen, damit die serverseitig gerenderte Seite beim
+ * Hydrieren gleich bleibt (tests/Unit/Results/EntryViewParityTest.php). Reine Klasse ohne
+ * WordPress ausser den Übersetzungen.
  *
  * Zustand eines Slots: Spieler-ID als Text, «none» (Spieler fehlt) oder leer (noch nicht gewählt).
  * Zustand eines Spiels: st (leer, played, walkover, not_played), sh/sa (Sätze), win (Sieger bei
@@ -176,7 +177,7 @@ final class EntryForm {
 	}
 
 	/**
-	 * Ansichtsmodell zu einem Zustand (gleiche Rechnung wie buildView in assets/js/entry.js).
+	 * Ansichtsmodell zu einem Zustand (gleiche Rechnung wie buildView in assets/js/entry-view.js).
 	 *
 	 * @param array<string,mixed>  $data   Daten aus data().
 	 * @param array<string,mixed>  $form   Zustand des Formulars.
@@ -355,8 +356,8 @@ final class EntryForm {
 				'np'       => 'not_played' === $effect['st'],
 				'pairHome' => $double && count( $present['home'] ) > 2 && in_array( $effect['st'], array( '', 'played' ), true ),
 				'pairAway' => $double && count( $present['away'] ) > 2 && in_array( $effect['st'], array( '', 'played' ), true ),
-				'autoHome' => $double && 2 === count( $present['home'] ) ? sprintf( $s['auto'], $name( 'home', $present['home'][0] ) . ' / ' . $name( 'home', $present['home'][1] ) ) : '',
-				'autoAway' => $double && 2 === count( $present['away'] ) ? sprintf( $s['auto'], $name( 'away', $present['away'][0] ) . ' / ' . $name( 'away', $present['away'][1] ) ) : '',
+				'autoHome' => $double && 2 === count( $present['home'] ) ? sprintf( $s['auto'], $teams['home'], $name( 'home', $present['home'][0] ) . ' / ' . $name( 'home', $present['home'][1] ) ) : '',
+				'autoAway' => $double && 2 === count( $present['away'] ) ? sprintf( $s['auto'], $teams['away'], $name( 'away', $present['away'][0] ) . ' / ' . $name( 'away', $present['away'][1] ) ) : '',
 				'pts'      => $data['setPoints'] && $set && 'played' === $explicit['st'],
 				'err'      => $errors[ 'games.' . $seq ] ?? '',
 				'errHome'  => $errors[ 'games.' . $seq . '.home_players' ] ?? '',
@@ -415,8 +416,8 @@ final class EntryForm {
 			'unknown'          => __( 'Unbekannter Spieler', 'ttleague' ),
 			/* translators: %s: Platz in der Aufstellung, z. B. A */
 			'slotMissing'      => __( '%s fehlt', 'ttleague' ),
-			/* translators: %s: Namen der beiden Doppelspieler */
-			'auto'             => __( 'Paarung: %s (automatisch)', 'ttleague' ),
+			/* translators: 1: Mannschaft, 2: Namen der beiden Doppelspieler */
+			'auto'             => __( 'Doppel %1$s: %2$s (automatisch)', 'ttleague' ),
 			'open'             => __( 'offen', 'ttleague' ),
 			'walkover'         => __( 'w.o.', 'ttleague' ),
 			'notPlayed'        => __( 'nicht gespielt', 'ttleague' ),

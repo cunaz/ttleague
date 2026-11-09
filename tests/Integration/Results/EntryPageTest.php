@@ -24,6 +24,7 @@ use TTLeague\Results\MyGames;
 use TTLeague\Results\ResultService;
 use TTLeague\Tests\Integration\Frontend\Seeder;
 use TTLeague\Tests\Integration\IntegrationTestCase;
+use TTLeague\Tests\Unit\Results\EntryScript;
 
 /**
  * Erfundene Clubs Seefeld (Teams 1 und «Seefeld <2> & Co») und Wollishofen in einer Gruppe der
@@ -273,6 +274,64 @@ final class EntryPageTest extends IntegrationTestCase {
 		self::assertSame( array( 'correct', 'forfeit', 'reset' ), $final['config']['decisions'] );
 		self::assertSame( '', $final['state']['mode'], 'Formular erst nach «Korrigieren»' );
 		self::assertStringContainsString( 'Entscheid der TK: abgeschlossen', $final['html'] );
+	}
+
+	public function test_script_payload_is_accepted_by_the_service(): void {
+		if ( ! EntryScript::available() ) {
+			self::markTestSkipped( 'Node ist nicht verfügbar.' );
+		}
+		$entry = $this->service->entry( $this->id['fixture'], $this->actor['home'] );
+		$data  = EntryForm::data( $entry );
+		$form  = EntryForm::initial( $entry, $data );
+
+		// C fehlt: Spiele 3, 6 und 9 bleiben offen und gehen als Vorschlag kampflos an den Gast.
+		$form['lineup'] = array(
+			'home' => array(
+				'A' => (string) $this->id['h4'],
+				'B' => (string) $this->id['h5'],
+				'C' => EntryForm::MISSING,
+			),
+			'away' => array(
+				'X' => (string) $this->id['a1'],
+				'Y' => (string) $this->id['a2'],
+				'Z' => (string) $this->id['a3'],
+			),
+		);
+		foreach ( array(
+			1  => '3:1',
+			2  => '3:0',
+			4  => '1:3',
+			5  => '3:1',
+			7  => '3:2',
+			8  => '2:3',
+			10 => '3:0',
+		) as $seq => $result ) {
+			[ $h, $a ]                            = array_map( 'intval', explode( ':', $result ) );
+			$form['games'][ (string) $seq ]['st'] = 'played';
+			$form['games'][ (string) $seq ]['sh'] = $h;
+			$form['games'][ (string) $seq ]['sa'] = $a;
+		}
+		$form['games']['7']['ap'] = 'XZ';
+
+		self::assertSame( array(), EntryScript::call( 'validate', array( $data, $form ) ) );
+		$payload = EntryScript::call( 'payload', array( $data, $form, $entry['version'] ) );
+		self::assertSame(
+			array(
+				'sequence' => 3,
+				'status'   => 'walkover',
+				'winner'   => 'away',
+			),
+			$payload['games'][2]
+		);
+		self::assertSame( array( $this->id['a1'], $this->id['a3'] ), $payload['games'][6]['away_players'] );
+		self::assertArrayNotHasKey( 'home_players', $payload['games'][6], 'zwei Spieler: Paarung automatisch' );
+
+		$result = $this->service->submit( $this->id['fixture'], $payload, $this->actor['home'] );
+		self::assertSame( array( 'provisional', 5, 5 ), array( $result['status'], $result['home_score'], $result['away_score'] ) );
+
+		$form['lineup']['away']['Z'] = '';
+		$form['games']['10']['st']   = '';
+		self::assertSame( array( 'lineup.away.Z', 'games.10' ), array_keys( EntryScript::call( 'validate', array( $data, $form ) ) ) );
 	}
 
 	public function test_public_match_report_stays_unchanged_for_guests(): void {

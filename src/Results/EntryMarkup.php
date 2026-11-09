@@ -581,10 +581,16 @@ final class EntryMarkup {
 			. '</p>';
 
 		/* translators: %d: Spielnummer */
-		$out .= '<div class="ttl-game__controls"><div class="ttl-game__scores" role="group" aria-label="' . esc_attr( sprintf( __( 'Sätze Spiel %d (Heim : Gast)', 'ttleague' ), $seq ) ) . '">';
+		// Satzresultat als Radiogruppe: ein Tabulatorhalt pro Spiel, Pfeiltasten wählen; nochmals
+		// antippen hebt die Wahl auf (actions.setScore).
+		$out .= '<div class="ttl-game__controls"><fieldset class="ttl-game__scores">'
+			/* translators: %d: Spielnummer */
+			. '<legend class="screen-reader-text">' . esc_html( sprintf( __( 'Sätze Spiel %d (Heim : Gast)', 'ttleague' ), $seq ) ) . '</legend>';
 		foreach ( $this->data['scores'] as [ $h, $a ] ) {
-			$key  = 'p' . $h . $a;
-			$out .= '<button type="button" class="ttl-score ttl-score--' . ( $h > $a ? 'home' : 'away' ) . '"'
+			$key   = 'p' . $h . $a;
+			$radio = $id . '-s' . $h . $a;
+			$out  .= '<span class="ttl-score ttl-score--' . ( $h > $a ? 'home' : 'away' ) . '">'
+				. '<input type="radio" name="' . esc_attr( $id . '-score' ) . '" id="' . esc_attr( $radio ) . '" value="' . esc_attr( $h . ':' . $a ) . '"'
 				. ' data-wp-context="' . esc_attr(
 					self::json(
 						array(
@@ -593,9 +599,10 @@ final class EntryMarkup {
 						)
 					)
 				) . '" data-wp-on--click="actions.setScore"'
-				. $this->bind_bool( 'aria-pressed', $g . '.' . $key ) . $this->disabled( 'busy' ) . '>' . esc_html( $h . ':' . $a ) . '</button>';
+				. $this->checked( $g . '.' . $key ) . $this->disabled( 'busy' ) . '>'
+				. '<label for="' . esc_attr( $radio ) . '">' . esc_html( $h . ':' . $a ) . '</label></span>';
 		}
-		$out .= '</div>';
+		$out .= '</fieldset>';
 
 		$out .= '<div class="ttl-game__wo">'
 			. '<span class="ttl-check"><input type="checkbox" id="' . esc_attr( $id . '-wo' ) . '" data-wp-on--change="actions.toggleWalkover"' . $this->checked( $g . '.wo' ) . $this->disabled( 'busy' ) . '>'

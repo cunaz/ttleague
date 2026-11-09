@@ -23,6 +23,7 @@ use TTLeague\Rest\ResultController;
 final class EntryBlock {
 
 	public const SCRIPT = '@ttleague/entry';
+	public const VIEW   = '@ttleague/entry-view';
 	public const STYLE  = 'ttleague-entry';
 
 	/** Abfrageparameter mit der Nummer der Begegnung. */
@@ -40,7 +41,8 @@ final class EntryBlock {
 	 */
 	public static function register_assets(): void {
 		wp_register_style( self::STYLE, TTLEAGUE_URL . 'assets/css/entry.css', array( Assets::STYLE ), self::version( 'assets/css/entry.css' ) );
-		wp_register_script_module( self::SCRIPT, TTLEAGUE_URL . 'assets/js/entry.js', array( '@wordpress/interactivity' ), self::version( 'assets/js/entry.js' ) );
+		wp_register_script_module( self::VIEW, TTLEAGUE_URL . 'assets/js/entry-view.js', array(), self::version( 'assets/js/entry-view.js' ) );
+		wp_register_script_module( self::SCRIPT, TTLEAGUE_URL . 'assets/js/entry.js', array( '@wordpress/interactivity', self::VIEW ), self::version( 'assets/js/entry.js' ) );
 	}
 
 	public static function register_block(): void {
