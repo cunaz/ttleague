@@ -1,18 +1,21 @@
 <?php
 /**
  * Plugin Name:       ttleague
- * Plugin URI:        https://github.com/ttleague/ttleague
+ * Plugin URI:        https://github.com/cunaz/ttleague
  * Description:       Spielbetrieb einer Tischtennis-Liga: Meisterschaft, Cup, Ranglistenturnier, Spieler und Wertungszahl. Entwickelt für den SFFS Firmensport Region Zürich.
  * Version:           0.1.0
  * Requires at least: 6.7
  * Requires PHP:      8.2
- * Author:            ttleague Contributors
+ * Author:            Rupert Wildner
+ * Author URI:        https://github.com/cunaz
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       ttleague
  * Domain Path:       /languages
  *
  * @package TTLeague
+ * @copyright 2026 Rupert Wildner
+ * @license GPL-2.0-or-later
  */
 
 declare(strict_types=1);

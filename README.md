@@ -16,6 +16,10 @@ Status: in Entwicklung, noch nicht einsatzbereit.
 | `tests/` | PHPUnit: Unit-Tests ohne WordPress, Integrationstests gegen MariaDB/MySQL |
 | `docs/` | Datenmodell und Konventionen, Entwicklung |
 
+## Theme
+
+Die Darstellung besteht aus Blöcken und funktioniert mit jedem Block-Theme; Farben, Schriften und Abstände kommen aus dem aktiven Theme (getestet mit Twenty Twenty-Five). Ein eigenes Child-Theme gehört zur jeweiligen Instanz.
+
 ## Plugin und Instanz
 
 Das Plugin enthält nur generischen Code und keine Personendaten. Alles, was zu einer konkreten Liga gehört, lebt in einem eigenen, privaten Instanz-Repository: Theme und Inhalte, Seiten-Setup, Deployment sowie die Übernahme von Altdaten aus früheren Systemen (als Begleit-Plugin, das die Tabellen von ttleague befüllt). Die Datenkonventionen dafür stehen in [docs/datenmodell.md](docs/datenmodell.md).
@@ -23,6 +27,12 @@ Das Plugin enthält nur generischen Code und keine Personendaten. Alles, was zu 
 ## Entwicklung
 
 Voraussetzungen: PHP 8.2 oder neuer, Composer, für Integrationstests MariaDB oder MySQL.
+
+Nach dem Klonen die Git-Hooks aktivieren. Sie verhindern, dass KI-Verläufe, Zugangsdaten, lokale Pfade oder Links auf KI-Sitzungen versioniert werden; dieselbe Prüfung läuft in der CI:
+
+```bash
+git config core.hooksPath .githooks
+```
 
 ```bash
 composer install
@@ -47,4 +57,8 @@ Alle Regelparameter sind pro Saison konfigurierbar (`SeasonRules`).
 
 ## Lizenz
 
-GPL-2.0-or-later, siehe [LICENSE](LICENSE).
+Copyright (C) 2026 Rupert Wildner.
+
+ttleague ist freie Software unter der GNU General Public License, Version 2 oder (nach deiner Wahl) jeder späteren Version, siehe [LICENSE](LICENSE). Das entspricht der Lizenz von WordPress selbst.
+
+Beiträge sind willkommen; die Bedingungen dafür stehen in [CONTRIBUTING.md](CONTRIBUTING.md).

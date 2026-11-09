@@ -1,8 +1,19 @@
 {
-    "name": "ttleague/ttleague",
+    "name": "cunaz/ttleague",
     "description": "WordPress-Plugin für den Spielbetrieb einer Tischtennis-Liga: Meisterschaft, Cup, Ranglistenturnier, Spieler, Wertungszahl. Entwickelt für den SFFS Firmensport Region Zürich.",
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Rupert Wildner",
+            "homepage": "https://github.com/cunaz"
+        }
+    ],
+    "homepage": "https://github.com/cunaz/ttleague",
+    "support": {
+        "issues": "https://github.com/cunaz/ttleague/issues",
+        "source": "https://github.com/cunaz/ttleague"
+    },
     "require": {
         "php": ">=8.2",
         "ext-dom": "*",
