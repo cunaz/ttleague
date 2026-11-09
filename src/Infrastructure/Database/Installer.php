@@ -13,6 +13,9 @@ final class Installer {
 
 	public const OPTION = 'ttleague_db_version';
 
+	/** Merkt sich (automatisch geladen), dass person.user_id eindeutig ist. */
+	public const USER_UNIQUE_OPTION = 'ttleague_person_user_unique';
+
 	/**
 	 * Aktivierungshook: Tabellen und Rollen anlegen.
 	 */
@@ -30,7 +33,8 @@ final class Installer {
 			return;
 		}
 		// Fehlt der UNIQUE-Index auf person.user_id noch, höchstens stündlich erneut versuchen.
-		if ( false === get_transient( 'ttleague_person_user_index' ) ) {
+		// Die Option ist automatisch geladen; im Normalfall kostet die Prüfung keine Abfrage.
+		if ( '1' !== get_option( self::USER_UNIQUE_OPTION ) && false === get_transient( 'ttleague_person_user_index' ) ) {
 			set_transient( 'ttleague_person_user_index', 1, HOUR_IN_SECONDS );
 			self::ensure_unique_person_user();
 		}
@@ -61,8 +65,10 @@ final class Installer {
 	public static function ensure_unique_person_user(): bool {
 		$index = new PersonUserIndex( WpdbDb::from_global() );
 		if ( $index->migrate() ) {
+			update_option( self::USER_UNIQUE_OPTION, '1', true );
 			return true;
 		}
+		update_option( self::USER_UNIQUE_OPTION, '0', true );
 		error_log( 'ttleague: Konten mit mehreren Personen verknüpft (user_id ' . implode( ', ', $index->duplicates() ) . '). Neue Verknüpfungen sind gesperrt, bis das mit «wp ttleague account unlink» bereinigt ist.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
 		return false;
 	}

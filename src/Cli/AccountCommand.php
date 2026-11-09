@@ -51,13 +51,19 @@ final class AccountCommand {
 		if ( null !== $other ) {
 			\WP_CLI::error( sprintf( 'Das Konto ist bereits mit Person %d verknüpft.', $other ) );
 		}
+		$before  = empty( $person['user_id'] ) ? null : array( 'user_id' => (int) $person['user_id'] );
+		$user_id = (int) $user->ID;
 		try {
-			$accounts->link_user( $person_id, (int) $user->ID );
+			// Verknüpfung und Protokolleintrag gemeinsam oder gar nicht.
+			Services::db()->transaction(
+				static function () use ( $accounts, $person_id, $user_id, $before ): void {
+					$accounts->link_user( $person_id, $user_id );
+					Services::audit()->record( 'person', $person_id, 'linked', self::actor(), $before, array( 'user_id' => $user_id ), 'wp-cli' );
+				}
+			);
 		} catch ( \RuntimeException $e ) {
 			\WP_CLI::error( $e->getMessage() );
 		}
-		$before = empty( $person['user_id'] ) ? null : array( 'user_id' => (int) $person['user_id'] );
-		Services::audit()->record( 'person', $person_id, 'linked', self::actor(), $before, array( 'user_id' => (int) $user->ID ), 'wp-cli' );
 		\WP_CLI::success( sprintf( 'Person %d ist mit Konto %s verknüpft.', $person_id, $user->user_login ) );
 	}
 
@@ -79,8 +85,12 @@ final class AccountCommand {
 		if ( null === $person ) {
 			\WP_CLI::error( 'Person nicht gefunden.' );
 		}
-		Services::accounts()->unlink_user( $person_id );
-		Services::audit()->record( 'person', $person_id, 'unlinked', self::actor(), array( 'user_id' => $person['user_id'] ), null, 'wp-cli' );
+		Services::db()->transaction(
+			static function () use ( $person_id, $person ): void {
+				Services::accounts()->unlink_user( $person_id );
+				Services::audit()->record( 'person', $person_id, 'unlinked', self::actor(), array( 'user_id' => $person['user_id'] ), null, 'wp-cli' );
+			}
+		);
 		\WP_CLI::success( sprintf( 'Verknüpfung von Person %d aufgehoben.', $person_id ) );
 		if ( ! \TTLeague\Infrastructure\Database\Installer::ensure_unique_person_user() ) {
 			\WP_CLI::warning( 'Es gibt weiterhin Konten mit mehreren Personen; Verknüpfen bleibt gesperrt.' );
