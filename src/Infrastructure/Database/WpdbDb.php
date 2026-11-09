@@ -84,25 +84,30 @@ final class WpdbDb implements Db {
 	}
 
 	public function transaction( callable $work ): mixed {
-		if ( 0 === $this->depth ) {
-			$this->wpdb->query( 'START TRANSACTION' );
+		$outer = 0 === $this->depth;
+		if ( $outer && false === $this->wpdb->query( 'START TRANSACTION' ) ) {
+			$this->throw_on_error();
+			throw new DbException( 'Datenbankfehler: Transaktion konnte nicht gestartet werden.' );
 		}
 		++$this->depth;
 		try {
 			$result = $work( $this );
-			--$this->depth;
-			if ( 0 === $this->depth ) {
-				$this->wpdb->query( 'COMMIT' );
-			}
-			return $result;
 		} catch ( \Throwable $e ) {
 			--$this->depth;
-			if ( 0 === $this->depth ) {
+			if ( $outer ) {
 				$this->wpdb->query( 'ROLLBACK' );
 			}
 			throw $e;
 		}
+		--$this->depth;
+		if ( $outer && false === $this->wpdb->query( 'COMMIT' ) ) {
+			$this->wpdb->query( 'ROLLBACK' );
+			$this->throw_on_error();
+			throw new DbException( 'Datenbankfehler: Transaktion konnte nicht abgeschlossen werden.' );
+		}
+		return $result;
 	}
+
 
 	public function now(): string {
 		return gmdate( 'Y-m-d H:i:s' );

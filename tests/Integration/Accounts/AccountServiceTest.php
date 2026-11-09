@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace TTLeague\Tests\Integration\Accounts;
 
 use TTLeague\Accounts\AccountService;
+use TTLeague\Infrastructure\AuditLog;
 use TTLeague\Tests\Integration\Frontend\Seeder;
 use TTLeague\Tests\Integration\IntegrationTestCase;
 
@@ -89,6 +90,33 @@ final class AccountServiceTest extends IntegrationTestCase {
 		self::assertNull( $this->user_of( $this->first ) );
 		$this->accounts->link_existing( $this->second, 77 );
 		self::assertSame( '77', $this->user_of( $this->second ), 'Konto ist wieder frei' );
+	}
+
+	public function test_link_and_audit_are_rolled_back_together(): void {
+		$audit = new AuditLog( $this->db );
+		try {
+			$this->db->transaction(
+				function () use ( $audit ): void {
+					$this->accounts->link_user( $this->first, 77 );
+					$audit->record( 'person', $this->first, 'linked', null, null, array( 'user_id' => 77 ) );
+					throw new \RuntimeException( 'Protokoll konnte nicht geschrieben werden.' );
+				}
+			);
+			self::fail( 'Fehler erwartet.' );
+		} catch ( \RuntimeException $e ) {
+			self::assertSame( 'Protokoll konnte nicht geschrieben werden.', $e->getMessage() );
+		}
+
+		self::assertNull( $this->user_of( $this->first ), 'Verknüpfung zurückgerollt' );
+		self::assertSame( '0', (string) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )}" ), 'Protokoll zurückgerollt' );
+	}
+
+	public function test_tables_use_a_transactional_engine(): void {
+		$engines = $this->db->get_col(
+			'SELECT DISTINCT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (%s, %s)',
+			array( $this->db->table( 'person' ), $this->db->table( 'audit_log' ) )
+		);
+		self::assertSame( array( 'InnoDB' ), $engines );
 	}
 
 	public function test_salutation(): void {

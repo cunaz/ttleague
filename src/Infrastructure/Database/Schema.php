@@ -71,6 +71,10 @@ final class Schema {
 	public static function statements( string $prefix, string $charset_collate ): array {
 		$t = static fn( string $name ): string => self::table( $name, $prefix );
 
+		// Transaktionen (Erfassung, Verknüpfungen mit Änderungsprotokoll) brauchen InnoDB;
+		// ausdrücklich, damit ein anderer Server-Standard nichts ändert.
+		$charset_collate = 'ENGINE=InnoDB ' . $charset_collate;
+
 		$source_ref = "source_site varchar(64) DEFAULT NULL,\n  source_type varchar(32) DEFAULT NULL,\n  source_id varchar(128) DEFAULT NULL,";
 
 		return array(
