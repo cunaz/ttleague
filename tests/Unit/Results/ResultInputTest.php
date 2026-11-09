@@ -160,6 +160,19 @@ final class ResultInputTest extends TestCase {
 		self::assertContains( 'games', $fields );
 	}
 
+	public function test_photo_id_is_ignored(): void {
+		foreach ( array( 'abc', 0, -3, array( 5 ), 77 ) as $photo ) {
+			$input = self::parse(
+				array(
+					'lineup'   => array(),
+					'games'    => array(),
+					'photo_id' => $photo,
+				)
+			);
+			self::assertFalse( property_exists( $input, 'photo_id' ), 'das Foto verknüpft nur POST fixtures/{id}/photo' );
+		}
+	}
+
 	public function test_comment_length(): void {
 		$fields = array_column(
 			self::errors(

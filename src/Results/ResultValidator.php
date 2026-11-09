@@ -56,8 +56,8 @@ final class ResultValidator {
 		$this->warnings = array();
 		$rules          = $this->ctx->rules;
 
-		[ $lineup, $bound ] = $this->lineup( $input, $rules, $lenient );
-		$present            = array(
+		$lineup  = $this->lineup( $input, $rules, $lenient );
+		$present = array(
 			'home' => $input->present( 'home' ),
 			'away' => $input->present( 'away' ),
 		);
@@ -162,17 +162,16 @@ final class ResultValidator {
 			throw ResultException::invalid( $this->errors );
 		}
 
-		return new ValidatedResult( $lineup, $rows, $team_result, $this->warnings, $bound );
+		return new ValidatedResult( $lineup, $rows, $team_result, $this->warnings );
 	}
 
 	/**
 	 * Aufstellung beider Seiten prüfen.
 	 *
-	 * @return array{0:list<array{side:string,slot:string,player_id:int,is_substitute:bool}>,1:list<array{player_id:int,team_id:int}>}
+	 * @return list<array{side:string,slot:string,player_id:int,is_substitute:bool}>
 	 */
 	private function lineup( ResultInput $input, SeasonRules $rules, bool $lenient ): array {
 		$rows  = array();
-		$bound = array();
 		$sides = array();
 		foreach ( array( 'home', 'away' ) as $side ) {
 			$roster = $this->sides[ $side ];
@@ -205,10 +204,7 @@ final class ResultValidator {
 				} elseif ( $is_substitute && null !== $roster->team_id ) {
 					$number = $eligibility->substitute_appearances + 1;
 					if ( $number >= $rules->substitute_max ) {
-						$bound[] = array(
-							'player_id' => $player_id,
-							'team_id'   => $roster->team_id,
-						);
+						// Die Bindung im Kader bestimmt der ResultService nach dem Speichern aus den Einsätzen.
 						/* translators: 1: Nummer des Einsatzes, 2: Spielername, 3: Mannschaft */
 						$this->warnings[] = sprintf( __( '%1$d. Ersatzeinsatz von %2$s: ab jetzt an %3$s gebunden (Art. 12.5).', 'ttleague' ), $number, $name, $roster->name );
 					} else {
@@ -225,16 +221,13 @@ final class ResultValidator {
 				$sides[ $side ][] = $player_id;
 			}
 
-			$minimum = $this->ctx->is_cup() ? 1 : 2;
-			if ( count( $input->present( $side ) ) < $minimum ) {
+			if ( count( $input->present( $side ) ) < 2 ) {
 				$this->error(
 					'lineup.' . $side,
 					$this->ctx->is_cup()
-						? __( 'Die Cup-Mannschaft braucht mindestens einen Spieler.', 'ttleague' )
+						? __( 'Die Cup-Mannschaft besteht aus zwei Spielern (Art. 19.1). Tritt sie unvollständig an, entscheidet die TK über ein Forfait.', 'ttleague' )
 						: __( 'Eine Mannschaft braucht mindestens zwei Spieler (Art. 14.2).', 'ttleague' )
 				);
-			} elseif ( $this->ctx->is_cup() && count( $input->present( $side ) ) < 2 ) {
-				$this->warnings[] = __( 'Eine Cup-Mannschaft ist nur mit einem Spieler angetreten.', 'ttleague' );
 			}
 		}
 
@@ -242,7 +235,7 @@ final class ResultValidator {
 			/* translators: %s: Spielername */
 			$this->error( 'lineup', sprintf( __( '%s kann nicht für beide Seiten spielen.', 'ttleague' ), ( $this->names )( $player_id ) ) );
 		}
-		return array( $rows, $bound );
+		return $rows;
 	}
 
 	/**

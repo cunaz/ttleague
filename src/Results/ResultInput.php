@@ -21,7 +21,6 @@ final class ResultInput {
 	 * @param array<string,int|null> $home    Slot => Spieler-ID.
 	 * @param array<string,int|null> $away    Slot => Spieler-ID.
 	 * @param array<int,GameInput>   $games   Sequenz => Spiel.
-	 * @param int|null               $photo_id Anhang mit dem Foto des Spielberichts.
 	 * @param string|null            $comment Bemerkung.
 	 * @param string|null            $version Erwarteter Stand (gegen gleichzeitige Änderungen).
 	 */
@@ -29,7 +28,6 @@ final class ResultInput {
 		public readonly array $home,
 		public readonly array $away,
 		public readonly array $games,
-		public readonly ?int $photo_id = null,
 		public readonly ?string $comment = null,
 		public readonly ?string $version = null,
 	) {}
@@ -81,10 +79,7 @@ final class ResultInput {
 		}
 		ksort( $games );
 
-		$photo = $data['photo_id'] ?? null;
-		if ( null !== $photo && null === self::int( $photo ) ) {
-			$errors[] = self::error( 'photo_id', __( 'Ungültiges Foto.', 'ttleague' ) );
-		}
+		// photo_id wird ignoriert: Das Foto verknüpft POST fixtures/{id}/photo.
 		$comment = self::text( $data['comment'] ?? null );
 		if ( null !== $comment && mb_strlen( $comment ) > 2000 ) {
 			$errors[] = self::error( 'comment', __( 'Die Bemerkung ist zu lang (höchstens 2000 Zeichen).', 'ttleague' ) );
@@ -94,7 +89,7 @@ final class ResultInput {
 		if ( array() !== $errors ) {
 			throw ResultException::invalid( $errors );
 		}
-		return new self( $home, $away, $games, null === $photo ? null : self::int( $photo ), $comment, $version );
+		return new self( $home, $away, $games, $comment, $version );
 	}
 
 	/**

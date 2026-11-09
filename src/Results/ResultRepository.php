@@ -277,26 +277,58 @@ final class ResultRepository {
 	}
 
 	/**
-	 * Hält die Bindung nach dem dritten Ersatzeinsatz im Kader fest (nur hinzufügen).
-	 *
-	 * @param list<array{player_id:int,team_id:int}> $bound Neu gebundene Spieler.
+	 * Sperrt die Begegnung bis zum Ende der laufenden Transaktion (SELECT … FOR UPDATE).
+	 * Muss die erste Abfrage der Transaktion sein: Erst danach gelesene Daten zeigen den Stand
+	 * nach allen Transaktionen, die die Sperre vorher hielten.
 	 */
-	public function add_bindings( array $bound, ?string $date ): void {
-		foreach ( $bound as $row ) {
-			$exists = $this->db->get_var(
-				"SELECT id FROM {$this->db->table( 'team_roster' )} WHERE team_id = %d AND player_id = %d",
-				array( $row['team_id'], $row['player_id'] )
-			);
-			if ( null !== $exists ) {
+	public function lock( int $fixture_id ): void {
+		$this->db->get_var( "SELECT id FROM {$this->db->table( 'fixture' )} WHERE id = %d FOR UPDATE", array( $fixture_id ) );
+	}
+
+	/**
+	 * Spieler in der Aufstellung einer Begegnung.
+	 *
+	 * @return list<int>
+	 */
+	public function lineup_players( int $fixture_id ): array {
+		return array_map(
+			'intval',
+			$this->db->get_col( "SELECT DISTINCT player_id FROM {$this->db->table( 'lineup' )} WHERE fixture_id = %d", array( $fixture_id ) )
+		);
+	}
+
+	/**
+	 * Setzt die Bindung eines Spielers in der Saison (Kadereintrag «bound») auf den berechneten
+	 * Stand: höchstens ein Eintrag; entfällt die Bindung, wird er gelöscht.
+	 *
+	 * @param array{team_id:int,valid_from:string|null}|null $binding Bindung oder null.
+	 */
+	public function replace_binding( int $season_id, int $player_id, ?array $binding ): void {
+		$kept = false;
+		foreach ( $this->db->get_results(
+			"SELECT r.id, r.team_id, r.valid_from FROM {$this->db->table( 'team_roster' )} r
+			JOIN {$this->db->table( 'team' )} t ON t.id = r.team_id
+			WHERE r.player_id = %d AND r.kind = 'bound' AND t.season_id = %d
+			ORDER BY r.id",
+			array( $player_id, $season_id )
+		) as $row ) {
+			if ( ! $kept && null !== $binding && (int) $row['team_id'] === $binding['team_id'] ) {
+				$kept = true;
+				if ( $row['valid_from'] !== $binding['valid_from'] ) {
+					$this->db->update( 'team_roster', array( 'valid_from' => $binding['valid_from'] ), array( 'id' => (int) $row['id'] ) );
+				}
 				continue;
 			}
+			$this->db->delete( 'team_roster', array( 'id' => (int) $row['id'] ) );
+		}
+		if ( ! $kept && null !== $binding ) {
 			$this->db->insert(
 				'team_roster',
 				array(
-					'team_id'    => $row['team_id'],
-					'player_id'  => $row['player_id'],
+					'team_id'    => $binding['team_id'],
+					'player_id'  => $player_id,
 					'kind'       => 'bound',
-					'valid_from' => null === $date ? null : substr( $date, 0, 10 ),
+					'valid_from' => $binding['valid_from'],
 				)
 			);
 		}

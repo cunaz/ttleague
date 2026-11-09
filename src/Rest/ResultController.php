@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace TTLeague\Rest;
 
+use TTLeague\Domain\Match\FixtureWorkflow as Flow;
+use TTLeague\Results\PhotoStorage;
 use TTLeague\Results\ResultException;
 use TTLeague\Results\ResultInput;
 use TTLeague\Results\Results;
@@ -21,6 +23,9 @@ use TTLeague\Results\Results;
 final class ResultController {
 
 	public const NAMESPACE = 'ttleague/v1';
+
+	/** Route des Fotos (GET liefert die Datei, POST lädt hoch). */
+	public const PHOTO_ROUTE = '/fixtures/(?P<id>\d+)/photo';
 
 	/** Höchstgrösse eines Fotos in Bytes. */
 	public const PHOTO_MAX_BYTES = 10485760;
@@ -50,7 +55,6 @@ final class ResultController {
 			'/fixtures/(?P<id>\d+)/confirm'   => array( 'POST', 'confirm' ),
 			'/fixtures/(?P<id>\d+)/objection' => array( 'POST', 'objection' ),
 			'/fixtures/(?P<id>\d+)/decision'  => array( 'POST', 'decision' ),
-			'/fixtures/(?P<id>\d+)/photo'     => array( 'POST', 'photo' ),
 		);
 		foreach ( $routes as $route => [ $method, $callback ] ) {
 			register_rest_route(
@@ -64,6 +68,29 @@ final class ResultController {
 				)
 			);
 		}
+		register_rest_route(
+			self::NAMESPACE,
+			self::PHOTO_ROUTE,
+			array(
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( self::class, 'photo' ),
+					'permission_callback' => array( self::class, 'logged_in' ),
+					'args'                => $id,
+				),
+				array(
+					'methods'             => 'GET',
+					'callback'            => array( self::class, 'photo_file' ),
+					'permission_callback' => array( self::class, 'logged_in' ),
+					'args'                => $id + array(
+						'attachment' => array(
+							'type'    => 'integer',
+							'minimum' => 1,
+						),
+					),
+				),
+			)
+		);
 		register_rest_route(
 			self::NAMESPACE,
 			'/me/fixtures',
@@ -89,7 +116,14 @@ final class ResultController {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public static function entry( \WP_REST_Request $request ) {
-		return self::run( static fn() => Results::service()->entry( (int) $request['id'], Results::current_actor() ) );
+		return self::run(
+			static function () use ( $request ): array {
+				$fixture_id                    = (int) $request['id'];
+				$entry                         = Results::service()->entry( $fixture_id, Results::current_actor() );
+				$entry['current']['photo_url'] = null === $entry['current']['photo_id'] ? null : Results::photo_url( $fixture_id );
+				return $entry;
+			}
+		);
 	}
 
 	/**
@@ -146,17 +180,86 @@ final class ResultController {
 					throw ResultException::forbidden( __( 'Du kannst zu dieser Begegnung kein Foto hochladen.', 'ttleague' ) );
 				}
 				$attachment_id = self::store_photo( $fixture_id, $request->get_file_params()['file'] ?? null );
-				$service->attach_photo( $fixture_id, $actor, $attachment_id );
+				try {
+					$service->attach_photo( $fixture_id, $actor, $attachment_id );
+				} catch ( \Throwable $e ) {
+					// Kein verwaister Anhang, wenn sich die Begegnung inzwischen geändert hat.
+					wp_delete_attachment( $attachment_id, true );
+					throw $e;
+				}
 				return array(
 					'attachment_id' => $attachment_id,
-					'url'           => (string) wp_get_attachment_url( $attachment_id ),
+					'url'           => Results::photo_url( $fixture_id ),
 				);
 			}
 		);
 	}
 
 	/**
-	 * Prüft und speichert das Foto als privaten Anhang mit zufälligem Dateinamen.
+	 * Foto des Spielberichts ansehen: für alle mit einer Rolle in der Begegnung (Heim, Gast, TK).
+	 * Frühere Fotos derselben Begegnung (`attachment`, z. B. nach dem Zurücksetzen) nur für die TK.
+	 * Die Datei selbst liefert serve_photo() aus.
+	 *
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public static function photo_file( \WP_REST_Request $request ) {
+		return self::run(
+			static function () use ( $request ): array {
+				$fixture_id = (int) $request['id'];
+				$service    = Results::service();
+				$ctx        = $service->context( $fixture_id );
+				$roles      = $service->roles( $ctx, Results::current_actor() );
+				if ( array() === $roles ) {
+					throw ResultException::forbidden( __( 'Du kannst das Foto dieser Begegnung nicht ansehen.', 'ttleague' ) );
+				}
+				$requested     = isset( $request['attachment'] ) ? (int) $request['attachment'] : 0;
+				$attachment_id = 0 === $requested ? (int) $ctx->photo_id : $requested;
+				if ( 0 !== $requested && $requested !== (int) $ctx->photo_id
+					&& ( ! in_array( Flow::ROLE_TK, $roles, true ) || (int) get_post_meta( $requested, '_ttleague_fixture', true ) !== $fixture_id ) ) {
+					$attachment_id = 0;
+				}
+				$path = $attachment_id > 0 ? get_attached_file( $attachment_id ) : false;
+				if ( false === $path || ! is_readable( $path ) ) {
+					throw ResultException::not_found( __( 'Zu dieser Begegnung gibt es dieses Foto nicht.', 'ttleague' ) );
+				}
+				return array( 'attachment_id' => $attachment_id );
+			}
+		);
+	}
+
+	/**
+	 * Liefert das Foto als Datei statt als JSON (Filter `rest_pre_serve_request`). Die Antwort
+	 * enthält nur die Anhang-ID; der Pfad wird hier erneut bestimmt und verlässt den Server nie.
+	 *
+	 * @param bool                         $served  Schon ausgeliefert.
+	 * @param \WP_HTTP_Response|mixed      $result  Antwort.
+	 * @param \WP_REST_Request|mixed       $request Anfrage.
+	 */
+	public static function serve_photo( $served, $result, $request ): bool {
+		if ( $served || ! $result instanceof \WP_REST_Response || ! $request instanceof \WP_REST_Request
+			|| 'GET' !== $request->get_method() || 200 !== $result->get_status()
+			|| '/' . self::NAMESPACE . self::PHOTO_ROUTE !== $result->get_matched_route() ) {
+			return (bool) $served;
+		}
+		$data          = $result->get_data();
+		$attachment_id = is_array( $data ) ? (int) ( $data['attachment_id'] ?? 0 ) : 0;
+		$path          = $attachment_id > 0 ? get_attached_file( $attachment_id ) : false;
+		if ( false === $path || ! is_readable( $path ) ) {
+			return false;
+		}
+		$mime = (string) get_post_mime_type( $attachment_id );
+		header( 'Content-Type: ' . ( in_array( $mime, self::PHOTO_MIMES, true ) ? $mime : 'application/octet-stream' ) );
+		header( 'Content-Length: ' . (string) filesize( $path ) );
+		header( 'Content-Disposition: inline; filename="spielbericht-' . (int) $request['id'] . '.' . sanitize_file_name( pathinfo( $path, PATHINFO_EXTENSION ) ) . '"' );
+		header( 'X-Content-Type-Options: nosniff' );
+		header( 'Cache-Control: private, no-store' );
+		readfile( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- Datei aus der Mediathek, Pfad aus der Datenbank.
+		return true;
+	}
+
+	/**
+	 * Prüft und speichert das Foto als privaten Anhang mit zufälligem Dateinamen im geschützten
+	 * Verzeichnis (PhotoStorage), ohne Bildvarianten.
 	 *
 	 * @param mixed $file Eintrag aus $_FILES.
 	 * @throws ResultException Bei ungültiger Datei.
@@ -180,20 +283,25 @@ final class ResultController {
 		$file['name']        = sprintf( 'spielbericht-%d-%s.%s', $fixture_id, bin2hex( random_bytes( 8 ) ), $check['ext'] );
 		$_FILES['ttl_photo'] = $file; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- REST-Anfrage mit Nonce; media_handle_upload liest aus $_FILES.
 
-		$attachment_id = media_handle_upload(
-			'ttl_photo',
-			0,
-			array(
-				/* translators: %d: Nummer der Begegnung */
-				'post_title'  => sprintf( __( 'Spielbericht Begegnung %d', 'ttleague' ), $fixture_id ),
-				'post_status' => 'private',
-			),
-			array(
-				'test_form' => false,
-				'mimes'     => self::PHOTO_MIMES,
-			)
-		);
-		unset( $_FILES['ttl_photo'] );
+		try {
+			$attachment_id = PhotoStorage::in_private_dir(
+				static fn() => media_handle_upload(
+					'ttl_photo',
+					0,
+					array(
+						/* translators: %d: Nummer der Begegnung */
+						'post_title'  => sprintf( __( 'Spielbericht Begegnung %d', 'ttleague' ), $fixture_id ),
+						'post_status' => 'private',
+					),
+					array(
+						'test_form' => false,
+						'mimes'     => self::PHOTO_MIMES,
+					)
+				)
+			);
+		} finally {
+			unset( $_FILES['ttl_photo'] );
+		}
 		if ( is_wp_error( $attachment_id ) ) {
 			throw ResultException::invalid( array( ResultInput::error( 'file', $attachment_id->get_error_message() ) ) );
 		}
