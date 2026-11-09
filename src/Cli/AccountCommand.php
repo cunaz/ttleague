@@ -39,7 +39,8 @@ final class AccountCommand {
 		unset( $assoc_args );
 		$person_id = (int) ( $args[0] ?? 0 );
 		$accounts  = Services::accounts();
-		if ( null === $accounts->person( $person_id ) ) {
+		$person    = $accounts->person( $person_id );
+		if ( null === $person ) {
 			\WP_CLI::error( 'Person nicht gefunden.' );
 		}
 		$user = self::user( (string) ( $args[1] ?? '' ) );
@@ -50,8 +51,13 @@ final class AccountCommand {
 		if ( null !== $other ) {
 			\WP_CLI::error( sprintf( 'Das Konto ist bereits mit Person %d verknüpft.', $other ) );
 		}
-		$accounts->link_user( $person_id, (int) $user->ID );
-		Services::audit()->record( 'person', $person_id, 'linked', self::actor(), null, array( 'user_id' => (int) $user->ID ), 'wp-cli' );
+		try {
+			$accounts->link_user( $person_id, (int) $user->ID );
+		} catch ( \RuntimeException $e ) {
+			\WP_CLI::error( $e->getMessage() );
+		}
+		$before = empty( $person['user_id'] ) ? null : array( 'user_id' => (int) $person['user_id'] );
+		Services::audit()->record( 'person', $person_id, 'linked', self::actor(), $before, array( 'user_id' => (int) $user->ID ), 'wp-cli' );
 		\WP_CLI::success( sprintf( 'Person %d ist mit Konto %s verknüpft.', $person_id, $user->user_login ) );
 	}
 
@@ -73,7 +79,7 @@ final class AccountCommand {
 		if ( null === $person ) {
 			\WP_CLI::error( 'Person nicht gefunden.' );
 		}
-		Services::db()->update( 'person', array( 'user_id' => null ), array( 'id' => $person_id ) );
+		Services::accounts()->unlink_user( $person_id );
 		Services::audit()->record( 'person', $person_id, 'unlinked', self::actor(), array( 'user_id' => $person['user_id'] ), null, 'wp-cli' );
 		\WP_CLI::success( sprintf( 'Verknüpfung von Person %d aufgehoben.', $person_id ) );
 	}

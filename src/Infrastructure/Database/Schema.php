@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026111001';
+	public const VERSION = '2026111002';
 
 	public const TABLES = array(
 		'season',
@@ -148,7 +148,7 @@ final class Schema {
   $source_ref
   PRIMARY KEY  (id),
   UNIQUE KEY email (email),
-  KEY user_id (user_id),
+  UNIQUE KEY user_id (user_id),
   KEY last_name (last_name,first_name)
 ) $charset_collate;",
 

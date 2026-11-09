@@ -14,7 +14,15 @@ use TTLeague\Infrastructure\Database\Db;
 
 final class AccountService {
 
-	public function __construct( private readonly Db $db ) {}
+	/** @var callable(int):bool */
+	private $elevated;
+
+	/**
+	 * @param callable(int):bool|null $elevated Prüft, ob ein Konto erweiterte Rechte hat (Standard: is_elevated).
+	 */
+	public function __construct( private readonly Db $db, ?callable $elevated = null ) {
+		$this->elevated = $elevated ?? array( self::class, 'is_elevated' );
+	}
 
 	/**
 	 * @return array<string,string|null>|null
@@ -85,15 +93,52 @@ final class AccountService {
 		);
 	}
 
+	/**
+	 * Verknüpft die Person mit dem Konto. Ein Konto gehört höchstens einer Person
+	 * (UNIQUE-Index auf person.user_id); ein Konflikt wird als Fehler gemeldet.
+	 *
+	 * @throws \RuntimeException Wenn das Konto bereits einer anderen Person gehört.
+	 */
 	public function link_user( int $person_id, int $user_id ): void {
+		try {
+			$this->db->update(
+				'person',
+				array(
+					'user_id'    => $user_id,
+					'updated_at' => $this->db->now(),
+				),
+				array( 'id' => $person_id )
+			);
+		} catch ( \RuntimeException $e ) {
+			if ( null !== $this->linked_person( $user_id, $person_id ) ) {
+				throw new \RuntimeException( 'Das Konto ist bereits mit einer anderen Person verknüpft.', 0, $e ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- feste Meldung, $e ist nur die Ursache.
+			}
+			throw $e;
+		}
+	}
+
+	/**
+	 * Hebt die Verknüpfung der Person mit ihrem Konto auf; das Konto bleibt bestehen.
+	 */
+	public function unlink_user( int $person_id ): void {
 		$this->db->update(
 			'person',
 			array(
-				'user_id'    => $user_id,
+				'user_id'    => null,
 				'updated_at' => $this->db->now(),
 			),
 			array( 'id' => $person_id )
 		);
+	}
+
+	/**
+	 * Verknüpft ein bestehendes Konto automatisch mit der Person, sofern das erlaubt ist.
+	 *
+	 * @throws \RuntimeException Wenn das Konto einer anderen Person gehört oder erweiterte Rechte hat.
+	 */
+	public function link_existing( int $person_id, int $user_id ): void {
+		$this->assert_linkable( $user_id, $person_id );
+		$this->link_user( $person_id, $user_id );
 	}
 
 	/**
@@ -151,7 +196,7 @@ final class AccountService {
 		if ( null !== $this->linked_person( $user_id, $person_id ) ) {
 			throw new \RuntimeException( 'Diese E-Mail-Adresse gehört zum Konto einer anderen Person.' );
 		}
-		if ( self::is_elevated( $user_id ) ) {
+		if ( ( $this->elevated )( $user_id ) ) {
 			throw new \RuntimeException( 'Das Konto mit dieser E-Mail-Adresse hat erweiterte Rechte und wird nicht automatisch verknüpft.' );
 		}
 	}
@@ -175,8 +220,7 @@ final class AccountService {
 		}
 		$existing = get_user_by( 'email', $email );
 		if ( false !== $existing ) {
-			$this->assert_linkable( (int) $existing->ID, $person_id );
-			$this->link_user( $person_id, (int) $existing->ID );
+			$this->link_existing( $person_id, (int) $existing->ID );
 			return (int) $existing->ID;
 		}
 		$user_id = wp_insert_user(
