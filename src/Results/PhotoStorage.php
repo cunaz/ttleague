@@ -64,7 +64,12 @@ final class PhotoStorage {
 		if ( ! self::protect( $base ) ) {
 			throw ResultException::unavailable( __( 'Die Ablage für Fotos lässt sich nicht schützen. Bitte wende dich an die TK.', 'ttleague' ) );
 		}
-		if ( self::EXPOSED === self::exposure() ) {
+		$state = self::exposure();
+		if ( self::EXPOSED === $state ) {
+			// Ein gemerktes «offen» neu prüfen: Die Serverregel kann inzwischen greifen.
+			$state = self::exposure( true );
+		}
+		if ( self::EXPOSED === $state ) {
 			throw ResultException::unavailable( __( 'Die Ablage für Fotos ist von aussen erreichbar; Fotos sind deshalb gesperrt. Bitte wende dich an die TK.', 'ttleague' ) );
 		}
 		$dirs = static function ( array $dirs ) use ( $base ): array {

@@ -15,6 +15,9 @@ use TTLeague\Infrastructure\Cache\DataVersion;
  * Die Ereignisse folgen erst nach dem Speichern. Deshalb kommen Cache-Version und Neuberechnung
  * zuerst, und ein Fehler in einem Listener (z. B. einer Erweiterung) wird nur protokolliert: Die
  * Aktion ist gespeichert, der Client soll keinen Fehler sehen und sie nicht wiederholen.
+ *
+ * Ausnahme Foto: Es erscheint nur mit Rechten über die REST-API, nie auf öffentlichen Seiten,
+ * und ändert keine Wertung. photo_added() lässt Cache-Version und Neuberechnung deshalb aus.
  */
 final class WordPressResultEvents implements ResultEvents {
 
