@@ -69,7 +69,11 @@ final class Installer {
 			return true;
 		}
 		update_option( self::USER_UNIQUE_OPTION, '0', true );
-		error_log( 'ttleague: Konten mit mehreren Personen verknüpft (user_id ' . implode( ', ', $index->duplicates() ) . '). Neue Verknüpfungen sind gesperrt, bis das mit «wp ttleague account unlink» bereinigt ist.' ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
+		$duplicates = $index->duplicates();
+		$message    = array() !== $duplicates
+			? 'Konten mit mehreren Personen verknüpft (user_id ' . implode( ', ', $duplicates ) . '). Neue Verknüpfungen sind gesperrt, bis das mit «wp ttleague account unlink» bereinigt ist.'
+			: 'Index person.user_id liess sich nicht in UNIQUE umwandeln (' . $index->last_error . '). Neue Verknüpfungen bleiben gesperrt; neuer Versuch in einer Stunde.';
+		error_log( 'ttleague: ' . $message ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
 		return false;
 	}
 
