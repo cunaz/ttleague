@@ -565,7 +565,7 @@ final class ResultService {
 				);
 				continue;
 			}
-			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at );
+			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at ?? $this->clock->now()->setTimezone( $this->timezone )->format( 'Y-m-d H:i:s' ) );
 			$sides[ $side ] = new SideRoster( $loaded['players'] ?? array(), $loaded['checker'] ?? null, $info['team_id'], array(), $info['name'] );
 		}
 		return $sides;

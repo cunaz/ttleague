@@ -28,8 +28,8 @@ final class EligibilityLoader {
 	public function __construct( private readonly Db $db ) {}
 
 	/**
-	 * @param string|null $before Anspielzeit der Begegnung (Ortszeit); ohne Termin zählen alle
-	 *                            übrigen Einsätze der Saison.
+	 * @param string|null $before Stichtag (Ortszeit): Anspielzeit der Begegnung, ohne Termin der
+	 *                            Zeitpunkt der Erfassung. Null zählt alle übrigen Einsätze.
 	 * @return array{checker:EligibilityChecker,players:array<int,array{player_id:int,first_name:string,last_name:string,license_no:int,classification:int|null,stamm_team_id:int|null}>}
 	 */
 	public function for_club( int $season_id, int $club_id, SeasonRules $rules, int $exclude_fixture_id, ?string $before = null ): array {
@@ -77,12 +77,6 @@ final class EligibilityLoader {
 			$checker->add_player( $id, $club_id, $stamm_team );
 		}
 
-		foreach ( $bound as [ $player_id, $team_id ] ) {
-			if ( isset( $players[ $player_id ], $teams[ $team_id ] ) ) {
-				$checker->bind( $player_id, $team_id );
-			}
-		}
-
 		$earlier = null === $before ? '' : ' AND f.scheduled_at IS NOT NULL AND ( f.scheduled_at < %s OR ( f.scheduled_at = %s AND f.id < %d ) )';
 		$args    = null === $before
 			? array( $season_id, $club_id, $exclude_fixture_id )
@@ -98,6 +92,14 @@ final class EligibilityLoader {
 			$player_id = (int) $row['player_id'];
 			if ( isset( $players[ $player_id ] ) ) {
 				$checker->add_appearance( $player_id, (int) $row['team_id'] );
+			}
+		}
+
+		// Bindungen aus dem Kader zuletzt: bind() hebt die Zahl nur auf das Maximum an, wenn die
+		// gezählten Einsätze es nicht schon erreichen (sonst würden sie doppelt gezählt).
+		foreach ( $bound as [ $player_id, $team_id ] ) {
+			if ( isset( $players[ $player_id ], $teams[ $team_id ] ) ) {
+				$checker->bind( $player_id, $team_id );
 			}
 		}
 

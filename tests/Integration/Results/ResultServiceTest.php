@@ -670,6 +670,19 @@ final class ResultServiceTest extends IntegrationTestCase {
 		$away = array_column( $this->service->entry( $this->id['derby'], $this->actor['captain_h1'] )['candidates']['away'], null, 'player_id' );
 		self::assertFalse( $away[ $this->id['h4'] ]['eligible'], 'gebunden an Seefeld 1' );
 		self::assertSame( 'blocked_bound_elsewhere', $away[ $this->id['h4'] ]['reason'] );
+		$home = array_column( $this->service->entry( $this->id['derby'], $this->actor['captain_h1'] )['candidates']['home'], null, 'player_id' );
+		self::assertSame( 3, $home[ $this->id['h4'] ]['substitute_appearances'], 'Bindung aus dem Kader zählt die Einsätze nicht doppelt' );
+	}
+
+	public function test_without_date_the_entry_time_is_the_cutoff(): void {
+		// Uhr: 10.11.2026 21:30. f1 (10.11.) liegt davor, f3 (24.11.) danach.
+		foreach ( array( 'f1', 'f3' ) as $fixture ) {
+			$this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		}
+		$this->db->update( 'fixture', array( 'scheduled_at' => null ), array( 'id' => $this->id['f4'] ) );
+		$warnings = implode( ' ', $this->service->submit( $this->id['f4'], $this->with_substitute_h4(), $this->actor['captain_h1'] )['warnings'] );
+		self::assertStringContainsString( '2. von höchstens 3', $warnings, 'nur f1 zählt, f3 liegt nach dem Stichtag' );
+		self::assertNull( $this->binding_of( 'h4' ), 'der Einsatz ohne Termin bindet nicht' );
 	}
 
 	public function test_only_earlier_appearances_count_when_results_come_out_of_order(): void {
