@@ -96,13 +96,21 @@ final class SeasonRules {
 	}
 
 	/**
-	 * Erzeugt Regeln aus einem (teilweisen) Array, z. B. aus rules_json.
+	 * Erzeugt Regeln aus einem (teilweisen) Array, z. B. aus rules_json. Fehlen die Stufen
+	 * confirm_reminder_days, gelten die Standardstufen, soweit sie vor objection_days liegen:
+	 * Gespeicherte Regeln mit kürzerer Einsprachefrist bleiben so gültig. Gesetzte Stufen prüft
+	 * der Konstruktor streng.
 	 *
 	 * @param array<string,mixed> $data Teilweise Regeln.
 	 */
 	public static function from_array( array $data ): self {
 		$defaults = ( new self() )->to_array();
 		$merged   = array_intersect_key( $data, $defaults ) + $defaults;
+		$confirm  = array_values( array_map( 'intval', (array) $merged['confirm_reminder_days'] ) );
+		if ( ! array_key_exists( 'confirm_reminder_days', $data ) ) {
+			$objection = (int) $merged['objection_days'];
+			$confirm   = array_values( array_filter( $confirm, static fn( int $days ): bool => $days < $objection ) );
+		}
 
 		return new self(
 			substitute_max: (int) $merged['substitute_max'],
@@ -128,7 +136,7 @@ final class SeasonRules {
 			rating_points_per_class: (float) $merged['rating_points_per_class'],
 			match_reminder_days: (int) $merged['match_reminder_days'],
 			result_reminder_hours: (int) $merged['result_reminder_hours'],
-			confirm_reminder_days: array_values( array_map( 'intval', (array) $merged['confirm_reminder_days'] ) ),
+			confirm_reminder_days: $confirm,
 		);
 	}
 

@@ -229,7 +229,8 @@ Code in `src/Notifications/`, Einstieg `Notifications::register()` aus `Plugin::
 | `result_decided` | `result_decided` | beide Seiten | sofort | – |
 | `tk_digest` | `tk_digest` | TK | täglich ab 7 Uhr, nur mit offenen Punkten | – |
 
-- Gültige Werte (sonst lehnt `SeasonRules` die Regeln ab): `match_reminder_days` ab 0 (0 schaltet die Erinnerung aus), `result_reminder_hours` ab 1, `confirm_reminder_days` ganze Tage ab 1 und kleiner als `objection_days`.
+- Gültige Werte (sonst lehnt `SeasonRules` die Regeln ab): `match_reminder_days` ab 0 (0 schaltet die Erinnerung aus), `result_reminder_hours` ab 1, `confirm_reminder_days` ganze Tage ab 1 und kleiner als `objection_days`. Fehlt `confirm_reminder_days` in den Regeln der Saison, gelten die Standardstufen 3 und 6, soweit sie vor `objection_days` liegen. So bleiben gespeicherte Regeln mit kürzerer Einsprachefrist gültig.
+- Eine aktive Saison mit ungültigen Regeln überspringt der stündliche Lauf. Er meldet sie über `ttleague_notification_error` und im Fehlerprotokoll und arbeitet die übrigen Saisons ab.
 - Die TK-Empfänger ermittelt ein Lauf einmal und verwendet sie für alle Meldungen an die TK.
 - Spieltermine sind Ortszeit (`wp_timezone()`), `entered_at` ist UTC. Tage vor und nach der Anspielzeit sind Kalendertage in Ortszeit, Stunden sind echte Stunden.
 - Geprüft werden Meisterschaft und Cup der aktiven Saison: `scheduled` und `postponed` für die Erinnerung vor dem Spiel und fehlende Resultate, `provisional` für Bestätigungen, `disputed` für die Übersicht.

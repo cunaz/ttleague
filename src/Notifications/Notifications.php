@@ -103,7 +103,12 @@ final class Notifications {
 		return new Deadlines(
 			$clock,
 			wp_timezone(),
-			new FixtureQueries( Services::db() ),
+			new FixtureQueries(
+				Services::db(),
+				static function ( \InvalidArgumentException $error, int $season_id ): void {
+					self::report_error( $error, 'Regeln der Saison ' . $season_id . ', Saison übersprungen' );
+				}
+			),
 			new ResultRepository( Services::db() ),
 			self::recipients(),
 			self::notifier( $log ),

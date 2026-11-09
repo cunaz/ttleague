@@ -19,20 +19,36 @@ use TTLeague\Infrastructure\Database\Db;
  */
 final class FixtureQueries {
 
-	public function __construct( private readonly Db $db ) {}
+	/**
+	 * @param Db                                                  $db      Datenbank.
+	 * @param (\Closure(\InvalidArgumentException,int):void)|null $invalid Meldet eine Saison mit ungültigen Regeln (Fehler, Saison).
+	 */
+	public function __construct(
+		private readonly Db $db,
+		private readonly ?\Closure $invalid = null,
+	) {}
 
 	/**
-	 * Aktive Saisons mit ihren Regeln.
+	 * Aktive Saisons mit ihren Regeln. Eine Saison mit ungültigen Regeln wird gemeldet und
+	 * übersprungen: Sie soll den Lauf für die übrigen Saisons nicht abbrechen.
 	 *
 	 * @return list<array{id:int,rules:SeasonRules}>
 	 */
 	public function active_seasons(): array {
 		$seasons = array();
 		foreach ( $this->db->get_results( "SELECT id, rules_json FROM {$this->db->table( 'season' )} WHERE status = 'active' ORDER BY start_date DESC, id DESC" ) as $row ) {
-			$rules     = json_decode( (string) $row['rules_json'], true );
+			$data = json_decode( (string) $row['rules_json'], true );
+			try {
+				$rules = SeasonRules::from_array( is_array( $data ) ? $data : array() );
+			} catch ( \InvalidArgumentException $e ) {
+				if ( null !== $this->invalid ) {
+					( $this->invalid )( $e, (int) $row['id'] );
+				}
+				continue;
+			}
 			$seasons[] = array(
 				'id'    => (int) $row['id'],
-				'rules' => SeasonRules::from_array( is_array( $rules ) ? $rules : array() ),
+				'rules' => $rules,
 			);
 		}
 		return $seasons;

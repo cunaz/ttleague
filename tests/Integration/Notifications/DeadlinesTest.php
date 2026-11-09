@@ -15,6 +15,7 @@ use TTLeague\Notifications\Deadlines;
 use TTLeague\Notifications\FixtureQueries;
 use TTLeague\Notifications\NotificationLog;
 use TTLeague\Notifications\Notifier;
+use TTLeague\Tests\Integration\Frontend\Seeder;
 
 /**
  * Begegnung f1 am Dienstag, 10.11.2026, 20:00 Ortszeit (19:00 UTC), Cup am 12.11.2026, 19:30,
@@ -112,6 +113,31 @@ final class DeadlinesTest extends NotificationTestCase {
 		$clock->advance( '+1 second' );
 		$run();
 		self::assertCount( 4, $this->to( 'match_reminder', $this->id['f1'] ), '19:00 UTC sind 20:00 in Zürich' );
+	}
+
+	public function test_a_season_with_invalid_rules_is_reported_and_skipped(): void {
+		$seeder  = new Seeder( $this->db );
+		$broken  = $seeder->season( '2027-28', 'active', array( 'result_reminder_hours' => 0 ) );
+		$short   = $seeder->season( '2028-29', 'active', array( 'objection_days' => 4 ) );
+		$skipped = array();
+		$queries = new FixtureQueries(
+			$this->db,
+			static function ( \InvalidArgumentException $error, int $season_id ) use ( &$skipped ): void {
+				$skipped[ $season_id ] = $error->getMessage();
+			}
+		);
+
+		$seasons = array_column( $queries->active_seasons(), 'rules', 'id' );
+		self::assertSame( array( $short, $this->id['season'] ), array_keys( $seasons ) );
+		self::assertSame( array( 3 ), $seasons[ $short ]->confirm_reminder_days, 'Standardstufen vor der kürzeren Einsprachefrist' );
+
+		$clock = new FixedClock( '2026-11-08 19:00:00' );
+		$log   = new NotificationLog( $this->db, $clock );
+		( new Deadlines( $clock, new \DateTimeZone( 'Europe/Zurich' ), $queries, $this->repo, $this->recipients, new Notifier( new Preferences( $this->db ), $log, array( $this->email ) ), $this->messages, $log, self::ALL_DAY ) )->run();
+
+		self::assertSame( array( $broken ), array_keys( $skipped ) );
+		self::assertStringContainsString( 'result_reminder_hours', $skipped[ $broken ] );
+		self::assertSame( $this->both_sides(), $this->to( 'match_reminder', $this->id['f1'] ), 'die übrigen Saisons laufen weiter' );
 	}
 
 	public function test_postponed_fixture_is_reminded_again_for_its_new_date(): void {

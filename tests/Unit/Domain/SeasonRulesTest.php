@@ -76,6 +76,12 @@ final class SeasonRulesTest extends TestCase {
 					'confirm_reminder_days' => array( 5 ),
 				),
 			),
+			'Standardstufen ausdrücklich'      => array(
+				array(
+					'objection_days'        => 4,
+					'confirm_reminder_days' => array( 3, 6 ),
+				),
+			),
 		);
 	}
 
@@ -99,6 +105,12 @@ final class SeasonRulesTest extends TestCase {
 		);
 		self::assertSame( 0, $rules->match_reminder_days, '0 schaltet die Erinnerung vor dem Spiel aus' );
 		self::assertSame( array( 1, 6 ), $rules->confirm_reminder_days );
+	}
+
+	public function test_default_confirm_reminders_stop_before_a_shorter_objection_period(): void {
+		self::assertSame( array( 3 ), SeasonRules::from_array( array( 'objection_days' => 4 ) )->confirm_reminder_days );
+		self::assertSame( array(), SeasonRules::from_array( array( 'objection_days' => 0 ) )->confirm_reminder_days );
+		self::assertSame( array( 3, 6 ), SeasonRules::from_array( array( 'objection_days' => 10 ) )->confirm_reminder_days );
 	}
 
 	public function test_invalid_cup_mode_is_rejected(): void {
