@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026110901';
+	public const VERSION = '2026110902';
 
 	public const TABLES = array(
 		'season',
@@ -409,7 +409,7 @@ final class Schema {
   player_id bigint(20) unsigned NOT NULL,
   status varchar(16) NOT NULL DEFAULT 'played',
   rank_no tinyint(3) unsigned DEFAULT NULL,
-  points tinyint(3) unsigned DEFAULT NULL,
+  points decimal(4,1) DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY group_player (rl_group_id,player_id),
   KEY player_id (player_id)

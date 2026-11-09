@@ -16,7 +16,9 @@ use TTLeague\Domain\Standings\Ratio;
  * Wertung: Siege. Bei zwei Sieggleichen die direkte Begegnung. Bei drei und mehr die
  * Partien der Sieggleichen untereinander: Satzquotient, dann Ballquotient. Partien
  * abwesender, disqualifizierter oder forfait gebender Personen werden annulliert.
- * Punkte pro Rang: 6-5-4-3-2-1, in einer 7er-Gruppe je ein Zusatzpunkt.
+ * Punkte pro Rang: 6-5-4-3-2-1, in einer Gruppe mit sieben Spielenden je ein Zusatzpunkt.
+ * Bleiben Personen gleichauf (z. B. Kreis ohne Ballpunkte), teilen sie sich die Punkte der
+ * belegten Plätze zu gleichen Teilen, wie es die TK bisher gehandhabt hat (5.5 statt 6 und 5).
  */
 final class GroupRanking {
 
@@ -65,18 +67,24 @@ final class GroupRanking {
 			}
 		}
 
-		$group_size = count( $players );
+		// Massgebend für den Zusatzpunkt ist die Zahl der tatsächlich Spielenden.
+		$group_size = count( $ranked );
 		$result     = array();
 		$position   = 0;
 		foreach ( $ordered as $sub ) {
-			$rank = $position + 1;
+			$rank  = $position + 1;
+			$count = count( $sub );
+			$sum   = 0;
+			for ( $i = 0; $i < $count; $i++ ) {
+				$sum += $this->rules->rl_points_for_rank( $rank + $i, $group_size );
+			}
 			foreach ( $sub as $row ) {
 				$row->rank         = $rank;
-				$row->shared_rank  = count( $sub ) > 1;
-				$row->round_points = $this->rules->rl_points_for_rank( $rank, $group_size );
+				$row->shared_rank  = $count > 1;
+				$row->round_points = round( $sum / $count, 2 );
 				$result[]          = $row;
-				++$position;
 			}
+			$position += $count;
 		}
 		foreach ( $rows as $row ) {
 			if ( ! $row->status->is_ranked() ) {

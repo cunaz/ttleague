@@ -19,7 +19,8 @@ final class RlRankRow {
 	public int $points_against = 0;
 	public bool $points_known  = true;
 	public ?int $rank          = null;
-	public int $round_points   = 0;
+	/** Punkte der Runde; bei geteiltem Rang der Durchschnitt der belegten Plätze (z. B. 5.5). */
+	public float $round_points = 0.0;
 	public bool $shared_rank   = false;
 
 	public function __construct( public readonly int|string $player, public readonly RlPlayerStatus $status ) {}

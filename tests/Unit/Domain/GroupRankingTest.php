@@ -31,7 +31,7 @@ final class GroupRankingTest extends TestCase {
 		$rows    = ( new GroupRanking( new SeasonRules() ) )->rank( $players, $games );
 
 		self::assertSame( array( 'Weber', 'Ammann', 'Pfister', 'Keller', 'Moser' ), array_map( static fn( $r ) => $r->player, $rows ) );
-		self::assertSame( array( 6, 5, 4, 3, 2 ), array_map( static fn( $r ) => $r->round_points, $rows ) );
+		self::assertSame( array( 6.0, 5.0, 4.0, 3.0, 2.0 ), array_map( static fn( $r ) => $r->round_points, $rows ) );
 		self::assertSame( array( 2, 2, 1, 1, 0 ), array_map( static fn( $r ) => $r->wins, $rows ) );
 		self::assertSame( array( 7, 5 ), array( $rows[0]->sets_won, $rows[0]->sets_lost ) );
 		self::assertFalse( $rows[0]->shared_rank );
@@ -52,7 +52,7 @@ final class GroupRankingTest extends TestCase {
 		self::assertSame( array( 'a', 'b', 'c' ), array_map( static fn( $r ) => $r->player, $rows ) );
 		self::assertSame( array( 1, 0 ), array( $rows[0]->wins, $rows[0]->losses ) );
 		self::assertNull( $rows[2]->rank );
-		self::assertSame( 0, $rows[2]->round_points );
+		self::assertSame( 0.0, $rows[2]->round_points );
 	}
 
 	public function test_seven_player_group_bonus(): void {
@@ -67,8 +67,8 @@ final class GroupRankingTest extends TestCase {
 			}
 		}
 		$rows = ( new GroupRanking( new SeasonRules() ) )->rank( $players, $games );
-		self::assertSame( 7, $rows[0]->round_points );
-		self::assertSame( 1, $rows[6]->round_points );
+		self::assertSame( 7.0, $rows[0]->round_points );
+		self::assertSame( 1.0, $rows[6]->round_points );
 	}
 
 	public function test_three_way_tie_by_mutual_set_ratio(): void {
@@ -106,5 +106,43 @@ final class GroupRankingTest extends TestCase {
 		$rows  = ( new GroupRanking( new SeasonRules() ) )->rank( $players, $games );
 		self::assertSame( array( 1, 1, 1 ), array_map( static fn( $r ) => $r->rank, $rows ) );
 		self::assertTrue( $rows[0]->shared_rank );
+		self::assertSame( array( 5.0, 5.0, 5.0 ), array_map( static fn( $r ) => $r->round_points, $rows ), 'Punkte von Rang 1 bis 3 werden geteilt.' );
+	}
+
+	public function test_two_way_tie_without_direct_game_splits_points(): void {
+		$players = array(
+			'a' => RlPlayerStatus::Played,
+			'b' => RlPlayerStatus::Played,
+			'c' => RlPlayerStatus::Played,
+			'd' => RlPlayerStatus::Played,
+		);
+		// a und b gewinnen je gegen c und d, spielen aber nicht gegeneinander; gleiche Sätze.
+		$games = array(
+			new RlGame( 'a', 'c', 3, 1 ),
+			new RlGame( 'a', 'd', 3, 1 ),
+			new RlGame( 'b', 'c', 3, 1 ),
+			new RlGame( 'b', 'd', 3, 1 ),
+			new RlGame( 'c', 'd', 3, 0 ),
+		);
+		$rows  = ( new GroupRanking( new SeasonRules() ) )->rank( $players, $games );
+		self::assertSame( array( 5.5, 5.5, 4.0, 3.0 ), array_map( static fn( $r ) => $r->round_points, $rows ) );
+		self::assertSame( array( 1, 1, 3, 4 ), array_map( static fn( $r ) => $r->rank, $rows ) );
+	}
+
+	public function test_seven_listed_but_one_absent_gives_no_bonus(): void {
+		$players = array();
+		for ( $i = 1; $i <= 7; $i++ ) {
+			$players[ 'p' . $i ] = RlPlayerStatus::Played;
+		}
+		$players['p7'] = RlPlayerStatus::Absent;
+		$games         = array();
+		for ( $i = 1; $i <= 6; $i++ ) {
+			for ( $j = $i + 1; $j <= 6; $j++ ) {
+				$games[] = new RlGame( 'p' . $i, 'p' . $j, 3, 0 );
+			}
+		}
+		$rows = ( new GroupRanking( new SeasonRules() ) )->rank( $players, $games );
+		self::assertSame( 6.0, $rows[0]->round_points );
+		self::assertSame( 1.0, $rows[5]->round_points );
 	}
 }

@@ -21,8 +21,8 @@ final class FinalQualification {
 	public function __construct( private readonly SeasonRules $rules ) {}
 
 	/**
-	 * @param array<int|string,array{points:int,sets_won:int,sets_lost:int,points_for?:int|null,points_against?:int|null}> $totals Spieler => Saisonsummen.
-	 * @return list<array{player:int|string,rank:int,points:int,needs_draw:bool,qualified:bool}>
+	 * @param array<int|string,array{points:int|float,sets_won:int,sets_lost:int,points_for?:int|null,points_against?:int|null}> $totals Spieler => Saisonsummen.
+	 * @return list<array{player:int|string,rank:int,points:int|float,needs_draw:bool,qualified:bool}>
 	 */
 	public function order( array $totals ): array {
 		$players = array_keys( $totals );
@@ -68,8 +68,8 @@ final class FinalQualification {
 	}
 
 	/**
-	 * @param array{points:int,sets_won:int,sets_lost:int,points_for?:int|null,points_against?:int|null} $a Summen A.
-	 * @param array{points:int,sets_won:int,sets_lost:int,points_for?:int|null,points_against?:int|null} $b Summen B.
+	 * @param array{points:int|float,sets_won:int,sets_lost:int,points_for?:int|null,points_against?:int|null} $a Summen A.
+	 * @param array{points:int|float,sets_won:int,sets_lost:int,points_for?:int|null,points_against?:int|null} $b Summen B.
 	 */
 	private function compare( array $a, array $b ): int {
 		$cmp = $a['points'] <=> $b['points'];
