@@ -27,6 +27,8 @@ final class Calendar {
 	public const SEASON_VAR = 'ttl_ical_season';
 	public const KEY_VAR    = 'ttl_ical_key';
 
+	public const SCRIPT = 'ttleague-calendar';
+
 	/**
 	 * Version der Rewrite-Regeln; eine Änderung erneuert die Regeln einmalig.
 	 */
@@ -45,6 +47,7 @@ final class Calendar {
 	public static function register(): void {
 		add_filter( 'query_vars', array( self::class, 'query_vars' ) );
 		add_action( 'init', array( self::class, 'add_rewrite_rules' ) );
+		add_action( 'init', array( self::class, 'register_script' ) );
 		add_action( 'init', array( self::class, 'maybe_flush' ), 99 );
 		add_action( 'parse_request', array( self::class, 'parse_request' ) );
 	}
@@ -71,6 +74,22 @@ final class Calendar {
 			flush_rewrite_rules( false );
 			update_option( self::ROUTES_OPTION, self::ROUTES_VERSION, true );
 		}
+	}
+
+	/**
+	 * Kleines Skript für den Knopf «Adresse kopieren»; geladen, wo ein Abo-Abschnitt erscheint.
+	 */
+	public static function register_script(): void {
+		wp_register_script(
+			self::SCRIPT,
+			TTLEAGUE_URL . 'assets/js/calendar.js',
+			array(),
+			self::version( 'assets/js/calendar.js' ),
+			array(
+				'in_footer' => true,
+				'strategy'  => 'defer',
+			)
+		);
 	}
 
 	/**
@@ -156,5 +175,10 @@ final class Calendar {
 		header( 'Content-Type: text/plain; charset=utf-8' );
 		header( 'X-Robots-Tag: noindex, nofollow' );
 		echo esc_html__( 'Diesen Kalender gibt es nicht.', 'ttleague' ) . "\n";
+	}
+
+	private static function version( string $file ): string {
+		$path = TTLEAGUE_DIR . $file;
+		return is_readable( $path ) ? TTLEAGUE_VERSION . '.' . (string) filemtime( $path ) : TTLEAGUE_VERSION;
 	}
 }

@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace TTLeague\Frontend\Views;
 
+use TTLeague\Calendar\FeedUrls;
+use TTLeague\Calendar\SubscribeBox;
 use TTLeague\Frontend\Support\Format;
 use TTLeague\Frontend\Support\Html;
 use TTLeague\ReadModel\Teams;
@@ -87,9 +89,25 @@ final class TeamView extends View {
 		/* translators: %s: Mannschaft. */
 		$caption = sprintf( __( 'Spielplan und Resultate %s', 'ttleague' ), $team['name'] );
 		$out    .= Html::section( __( 'Spielplan und Resultate', 'ttleague' ), ( new Schedule( $this->urls ) )->render( $fixtures, $data['teams'], $season['slug'], $team['id'], $caption ), 'ttl-section--schedule', 'ttl-spielplan' );
+		$out    .= $this->subscribe( $season, $team );
 		$out    .= Html::section( __( 'Stammspieler', 'ttleague' ), $this->roster( $details['roster'] ), 'ttl-section--roster', 'ttl-stammspieler' );
 		$out    .= Html::section( __( 'Einsätze', 'ttleague' ), $this->matrix( $details['matrix'], $data['teams'], $team ), 'ttl-section--matrix', 'ttl-einsaetze' );
 		return $out;
+	}
+
+	/**
+	 * Kalender-Abo der Mannschaft; nicht für archivierte Saisons.
+	 *
+	 * @param array<string,mixed> $season Saison.
+	 * @param array<string,mixed> $team   Mannschaft.
+	 */
+	private function subscribe( array $season, array $team ): string {
+		if ( 'archived' === $season['status'] ) {
+			return '';
+		}
+		/* translators: %s: Mannschaft. */
+		$text = sprintf( __( 'Mit einem Abo erscheinen alle Spiele von %s im eigenen Kalender und werden bei Verschiebungen und neuen Resultaten automatisch nachgeführt.', 'ttleague' ), $team['name'] );
+		return SubscribeBox::render( ( new FeedUrls( $this->urls->home() ) )->team( $season['slug'], $team['slug'] ), $text );
 	}
 
 	/**

@@ -147,6 +147,8 @@ Unbekannte Saison, Mannschaft, Club oder Lizenz und jede andere `.ics`-Adresse u
 
 **Antwort**: `Content-Type: text/calendar; charset=utf-8`, `Content-Disposition: inline; filename="seefeld-1-2026-27.ics"`, `Cache-Control: public, max-age=900`, `X-Robots-Tag: noindex, nofollow`. Das schwache `ETag` entsteht aus Datenversion (`DataVersion::get()`), Feed-Typ und Parametern, Formatversion, Startadresse, Seitenpfaden und Sprache; passt `If-None-Match`, antwortet der Feed mit 304 ohne die Ereignisse zu laden.
 
+**Abschnitt «Kalender abonnieren»** (`SubscribeBox`): auf der Mannschaftsseite nach dem Spielplan (nicht in archivierten Saisons), auf der Clubseite nach den Teams (nur in der aktiven Saison, deren Spiele der Feed enthält) und am Ende des Spielerprofils (nur bei Meldung in der aktiven Saison). Er enthält einen Satz Erklärung, den Knopf «Im Kalender abonnieren» mit `webcal://`-Link (öffnet Apple Kalender, Outlook und andere Kalender-Apps zum Abonnieren) und die `https://`-Adresse in einem schreibgeschützten Feld zum Kopieren (Google Kalender «Per URL hinzufügen», Outlook im Web). Der Knopf «Adresse kopieren» erscheint nur mit JavaScript und Zwischenablage (`assets/js/calendar.js`, nur auf Seiten mit dem Abschnitt geladen) und meldet das Ergebnis über eine Live-Region; ohne JavaScript bleibt das Feld markierbar. Touch-Ziele mindestens 44px, sichtbarer Fokus, im Druck ausgeblendet.
+
 **Aufbau**
 
 | Klasse | Aufgabe |
@@ -157,6 +159,7 @@ Unbekannte Saison, Mannschaft, Club oder Lizenz und jede andere `.ics`-Adresse u
 | `EventFactory` | Titel, Beschreibung, Ort, Status und Dauer der Ereignisse; Kalendername |
 | `IcsWriter`, `IcsEvent` | iCalendar-Text |
 | `ConditionalGet` | ETag und Vergleich mit `If-None-Match` |
+| `SubscribeBox` | Abschnitt «Kalender abonnieren» für Mannschafts-, Club- und Spielerseite |
 
 Neue oder geänderte Rewrite-Regeln erneuert das Plugin einmalig selbst (Option `ttleague_calendar_routes`); manuell mit `wp rewrite flush --hard`.
 
@@ -164,7 +167,7 @@ Neue oder geänderte Rewrite-Regeln erneuert das Plugin einmalig selbst (Option 
 
 - `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
 - `tests/Unit/Calendar/`: Faltung (Grenzen, UTF-8, Graphem-Cluster), Maskierung, `VTIMEZONE` im Abgleich mit der Zeitzonendatenbank, Dauer über die Zeitumstellung, Ganztag, Titel und Status der Ereignisse, Adressen, Rewrite-Regeln, ETag.
-- `tests/Integration/Calendar/`: Feeds für Mannschaft, Club und Spieler gegen das Szenario (Forfait, provisorisch, Cup, Ranglistenturnier, Ersatzeinsatz, annulliert, Anspielzeit offen, unbekannte Adressen).
+- `tests/Integration/Calendar/`: Feeds für Mannschaft, Club und Spieler gegen das Szenario (Forfait, provisorisch, Cup, Ranglistenturnier, Ersatzeinsatz, annulliert, Anspielzeit offen, unbekannte Adressen) und der Abschnitt «Kalender abonnieren» auf den Seiten.
 - `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping.
 
 ```bash

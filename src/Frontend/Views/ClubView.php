@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace TTLeague\Frontend\Views;
 
+use TTLeague\Calendar\FeedUrls;
+use TTLeague\Calendar\SubscribeBox;
 use TTLeague\Frontend\Support\Format;
 use TTLeague\Frontend\Support\Html;
 
@@ -45,12 +47,30 @@ final class ClubView extends View {
 		}
 		/* translators: %s: Saison. */
 		$out .= Html::section( sprintf( __( 'Teams %s', 'ttleague' ), $season['name'] ), array() === $teams ? Html::notice( __( 'Keine Teams in dieser Saison.', 'ttleague' ) ) : '<ul class="ttl-list">' . implode( '', $teams ) . '</ul>', 'ttl-section--teams', 'ttl-teams' );
+		$out .= $this->subscribe( $club, $season, $details['teams'] );
 
 		$out .= Html::section( __( 'Spiellokale', 'ttleague' ), $this->venues( $details['venues'], $season['slug'] ), 'ttl-section--venues', 'ttl-lokale' );
 		$out .= Html::section( __( 'Funktionen', 'ttleague' ), $this->roles( $details['roles'], $data['teams'] ), 'ttl-section--roles', 'ttl-funktionen' );
 		/* translators: %s: Saison. */
 		$out .= Html::section( sprintf( __( 'Spieler %s', 'ttleague' ), $season['name'] ), $this->players( $details['players'], $club['name'] ), 'ttl-section--players', 'ttl-spieler' );
 		return $out;
+	}
+
+	/**
+	 * Kalender-Abo des Clubs; der Feed zeigt die aktive Saison, daher nur dort.
+	 *
+	 * @param array<string,mixed>       $club   Club.
+	 * @param array<string,mixed>       $season Angezeigte Saison.
+	 * @param list<array<string,mixed>> $teams  Teams des Clubs in dieser Saison.
+	 */
+	private function subscribe( array $club, array $season, array $teams ): string {
+		$active = $this->model->seasons->active();
+		if ( array() === $teams || null === $active || $active['id'] !== $season['id'] ) {
+			return '';
+		}
+		/* translators: 1: Club, 2: Saison. */
+		$text = sprintf( __( 'Mit einem Abo erscheinen alle Spiele der Teams von %1$s in der Saison %2$s im eigenen Kalender und werden bei Verschiebungen und neuen Resultaten automatisch nachgeführt.', 'ttleague' ), $club['name'], $season['name'] );
+		return SubscribeBox::render( ( new FeedUrls( $this->urls->home() ) )->club( $club['slug'] ), $text );
 	}
 
 	/**

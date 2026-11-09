@@ -12,7 +12,11 @@ namespace TTLeague\Tests\Integration\Calendar;
 use TTLeague\Calendar\EventFactory;
 use TTLeague\Calendar\Feeds;
 use TTLeague\Calendar\IcsWriter;
+use TTLeague\Frontend\Resolver;
 use TTLeague\Frontend\Support\Urls;
+use TTLeague\Frontend\Views\ClubView;
+use TTLeague\Frontend\Views\PlayerView;
+use TTLeague\Frontend\Views\TeamView;
 use TTLeague\ReadModel\Cache\NullCache;
 use TTLeague\ReadModel\ReadModel;
 use TTLeague\Tests\Integration\Frontend\Seeder;
@@ -206,5 +210,59 @@ final class FeedsTest extends IntegrationTestCase {
 		self::assertNotNull( $empty );
 		self::assertSame( array(), $this->keys( $empty ) );
 		self::assertStringContainsString( "END:VTIMEZONE\r\nEND:VCALENDAR\r\n", $this->ics( $empty ) );
+	}
+
+	public function test_pages_offer_the_subscription(): void {
+		$resolver = new Resolver( $this->model, $this->urls );
+
+		$team = ( new TeamView(
+			$this->model,
+			$this->urls,
+			$resolver->resolve(
+				'team',
+				array(
+					'season' => '2026-27',
+					'team'   => 'seefeld-1',
+				)
+			)
+		) )->render( array() );
+		self::assertStringContainsString( 'Kalender abonnieren', $team );
+		self::assertStringContainsString( 'href="webcal://example.org/kalender/team/2026-27/seefeld-1.ics"', $team );
+		self::assertStringContainsString( 'value="https://example.org/kalender/team/2026-27/seefeld-1.ics" readonly', $team );
+		self::assertStringContainsString( '<label class="ttl-subscribe__label" for="ttl-kalender-adresse">', $team );
+		self::assertStringContainsString( 'alle Spiele von Seefeld 1 im eigenen Kalender', $team );
+
+		$archived = ( new TeamView(
+			$this->model,
+			$this->urls,
+			$resolver->resolve(
+				'team',
+				array(
+					'season' => '2025-26',
+					'team'   => 'seefeld-1',
+				)
+			)
+		) )->render( array() );
+		self::assertStringNotContainsString( 'webcal://', $archived, 'nicht für archivierte Saisons' );
+
+		$club = ( new ClubView( $this->model, $this->urls ) )->render( array( 'club' => 'seefeld' ) );
+		self::assertStringContainsString( 'href="webcal://example.org/kalender/club/seefeld.ics"', $club );
+		$club_old = ( new ClubView( $this->model, $this->urls ) )->render(
+			array(
+				'club'   => 'seefeld',
+				'season' => '2025-26',
+			)
+		);
+		self::assertStringNotContainsString( 'webcal://', $club_old );
+
+		$player = ( new PlayerView( $this->model, $this->urls ) )->render( array( 'player' => 90001 ) );
+		self::assertStringContainsString( 'href="webcal://example.org/kalender/spieler/90001.ics"', $player );
+
+		$retired = $this->seeder->player( 'Ruhestand', 'Otto' );
+		$this->seeder->register( $retired, $this->ids['season_old'], $this->ids['club_seefeld'], 6 );
+		$license = (int) $this->db->get_var( "SELECT license_no FROM {$this->db->table( 'player' )} WHERE id = %d", array( $retired ) );
+		$former  = ( new PlayerView( $this->model, $this->urls ) )->render( array( 'player' => $license ) );
+		self::assertStringContainsString( 'offiziell 2025/26', $former );
+		self::assertStringNotContainsString( 'webcal://', $former, 'nur mit Meldung in der aktiven Saison' );
 	}
 }
