@@ -7,6 +7,7 @@ Dieses Dokument ist der Vertrag für Phase 2: Konten, Anmeldung, Rechte, Status�
 - Eine Person (`person`) hat höchstens ein WordPress-Konto (`person.user_id`). Konten entstehen nur über Einladungen oder die erste Anmeldung einer Person mit hinterlegter E-Mail-Adresse; offenes Registrieren gibt es nicht.
 - Anmeldename `ttl-{person_id}`, Anzeigename «Vorname Nachname», E-Mail aus `person.email`, Rolle `subscriber`. Mitglieder der TK erhalten zusätzlich die Rolle `ttl_tk`.
 - Funktionen (Captain, TK-Chef) stehen in `club_role` der aktiven Saison und werden nie als WordPress-Rolle gespeichert.
+- Gibt es schon ein WordPress-Konto mit der E-Mail-Adresse der Person, wird es nur verknüpft, wenn es zu keiner anderen Person gehört und keine erweiterten Rechte hat (`manage_options`, `edit_posts`, `ttl_tk`). Sonst schlägt die Anmeldung mit einem Hinweis fehl. Ein Administrator verknüpft solche Konten von Hand: `wp ttleague account link <person-id> <konto>` und `wp ttleague account unlink <person-id>`.
 
 ## Anmeldung mit Magic Link
 

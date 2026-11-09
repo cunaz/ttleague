@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Accounts;
 
+use TTLeague\Access\Capabilities;
 use TTLeague\Infrastructure\Database\Db;
 
 final class AccountService {
@@ -121,6 +122,41 @@ final class AccountService {
 	}
 
 	/**
+	 * Person, die mit diesem Konto verknüpft ist (ausser der angegebenen), oder null.
+	 */
+	public function linked_person( int $user_id, int $except_person_id = 0 ): ?int {
+		$id = $this->db->get_var(
+			"SELECT id FROM {$this->db->table( 'person' )} WHERE user_id = %d AND id <> %d ORDER BY id LIMIT 1",
+			array( $user_id, $except_person_id )
+		);
+		return null === $id ? null : (int) $id;
+	}
+
+	/**
+	 * Hat das Konto Rechte über ein Spielerkonto hinaus (Redaktion, TK, Verwaltung)?
+	 */
+	public static function is_elevated( int $user_id ): bool {
+		return user_can( $user_id, 'manage_options' ) || user_can( $user_id, 'edit_posts' ) || user_can( $user_id, Capabilities::TK );
+	}
+
+	/**
+	 * Darf ein bestehendes Konto automatisch mit der Person verknüpft werden? Nicht, wenn es
+	 * schon zu einer anderen Person gehört oder erweiterte Rechte hat. Sonst könnte, wer eine
+	 * E-Mail-Adresse setzen kann, über einen Anmeldelink ein fremdes Konto übernehmen. Solche
+	 * Verknüpfungen nimmt ein Administrator von Hand vor (wp ttleague account link).
+	 *
+	 * @throws \RuntimeException Wenn die Verknüpfung abgelehnt wird.
+	 */
+	private function assert_linkable( int $user_id, int $person_id ): void {
+		if ( null !== $this->linked_person( $user_id, $person_id ) ) {
+			throw new \RuntimeException( 'Diese E-Mail-Adresse gehört zum Konto einer anderen Person.' );
+		}
+		if ( self::is_elevated( $user_id ) ) {
+			throw new \RuntimeException( 'Das Konto mit dieser E-Mail-Adresse hat erweiterte Rechte und wird nicht automatisch verknüpft.' );
+		}
+	}
+
+	/**
 	 * Legt bei Bedarf das WordPress-Konto einer Person an und verknüpft es.
 	 *
 	 * @throws \RuntimeException Wenn kein Konto angelegt werden kann.
@@ -139,6 +175,7 @@ final class AccountService {
 		}
 		$existing = get_user_by( 'email', $email );
 		if ( false !== $existing ) {
+			$this->assert_linkable( (int) $existing->ID, $person_id );
 			$this->link_user( $person_id, (int) $existing->ID );
 			return (int) $existing->ID;
 		}
