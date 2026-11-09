@@ -1,0 +1,31 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ttleague/result-entry",
+	"version": "0.2.0",
+	"title": "Resultat erfassen",
+	"category": "ttleague",
+	"icon": "edit",
+	"description": "Resultaterfassung einer Begegnung aus der Adresse (?begegnung=123): erfassen, bestätigen, Einsprache, Entscheid der TK.",
+	"keywords": [
+		"ttleague",
+		"resultat",
+		"spielbericht"
+	],
+	"textdomain": "ttleague",
+	"attributes": {},
+	"supports": {
+		"html": false,
+		"multiple": false,
+		"interactivity": true,
+		"align": [
+			"wide",
+			"full"
+		],
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "ttleague-editor",
+	"style": "ttleague-frontend"
+}

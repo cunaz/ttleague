@@ -34,6 +34,7 @@ final class Frontend {
 		add_filter( 'get_canonical_url', array( Router::class, 'canonical' ) );
 		add_filter( 'wp_robots', array( Router::class, 'robots' ) );
 		add_action( 'save_post_page', array( PageInstaller::class, 'on_page_saved' ) );
+		add_filter( 'site_status_tests', array( PageInstaller::class, 'site_status_tests' ) );
 		add_action( 'save_post_page', array( self::class, 'reset_urls' ) );
 
 		if ( defined( 'TTLEAGUE_FILE' ) ) {
