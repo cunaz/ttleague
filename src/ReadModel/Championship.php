@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\ReadModel;
 
+use TTLeague\Domain\Match\FixtureWorkflow;
 use TTLeague\Domain\Standings\MatchSummary;
 use TTLeague\Domain\Standings\StandingsCalculator;
 use TTLeague\Infrastructure\Database\Db;
@@ -327,7 +328,8 @@ final class Championship {
 				if ( $fixture['counted'] ) {
 					++$group['played'];
 				}
-				if ( 'provisional' === $fixture['status'] ) {
+				// Vorläufig sind provisorische und strittige Resultate (docs/erfassung.md).
+				if ( FixtureWorkflow::is_provisional( (string) $fixture['status'] ) ) {
 					$group['has_provisional'] = true;
 				}
 			}
