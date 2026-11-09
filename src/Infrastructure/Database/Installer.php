@@ -44,6 +44,7 @@ final class Installer {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
+		self::drop_obsolete_indexes();
 		// Vor dbDelta umwandeln, damit dbDelta den gleichnamigen Index nicht ein zweites Mal anlegen will.
 		$person = Schema::table( 'person', $wpdb->prefix );
 		if ( $person === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $person ) ) ) {
@@ -75,6 +76,28 @@ final class Installer {
 			: 'Index person.user_id liess sich nicht in UNIQUE umwandeln (' . $index->last_error . '). Neue Verknüpfungen bleiben gesperrt; neuer Versuch in einer Stunde.';
 		error_log( 'ttleague: ' . $message ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
 		return false;
+	}
+
+	/**
+	 * Ersetzte Indizes löschen (Schema::OBSOLETE_INDEXES); dbDelta() kann das nicht.
+	 */
+	private static function drop_obsolete_indexes(): void {
+		global $wpdb;
+		foreach ( Schema::OBSOLETE_INDEXES as $name => $indexes ) {
+			$table = Schema::table( $name, $wpdb->prefix );
+			foreach ( $indexes as $index ) {
+				$exists = $wpdb->get_var(
+					$wpdb->prepare(
+						'SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+						$table,
+						$index
+					)
+				);
+				if ( (int) $exists > 0 ) {
+					$wpdb->query( "ALTER TABLE `{$table}` DROP INDEX `{$index}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Namen aus Schema-Konstanten.
+				}
+			}
+		}
 	}
 
 	/**
