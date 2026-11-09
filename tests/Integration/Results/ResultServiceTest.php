@@ -565,6 +565,50 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'Art. 12.7', implode( ' ', $warnings ) );
 	}
 
+	public function test_forfeit_and_reset_discard_warnings_and_reset_unlinks_the_photo(): void {
+		$payload = $this->team_payload(
+			array(
+				'A' => 'h4',
+				'B' => 'h2',
+				'C' => 'h3',
+			),
+			array(
+				'X' => 'h1',
+				'Y' => 'h5',
+				'Z' => 'h6',
+			),
+			array( '3:1', '3:0', '3:2', '1:3', '3:1', '0:3', '3:2', '2:3', '1:3', '3:0' )
+		);
+		$this->service->decide(
+			$this->id['derby'],
+			$this->actor['tk'],
+			array(
+				'action' => 'correct',
+				'result' => $payload,
+			)
+		);
+		$this->service->attach_photo( $this->id['derby'], $this->actor['tk'], 555 );
+		self::assertNotSame( array(), $this->service->entry( $this->id['derby'], $this->actor['tk'] )['current']['warnings'] );
+
+		$this->service->decide(
+			$this->id['derby'],
+			$this->actor['tk'],
+			array(
+				'action' => 'forfeit',
+				'winner' => 'home',
+			)
+		);
+		$current = $this->service->entry( $this->id['derby'], $this->actor['tk'] )['current'];
+		self::assertSame( array(), $current['warnings'], 'das Forfait ersetzt die erfassten Spiele samt Hinweisen' );
+		self::assertSame( 555, $current['photo_id'], 'das Foto bleibt beim Forfait als Beleg' );
+
+		$this->service->decide( $this->id['derby'], $this->actor['tk'], array( 'action' => 'reset' ) );
+		$entry = $this->service->entry( $this->id['derby'], $this->actor['tk'] );
+		self::assertSame( array(), $entry['current']['warnings'] );
+		self::assertNull( $entry['current']['photo_id'], 'zurücksetzen löst das Foto von der Begegnung' );
+		self::assertContains( 'photo', array_column( $entry['history'], 'type' ), 'der Verlauf nennt das Foto weiterhin' );
+	}
+
 	public function test_third_substitute_appearance_binds_player(): void {
 		$warnings = array();
 		foreach ( array( 'f1', 'f3', 'f4' ) as $fixture ) {

@@ -63,6 +63,8 @@ Weitere Regeln:
 
 Tabellen zählen `provisional`, `confirmed`, `disputed`, `final` und `forfeit`. Bei `provisional` und `disputed` wird das Resultat als vorläufig markiert.
 
+Forfait und Zurücksetzen löschen Aufstellung, Spiele und deren Hinweise (`current.warnings` ist danach leer). Das Forfait behält das Foto als Beleg. Zurücksetzen führt zum Ausgangszustand zurück und löst auch das Foto von der Begegnung; der Anhang bleibt in der Mediathek, und der Verlauf behält das Ereignis `photo`.
+
 ## Erfassungsseite
 
 Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttleague/result-entry`), Aufruf mit `?begegnung={id}`. Adresse immer über `Results::entry_url( $fixture_id )`. Dort erfasst die Heimseite, die Gastseite bestätigt oder erhebt Einsprache, die TK entscheidet.

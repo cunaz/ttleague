@@ -96,9 +96,12 @@ final class ResultService {
 		$lineup = $this->repo->lineup( $fixture_id );
 		$events = $this->repo->events( $fixture_id );
 
+		// Hinweise der letzten Erfassung; Forfait und Zurücksetzen verwerfen sie mit dem Resultat.
 		$warnings = array();
 		foreach ( $events as $event ) {
-			if ( in_array( $event['type'], array( 'entered', 'edited', 'decided' ), true ) && isset( $event['data']['warnings'] ) ) {
+			if ( in_array( $event['type'], array( 'forfeit', 'reset' ), true ) ) {
+				$warnings = array();
+			} elseif ( in_array( $event['type'], array( 'entered', 'edited', 'decided' ), true ) && isset( $event['data']['warnings'] ) ) {
 				$warnings = (array) $event['data']['warnings'];
 			}
 		}
@@ -622,8 +625,11 @@ final class ResultService {
 					'confirmed_auto' => 0,
 				);
 				if ( $reset ) {
-					$fields['entered_by'] = null;
-					$fields['entered_at'] = null;
+					// Zurück zum Ausgangszustand: Das Foto gehört zur verworfenen Erfassung. Der Anhang
+					// bleibt in der Mediathek, der Verlauf nennt ihn weiterhin.
+					$fields['entered_by']          = null;
+					$fields['entered_at']          = null;
+					$fields['photo_attachment_id'] = null;
 				}
 				$this->repo->update_fixture( $ctx->id, $fields );
 				$this->repo->add_event( $ctx->id, $event, $actor->user_id, $actor->person_id, $comment, $data, $now );
