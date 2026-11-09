@@ -1342,6 +1342,140 @@
 	}
 }
 
+/* Kopfzeile: Anmelden / Mein Bereich */
+
+.ttl-account-link a {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	min-height: var(--ttl-touch);
+	color: inherit;
+	text-decoration: none;
+	font-weight: 600;
+}
+
+/* Nur das Symbol; der Text bleibt für Screenreader (Kopfzeile ist sonst zu voll). */
+.ttl-account-link span {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.ttl-account-link a {
+	min-inline-size: var(--ttl-touch);
+	justify-content: center;
+}
+
+.ttl-account-link svg {
+	inline-size: 22px;
+	block-size: 22px;
+}
+
+/* Formulare: Anmelden, Mein Bereich */
+
+.ttl-notice--success {
+	border-color: color-mix(in srgb, var(--ttl-win) 55%, transparent);
+	background: color-mix(in srgb, var(--ttl-win) 10%, var(--ttl-surface));
+}
+
+.ttl-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+	max-width: 34rem;
+	margin-block: 0 var(--ttl-gap);
+}
+
+.ttl-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	margin: 0;
+}
+
+.ttl-field > label,
+.ttl-label {
+	font-weight: 600;
+}
+
+.ttl-field input[type="email"],
+.ttl-field input[type="tel"],
+.ttl-field input[type="text"],
+.ttl-field input[type="number"],
+.ttl-field select,
+.ttl-field textarea {
+	min-height: var(--ttl-touch);
+	padding: 0.45rem 0.65rem;
+	font: inherit;
+	color: var(--ttl-ink);
+	background: var(--ttl-surface);
+	border: 1px solid color-mix(in srgb, var(--ttl-ink) 45%, transparent);
+	border-radius: 0.4rem;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.ttl-field--check {
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 0.6rem;
+}
+
+.ttl-field--check > label {
+	font-weight: 400;
+}
+
+.ttl-form input[type="checkbox"] {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	margin: 0.15rem 0 0;
+	flex: none;
+	accent-color: var(--ttl-accent);
+}
+
+.ttl-form .ttl-button {
+	align-self: flex-start;
+}
+
+.ttl-button--primary {
+	background: var(--ttl-accent);
+	color: var(--ttl-surface);
+}
+
+.ttl-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem 1.25rem;
+}
+
+.ttl-functions {
+	color: var(--ttl-muted);
+	font-weight: 600;
+}
+
+.ttl-prefs {
+	max-width: 34rem;
+}
+
+.ttl-prefs caption {
+	text-align: start;
+	font-weight: 600;
+	padding-block-end: 0.4rem;
+}
+
+.ttl-prefs td {
+	text-align: center;
+	inline-size: 4.5rem;
+}
+
+.ttl-prefs td input[type="checkbox"] {
+	margin: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
 
 	.ttl * {
@@ -1354,7 +1488,8 @@
 
 	.ttl-season-switch,
 	.ttl-filter,
-	.ttl-tabs {
+	.ttl-tabs,
+	.ttl-form {
 		display: none;
 	}
 

@@ -14,10 +14,11 @@ final class Installer {
 	public const OPTION = 'ttleague_db_version';
 
 	/**
-	 * Aktivierungshook: Tabellen anlegen.
+	 * Aktivierungshook: Tabellen und Rollen anlegen.
 	 */
 	public static function activate(): void {
 		self::install();
+		\TTLeague\Access\Roles::install();
 	}
 
 	/**

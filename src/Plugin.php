@@ -31,6 +31,10 @@ final class Plugin {
 			\TTLeague\Frontend\Frontend::register();
 		}
 
+		// Fachliche Rechte (Meta-Capabilities) und Konten (Anmeldelink, Mein Bereich).
+		\TTLeague\Access\Capabilities::register();
+		\TTLeague\Accounts\Accounts::register();
+
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
 			\TTLeague\Content\Content::register();

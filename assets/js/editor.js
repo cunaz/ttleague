@@ -29,6 +29,7 @@
 	var RangeControl = components.RangeControl;
 	var ToggleControl = components.ToggleControl;
 	var Disabled = components.Disabled;
+	var Placeholder = components.Placeholder;
 
 	var data = window.ttleagueEditor || { seasons: [], clubs: [] };
 
@@ -231,6 +232,31 @@
 				numberControl( p, 'limit', __( 'Höchstzahl', 'ttleague' ), __( '0: alle.', 'ttleague' ) ),
 			];
 		},
+		'ttleague/login': function () {
+			return [];
+		},
+		'ttleague/my-area': function () {
+			return [];
+		},
+		'ttleague/account-link': function () {
+			return [];
+		},
+	};
+
+	/**
+	 * Blöcke mit persönlichem Inhalt: im Editor nur ein Platzhalter statt der Vorschau.
+	 */
+	var placeholders = {
+		'ttleague/login': {
+			icon: 'admin-users',
+			label: __( 'Anmelden', 'ttleague' ),
+			text: __( 'Hier erscheint das Formular für den Anmeldelink. Besucher geben ihre E-Mail-Adresse ein und erhalten einen Link.', 'ttleague' ),
+		},
+		'ttleague/my-area': {
+			icon: 'id-alt',
+			label: __( 'Mein Bereich', 'ttleague' ),
+			text: __( 'Hier erscheinen für angemeldete Personen Einwilligung, Profil, Benachrichtigungen und ihre Spiele.', 'ttleague' ),
+		},
 	};
 
 	/**
@@ -253,6 +279,16 @@
 		return function Edit( props ) {
 			var blockProps = useBlockProps ? useBlockProps() : {};
 			var controls = settings[ name ] ? settings[ name ]( props ) : [];
+			var info = placeholders[ name ];
+			if ( info ) {
+				return el(
+					'div',
+					blockProps,
+					Placeholder
+						? el( Placeholder, { icon: info.icon, label: info.label, instructions: info.text } )
+						: el( 'p', null, info.text )
+				);
+			}
 			var preview = el( ServerSideRender, {
 				block: name,
 				attributes: props.attributes,
