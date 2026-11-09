@@ -287,7 +287,8 @@ final class ResultService {
 		if ( null !== $comment && mb_strlen( $comment ) > 2000 ) {
 			throw ResultException::invalid( array( ResultInput::error( 'comment', __( 'Die Bemerkung ist zu lang (höchstens 2000 Zeichen).', 'ttleague' ) ) ) );
 		}
-		$this->check_version( $ctx, is_string( $payload['version'] ?? null ) && '' !== $payload['version'] ? $payload['version'] : null );
+		$version = is_string( $payload['version'] ?? null ) && '' !== $payload['version'] ? $payload['version'] : null;
+		$this->check_version( $ctx, $version );
 		if ( ! Flow::allows( self::DECISIONS[ $action ], $ctx->status, array( Flow::ROLE_TK ) ) ) {
 			throw ResultException::conflict( $this->status_message( $ctx->status ) );
 		}
@@ -296,7 +297,7 @@ final class ResultService {
 			case 'confirm':
 				// Entscheid der TK: immer by_tk, mit Bemerkung; die Meldung an beide Seiten löst
 				// das Ereignis «confirmed» aus, ein zusätzliches «decided» braucht es nicht.
-				return $this->confirm_result( $fixture_id, $actor, null, $comment, true );
+				return $this->confirm_result( $fixture_id, $actor, $version, $comment, true );
 
 			case 'finalize':
 				if ( ! $ctx->has_result() ) {

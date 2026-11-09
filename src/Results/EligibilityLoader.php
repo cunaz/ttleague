@@ -109,9 +109,10 @@ final class EligibilityLoader {
 
 	/**
 	 * Bindung eines Spielers aus seinen Einsätzen der Saison (Art. 12.5): das Team, in dem er
-	 * zuerst die Höchstzahl der Ersatzeinsätze erreicht, ab dem Tag dieses Einsatzes.
+	 * zuerst die Höchstzahl der Ersatzeinsätze erreicht, ab dem Tag dieses Einsatzes. Einsätze in
+	 * Begegnungen ohne Termin zählen nicht (wie in for_club()), sonst hätte die Bindung kein Datum.
 	 *
-	 * @return array{team_id:int,valid_from:string|null}|null
+	 * @return array{team_id:int,valid_from:string}|null
 	 */
 	public function binding( int $season_id, int $player_id, SeasonRules $rules ): ?array {
 		$club = $this->db->get_var(
@@ -137,7 +138,7 @@ final class EligibilityLoader {
 			"SELECT t.id AS team_id, f.scheduled_at FROM {$this->db->table( 'lineup' )} l
 			JOIN {$this->db->table( 'fixture' )} f ON f.id = l.fixture_id
 			JOIN {$this->db->table( 'team' )} t ON t.id = CASE WHEN l.side = 'home' THEN f.home_team_id ELSE f.away_team_id END
-			WHERE l.player_id = %d AND t.season_id = %d AND t.club_id = %d
+			WHERE l.player_id = %d AND t.season_id = %d AND t.club_id = %d AND f.scheduled_at IS NOT NULL
 			ORDER BY f.scheduled_at, f.id",
 			array( $player_id, $season_id, $club_id )
 		) as $row ) {
@@ -146,7 +147,7 @@ final class EligibilityLoader {
 			if ( null !== $team ) {
 				return array(
 					'team_id'    => (int) $team,
-					'valid_from' => null === $row['scheduled_at'] ? null : substr( (string) $row['scheduled_at'], 0, 10 ),
+					'valid_from' => substr( (string) $row['scheduled_at'], 0, 10 ),
 				);
 			}
 		}
