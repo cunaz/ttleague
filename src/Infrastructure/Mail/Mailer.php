@@ -20,6 +20,29 @@ final class Mailer {
 	private ?string $alt_body = null;
 
 	public function send( Message $message ): bool {
+		return true === $this->dispatch( $message );
+	}
+
+	/**
+	 * Wie send(), aber ein Fehlschlag von wp_mail wirft eine RuntimeException, damit der
+	 * Aufrufer ihn melden kann. false heisst nur noch: über ttleague_mail unterdrückt, also
+	 * absichtlich nicht versendet. Die Meldung nennt weder Empfänger noch den Text von
+	 * PHPMailer, der Adressen enthalten kann.
+	 *
+	 * @throws \RuntimeException Wenn wp_mail scheitert.
+	 */
+	public function send_or_throw( Message $message ): bool {
+		$sent = $this->dispatch( $message );
+		if ( false === $sent ) {
+			throw new \RuntimeException( 'wp_mail meldet einen Fehler, die E-Mail ist nicht versendet.' );
+		}
+		return true === $sent;
+	}
+
+	/**
+	 * @return bool|null true versendet, false von wp_mail abgelehnt, null über ttleague_mail unterdrückt.
+	 */
+	private function dispatch( Message $message ): ?bool {
 		/**
 		 * Nachricht vor dem Versand anpassen oder unterdrücken (false).
 		 *
@@ -27,7 +50,7 @@ final class Mailer {
 		 */
 		$message = apply_filters( 'ttleague_mail', $message );
 		if ( ! $message instanceof Message ) {
-			return false;
+			return null;
 		}
 		$site    = wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES );
 		$headers = array( 'Content-Type: text/html; charset=UTF-8' );

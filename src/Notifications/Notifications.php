@@ -172,7 +172,7 @@ final class Notifications {
 	 */
 	public static function channels(): array {
 		$mailer   = Services::mailer();
-		$channels = array( new EmailChannel( array( $mailer, 'send' ) ) );
+		$channels = array( new EmailChannel( array( $mailer, 'send_or_throw' ) ) );
 		$vapid    = VapidKeys::get();
 		if ( null !== $vapid ) {
 			$icon       = get_site_icon_url( 192 );
