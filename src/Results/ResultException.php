@@ -11,10 +11,11 @@ namespace TTLeague\Results;
 
 final class ResultException extends \RuntimeException {
 
-	public const FORBIDDEN = 'ttl_forbidden';
-	public const NOT_FOUND = 'ttl_not_found';
-	public const CONFLICT  = 'ttl_conflict';
-	public const INVALID   = 'ttl_invalid';
+	public const FORBIDDEN   = 'ttl_forbidden';
+	public const NOT_FOUND   = 'ttl_not_found';
+	public const CONFLICT    = 'ttl_conflict';
+	public const INVALID     = 'ttl_invalid';
+	public const UNAVAILABLE = 'ttl_unavailable';
 
 	/**
 	 * @param string                                   $error_code Maschinenlesbarer Code.
@@ -41,6 +42,13 @@ final class ResultException extends \RuntimeException {
 
 	public static function conflict( string $message ): self {
 		return new self( self::CONFLICT, $message, 409 );
+	}
+
+	/**
+	 * Vorübergehend nicht möglich (503), z. B. weil die Fotoablage nicht geschützt ist.
+	 */
+	public static function unavailable( string $message ): self {
+		return new self( self::UNAVAILABLE, $message, 503 );
 	}
 
 	/**

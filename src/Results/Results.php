@@ -26,6 +26,7 @@ final class Results {
 	public static function register(): void {
 		add_action( 'rest_api_init', array( ResultController::class, 'register_routes' ) );
 		add_filter( 'rest_pre_serve_request', array( ResultController::class, 'serve_photo' ), 10, 3 );
+		PhotoStorage::register();
 		add_action( self::RECALC_HOOK, array( self::class, 'recalc_ratings' ) );
 		EntryBlock::register();
 		MyGames::register();
