@@ -10,21 +10,84 @@ declare(strict_types=1);
 namespace TTLeague\Notifications;
 
 use TTLeague\Accounts\Services;
+use TTLeague\Infrastructure\Time\Clock;
 use TTLeague\Results\ResultRepository;
 
 /**
- * Dünne Anbindung: Hängt die Sofortmeldungen an die Aktionen der Erfassung und baut die
- * Dienste mit der Datenbank, der Uhr und den Kanälen der Website zusammen. Fehler beim
+ * Dünne Anbindung: Hängt die Sofortmeldungen an die Aktionen der Erfassung, plant den
+ * stündlichen Lauf der Fristen (eigener Cron-Hook, bei der Deaktivierung entfernt) und baut
+ * die Dienste mit der Datenbank, der Uhr und den Kanälen der Website zusammen. Fehler beim
  * Versand brechen die auslösende Aktion nie ab, sie landen im Fehlerprotokoll und in der
  * Aktion ttleague_notification_error.
+ *
+ * Filter: ttleague_notification_hours (Versandfenster und Stunde der TK-Übersicht).
  */
 final class Notifications {
+
+	public const CRON_HOOK = 'ttleague_notifications_hourly';
 
 	public static function register(): void {
 		add_action( 'ttleague_result_entered', array( self::class, 'on_entered' ), 10, 3 );
 		add_action( 'ttleague_result_confirmed', array( self::class, 'on_confirmed' ), 10, 3 );
 		add_action( 'ttleague_result_disputed', array( self::class, 'on_disputed' ), 10, 3 );
 		add_action( 'ttleague_result_decided', array( self::class, 'on_decided' ), 10, 4 );
+		add_action( 'init', array( self::class, 'schedule' ) );
+		add_action( self::CRON_HOOK, array( self::class, 'run_deadlines' ) );
+		if ( defined( 'TTLEAGUE_FILE' ) ) {
+			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
+		}
+	}
+
+	/**
+	 * Stündlichen Lauf der Fristen einplanen.
+	 */
+	public static function schedule(): void {
+		if ( false === wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_event( time() + 5 * MINUTE_IN_SECONDS, 'hourly', self::CRON_HOOK );
+		}
+	}
+
+	public static function deactivate(): void {
+		wp_clear_scheduled_hook( self::CRON_HOOK );
+	}
+
+	/**
+	 * Cron: Fristen prüfen und fällige Erinnerungen versenden.
+	 */
+	public static function run_deadlines(): void {
+		self::guard( static fn() => self::deadlines()->run() );
+	}
+
+	/**
+	 * Fristen mit der Uhr der Website oder einer festen Uhr (WP-CLI, Tests).
+	 */
+	public static function deadlines( ?Clock $clock = null ): Deadlines {
+		$clock = $clock ?? Services::clock();
+		$log   = new NotificationLog( Services::db(), $clock );
+		/**
+		 * Versandfenster der Erinnerungen und Stunde der täglichen TK-Übersicht (Ortszeit).
+		 *
+		 * @param array{from_hour:int,until_hour:int,digest_hour:int} $hours Standard 7 bis 22 Uhr, Übersicht ab 7 Uhr.
+		 */
+		$hours = (array) apply_filters(
+			'ttleague_notification_hours',
+			array(
+				'from_hour'   => Deadlines::FROM_HOUR,
+				'until_hour'  => Deadlines::UNTIL_HOUR,
+				'digest_hour' => Deadlines::DIGEST_HOUR,
+			)
+		);
+		return new Deadlines(
+			$clock,
+			wp_timezone(),
+			new FixtureQueries( Services::db() ),
+			new ResultRepository( Services::db() ),
+			self::recipients(),
+			self::notifier( $log ),
+			self::messages(),
+			$log,
+			$hours
+		);
 	}
 
 	public static function on_entered( int $fixture_id, int $user_id, bool $edited ): void {
@@ -57,10 +120,10 @@ final class Notifications {
 		);
 	}
 
-	public static function notifier(): Notifier {
+	public static function notifier( ?NotificationLog $log = null ): Notifier {
 		return new Notifier(
 			Services::preferences(),
-			new NotificationLog( Services::db(), Services::clock() ),
+			$log ?? new NotificationLog( Services::db(), Services::clock() ),
 			self::channels(),
 			array( self::class, 'report_error' )
 		);

@@ -196,7 +196,7 @@ final class MessagesTest extends TestCase {
 		$mail = self::mail( $n, 'Tamara' );
 		self::assertSame( array( 'tk_digest', 'day', 20261126 ), array( $n->event, $n->ref_type, $n->ref_id ) );
 		self::assertSame( 'TK: 3 offene Punkte am Do, 26.11.2026', $n->subject );
-		self::assertSame( array( 'Forfait-Vorschlag (16 Tage ohne Resultat) (1)', 'Bestätigung durch die TK nötig (mehr als 7 Tage provisorisch) (1)', 'Einsprachen (1)' ), array_column( $n->lists, 'heading' ) );
+		self::assertSame( array( 'Forfait-Vorschlag, 16 Tage ohne Resultat (1)', 'Bestätigung durch die TK nötig, seit 7 Tagen provisorisch (1)', 'Einsprachen (1)' ), array_column( $n->lists, 'heading' ) );
 		self::assertSame( 'Di, 10.11.2026, 20:00 · Seefeld 1 – Wollishofen 1 (Gruppe B) · 6:4', $n->lists[2]['items'][0]['text'] );
 		self::assertStringContainsString( "- Di, 10.11.2026, 20:00 · Seefeld 1 – Wollishofen 1 (Gruppe B)\n  https://liga.example.org/erfassen/?begegnung=7", $mail->text );
 		self::assertStringContainsString( '<li style="margin:0 0 6px"><a href="https://liga.example.org/erfassen/?begegnung=7">', (string) $mail->html );

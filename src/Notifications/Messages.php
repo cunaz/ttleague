@@ -382,11 +382,11 @@ final class Messages {
 		$wait  = null === $rules ? 7 : $rules->objection_days;
 		return array(
 			/* translators: %d: Stunden */
-			'missing'  => sprintf( __( 'Resultat fehlt (mehr als %d Stunden nach Anspielzeit)', 'ttleague' ), $hours ),
+			'missing'  => sprintf( __( 'Resultat fehlt seit mehr als %d Stunden', 'ttleague' ), $hours ),
 			/* translators: %d: Tage */
-			'forfeit'  => sprintf( __( 'Forfait-Vorschlag (%d Tage ohne Resultat)', 'ttleague' ), $days ),
+			'forfeit'  => sprintf( __( 'Forfait-Vorschlag, %d Tage ohne Resultat', 'ttleague' ), $days ),
 			/* translators: %d: Tage */
-			'overdue'  => sprintf( __( 'Bestätigung durch die TK nötig (mehr als %d Tage provisorisch)', 'ttleague' ), $wait ),
+			'overdue'  => sprintf( __( 'Bestätigung durch die TK nötig, seit %d Tagen provisorisch', 'ttleague' ), $wait ),
 			'disputed' => __( 'Einsprachen', 'ttleague' ),
 		);
 	}

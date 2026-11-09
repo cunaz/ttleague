@@ -20,6 +20,24 @@ final class SeasonRulesTest extends TestCase {
 		self::assertFalse( $rules->allows_any_team_in_category( 'B' ) );
 	}
 
+	public function test_reminder_timings_have_defaults_and_can_be_set_per_season(): void {
+		$rules = new SeasonRules();
+		self::assertSame( 2, $rules->match_reminder_days );
+		self::assertSame( 24, $rules->result_reminder_hours );
+		self::assertSame( array( 3, 6 ), $rules->confirm_reminder_days );
+		self::assertSame( 16, $rules->forfeit_after_days );
+
+		$custom = SeasonRules::from_array(
+			array(
+				'match_reminder_days'   => '3',
+				'confirm_reminder_days' => array( '2', 5 ),
+			)
+		);
+		self::assertSame( 3, $custom->match_reminder_days );
+		self::assertSame( array( 2, 5 ), $custom->confirm_reminder_days );
+		self::assertSame( 24, $custom->result_reminder_hours );
+	}
+
 	public function test_from_array_merges_partial_data(): void {
 		$rules = SeasonRules::from_array(
 			array(

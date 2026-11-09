@@ -40,6 +40,9 @@ final class SeasonRules {
 	 * @param float               $rating_scale             Skalierung der Erwartungswertformel (kalibriert: 200, d. h. eine Klassierungsstufe Unterschied ergibt 76 % Siegerwartung).
 	 * @param float               $rating_doubles_weight    Gewicht eines Doppels für die Wertungszahl.
 	 * @param float               $rating_points_per_class  Wertungspunkte pro Klassierungsstufe.
+	 * @param int                 $match_reminder_days      Erinnerung an beide Seiten so viele Tage vor dem Spiel.
+	 * @param int                 $result_reminder_hours    Erinnerung an die Heimseite, wenn so viele Stunden nach Anspielzeit kein Resultat vorliegt.
+	 * @param list<int>           $confirm_reminder_days    Erinnerungen an die Gastseite so viele Tage nach der Erfassung (danach die TK nach objection_days).
 	 */
 	public function __construct(
 		public readonly int $substitute_max = 3,
@@ -63,6 +66,9 @@ final class SeasonRules {
 		public readonly float $rating_scale = 200.0,
 		public readonly float $rating_doubles_weight = 0.5,
 		public readonly float $rating_points_per_class = 100.0,
+		public readonly int $match_reminder_days = 2,
+		public readonly int $result_reminder_hours = 24,
+		public readonly array $confirm_reminder_days = array( 3, 6 ),
 	) {
 		if ( $this->substitute_max < 0 ) {
 			throw new \InvalidArgumentException( 'substitute_max darf nicht negativ sein.' );
@@ -106,6 +112,9 @@ final class SeasonRules {
 			rating_scale: (float) $merged['rating_scale'],
 			rating_doubles_weight: (float) $merged['rating_doubles_weight'],
 			rating_points_per_class: (float) $merged['rating_points_per_class'],
+			match_reminder_days: (int) $merged['match_reminder_days'],
+			result_reminder_hours: (int) $merged['result_reminder_hours'],
+			confirm_reminder_days: array_values( array_map( 'intval', (array) $merged['confirm_reminder_days'] ) ),
 		);
 	}
 
