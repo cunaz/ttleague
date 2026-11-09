@@ -128,6 +128,27 @@ final class EnsureUserTest extends TestCase {
 		self::assertSame( $user_id, $this->linked_user( $this->person ) );
 	}
 
+	/**
+	 * Die TK hat das Konto von der Person gelöst; danach hat die Person eine neue Adresse. Das alte
+	 * Konto bleibt unverknüpft, das neue erhält einen freien Anmeldenamen.
+	 */
+	public function test_new_account_gets_a_free_login_when_the_old_one_was_unlinked(): void {
+		$old = self::factory()->user->create(
+			array(
+				'user_login' => 'ttl-' . $this->person,
+				'user_email' => 'frueher.muster@example.invalid',
+				'role'       => 'subscriber',
+			)
+		);
+
+		$user_id = $this->accounts->ensure_user( $this->person );
+
+		self::assertNotSame( $old, $user_id );
+		self::assertSame( 'ttl-' . $this->person . '-2', get_userdata( $user_id )->user_login );
+		self::assertSame( $user_id, $this->linked_user( $this->person ) );
+		self::assertSame( 'frueher.muster@example.invalid', get_userdata( $old )->user_email, 'das alte Konto bleibt unverändert' );
+	}
+
 	public function test_linked_account_is_returned_as_it_is(): void {
 		// Von Hand verknüpft (wp ttleague account link): ensure_user prüft nicht erneut; die
 		// Anmeldung per Link sperrt solche Konten separat (LoginFlowTest).

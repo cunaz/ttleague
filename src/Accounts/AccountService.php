@@ -234,7 +234,7 @@ final class AccountService {
 		}
 		$user_id = wp_insert_user(
 			array(
-				'user_login'   => 'ttl-' . $person_id,
+				'user_login'   => self::free_login( $person_id ),
 				'user_email'   => $email,
 				'user_pass'    => wp_generate_password( 32, true, true ),
 				'first_name'   => (string) $person['first_name'],
@@ -248,5 +248,21 @@ final class AccountService {
 		}
 		$this->link_user( $person_id, (int) $user_id );
 		return (int) $user_id;
+	}
+
+	/**
+	 * Anmeldename für ein neues Konto: `ttl-{id}`, oder mit Zähler, wenn der Name schon vergeben
+	 * ist, z. B. an ein Konto, das die TK von der Person gelöst hat (`wp ttleague account unlink`).
+	 * Dieses Konto bleibt bewusst unverknüpft.
+	 */
+	private static function free_login( int $person_id ): string {
+		$base  = 'ttl-' . $person_id;
+		$login = $base;
+		$n     = 1;
+		while ( false !== username_exists( $login ) ) {
+			++$n;
+			$login = $base . '-' . $n;
+		}
+		return $login;
 	}
 }
