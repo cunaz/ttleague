@@ -62,6 +62,10 @@ Weitere Regeln:
 
 Tabellen zählen `provisional`, `confirmed`, `disputed`, `final` und `forfeit`. Bei `provisional` und `disputed` wird das Resultat als vorläufig markiert.
 
+## Erfassungsseite
+
+Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttleague/result-entry`), Aufruf mit `?begegnung={id}`. Adresse immer über `Results::entry_url( $fixture_id )`. Dort erfasst die Heimseite, die Gastseite bestätigt oder erhebt Einsprache, die TK entscheidet.
+
 ## REST-API
 
 Basis `/wp-json/ttleague/v1`, Authentifizierung über das WordPress-Cookie mit `X-WP-Nonce`. Fehlertexte auf Deutsch. Validierungsfehler: HTTP 422 mit `{ "code": "ttl_invalid", "message": "...", "data": { "status": 422, "errors": [ { "field": "...", "message": "..." } ] } }`.

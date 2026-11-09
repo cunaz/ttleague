@@ -34,6 +34,7 @@ final class Urls {
 		'archive'      => 'archiv',
 		'login'        => 'anmelden',
 		'my_area'      => 'mein-bereich',
+		'entry'        => 'erfassen',
 	);
 
 	private readonly string $home;

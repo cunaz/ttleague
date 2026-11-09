@@ -47,6 +47,13 @@ final class Results {
 	}
 
 	/**
+	 * Adresse der Erfassungsseite einer Begegnung (Seite «entry», Block ttleague/result-entry).
+	 */
+	public static function entry_url( int $fixture_id ): string {
+		return add_query_arg( 'begegnung', (string) $fixture_id, \TTLeague\Frontend\Frontend::urls()->page( 'entry' ) );
+	}
+
+	/**
 	 * Handelnde Person aus dem angemeldeten Konto.
 	 */
 	public static function current_actor(): Actor {
