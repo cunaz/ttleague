@@ -128,7 +128,7 @@ final class EntryPageTest extends IntegrationTestCase {
 			$fixture ?? $this->id['fixture'],
 			'' === $actor ? null : $this->actor[ $actor ],
 			self::LINKS,
-			static fn( int $attachment ): ?string => 'https://liga.example/wp-content/uploads/spielbericht-' . $attachment . '.jpg'
+			static fn( int $attachment, string $size ): ?string => 'https://liga.example/wp-content/uploads/spielbericht-' . $attachment . ( 'full' === $size ? '' : '-300x400' ) . '.jpg'
 		);
 	}
 
@@ -245,6 +245,7 @@ final class EntryPageTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'Erfasstes Resultat', $html );
 		self::assertStringContainsString( 'Total 6:4', $html );
 		self::assertStringContainsString( 'href="https://liga.example/wp-content/uploads/spielbericht-77.jpg"', $html );
+		self::assertSame( 'https://liga.example/wp-content/uploads/spielbericht-77-300x400.jpg', $result['state']['photo']['thumb'], 'Vorschau in mittlerer Grösse' );
 		self::assertStringNotContainsString( 'id="ttl-e-form"', $html, 'Gastseite erfasst nicht' );
 		self::assertStringContainsString( 'Provisorisch erfasst am Di, 10.11.2026, 22:30 von Hanna Heim.', $html );
 		self::assertStringContainsString( 'Resultat erfasst (6:4)', $html, 'Verlauf' );

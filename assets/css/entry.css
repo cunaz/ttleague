@@ -85,8 +85,8 @@
 
 /* Meldungen */
 
-.ttl-entry__live:empty {
-	display: none;
+.ttl-entry__message {
+	margin-block-start: var(--ttl-gap);
 }
 
 .ttl-entry__message p {

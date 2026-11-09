@@ -45,7 +45,6 @@ final class EntryMarkup {
 		$out = '<div class="ttl-entry" data-wp-interactive="' . esc_attr( self::NS ) . '" data-wp-init="callbacks.init" data-wp-watch="callbacks.persist">'
 			. $this->head()
 			. '<noscript><p class="ttl-notice ttl-notice--warning">' . esc_html__( 'Bitte JavaScript aktivieren: Erfassen, Bestätigen und Entscheide laufen über die Schnittstelle der Website.', 'ttleague' ) . '</p></noscript>'
-			. $this->live()
 			. $this->status()
 			. $this->warnings();
 		if ( $this->has_result() ) {
@@ -102,6 +101,7 @@ final class EntryMarkup {
 			. '<h2 class="ttl-entry__title">' . esc_html( $fixture['home']['name'] . ' – ' . $fixture['away']['name'] ) . '</h2>'
 			. '<p class="ttl-entry__meta">' . $meta . '</p>'
 			. '<p class="ttl-entry__links"><a href="' . esc_url( (string) $this->page['report'] ) . '">' . esc_html__( 'Zum Matchreport', 'ttleague' ) . '</a></p>'
+			. $this->live()
 			. '</header>';
 	}
 
@@ -697,11 +697,11 @@ final class EntryMarkup {
 	 */
 	private function photo(): string {
 		$photo = $this->state['photo'];
-		$url   = (string) ( $photo['url'] ?? '' );
+		$url   = (string) ( $photo['thumb'] ?? '' );
 		return '<p class="ttl-field ttl-entry__photo"><label for="ttl-e-photo">' . esc_html__( 'Foto des Spielberichts (freiwillig)', 'ttleague' ) . '</label>'
 			. '<input id="ttl-e-photo" type="file" accept="image/*" capture="environment" aria-describedby="ttl-e-photo-text ttl-e-photo-err" data-wp-on--change="actions.uploadPhoto"' . $this->disabled( 'photo.busy' ) . '>'
 			. '<small id="ttl-e-photo-text" class="ttl-entry__note" aria-live="polite"' . $this->text_attr( 'photo.text' ) . '>' . esc_html( (string) $photo['text'] ) . '</small>'
-			. '<img class="ttl-entry__thumb" alt="' . esc_attr__( 'Foto des Spielberichts', 'ttleague' ) . '"' . ( '' === $url ? '' : ' src="' . esc_url( $url ) . '"' ) . ' data-wp-bind--src="state.photo.url"' . $this->hide_unless( 'photo.url' ) . '>'
+			. '<img class="ttl-entry__thumb" alt="' . esc_attr__( 'Foto des Spielberichts', 'ttleague' ) . '"' . ( '' === $url ? '' : ' src="' . esc_url( $url ) . '"' ) . ' data-wp-bind--src="state.photo.thumb"' . $this->hide_unless( 'photo.thumb' ) . '>'
 			. $this->error( 'ttl-e-photo-err', 'view.photoErr' ) . '</p>';
 	}
 

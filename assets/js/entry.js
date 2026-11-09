@@ -449,6 +449,7 @@ const { state } = store( NS, {
 			input.value = '';
 			if ( response.ok && response.data ) {
 				state.photo.url = response.data.url || null;
+				state.photo.thumb = response.data.url || null;
 				state.photo.text = S.photoSaved;
 				return;
 			}

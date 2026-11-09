@@ -30,7 +30,7 @@ final class EntryPage {
 	 * @param int                                                    $fixture_id Begegnung aus der Adresse (0 = keine).
 	 * @param Actor|null                                             $actor      Angemeldete Person oder null.
 	 * @param array{login:string,my_area:string,report:string,rest:string} $links Adressen (Anmeldung mit Rücksprung, Mein Bereich, Matchreport, REST-Basis der Begegnung).
-	 * @param (callable(int):?string)|null                           $photo_url  Adresse eines Anhangs.
+	 * @param (callable(int,string):?string)|null                    $photo_url  Adresse eines Anhangs in einer Grösse (full, medium).
 	 * @return array{html:string,state:array<string,mixed>|null,config:array<string,mixed>|null}
 	 */
 	public function build( int $fixture_id, ?Actor $actor, array $links, ?callable $photo_url = null ): array {
@@ -57,7 +57,9 @@ final class EntryPage {
 		$form      = EntryForm::initial( $entry, $data );
 		$mode      = $entry['can']['enter'] ? 'enter' : '';
 		$decisions = $this->decisions( $entry );
-		$photo     = null === $entry['current']['photo_id'] || null === $photo_url ? null : $photo_url( (int) $entry['current']['photo_id'] );
+		$photo_id  = null === $photo_url ? null : $entry['current']['photo_id'];
+		$photo     = null === $photo_id ? null : $photo_url( (int) $photo_id, 'full' );
+		$photo     = '' === $photo ? null : $photo;
 		$state     = array(
 			'form'      => $form,
 			'mode'      => $mode,
@@ -82,9 +84,11 @@ final class EntryPage {
 				'offer' => false,
 			),
 			'photo'     => array(
-				'url'  => null === $photo || '' === $photo ? null : $photo,
-				'text' => null === $photo || '' === $photo ? '' : __( 'Ein Foto ist gespeichert. Ein neues Foto ersetzt es.', 'ttleague' ),
-				'busy' => false,
+				'url'   => $photo,
+				// Vorschau in mittlerer Grösse, damit die Seite nicht jedes Mal das ganze Foto lädt.
+				'thumb' => null === $photo ? null : ( $photo_url( (int) $photo_id, 'medium' ) ?? $photo ),
+				'text'  => null === $photo ? '' : __( 'Ein Foto ist gespeichert. Ein neues Foto ersetzt es.', 'ttleague' ),
+				'busy'  => false,
 			),
 			'view'      => EntryForm::view( $data, $form, array(), $mode ),
 			'errorList' => array(),

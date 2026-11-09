@@ -60,8 +60,8 @@ final class EntryBlock {
 			$fixture_id,
 			$actor,
 			self::links( $fixture_id ),
-			static function ( int $attachment_id ): ?string {
-				$url = wp_get_attachment_url( $attachment_id );
+			static function ( int $attachment_id, string $size ): ?string {
+				$url = wp_get_attachment_image_url( $attachment_id, $size );
 				return false === $url ? null : $url;
 			}
 		);
