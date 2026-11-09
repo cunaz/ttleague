@@ -287,7 +287,8 @@ final class ResultService {
 		if ( null !== $comment && mb_strlen( $comment ) > 2000 ) {
 			throw ResultException::invalid( array( ResultInput::error( 'comment', __( 'Die Bemerkung ist zu lang (höchstens 2000 Zeichen).', 'ttleague' ) ) ) );
 		}
-		$this->check_version( $ctx, is_string( $payload['version'] ?? null ) && '' !== $payload['version'] ? $payload['version'] : null );
+		$version = is_string( $payload['version'] ?? null ) && '' !== $payload['version'] ? $payload['version'] : null;
+		$this->check_version( $ctx, $version );
 		if ( ! Flow::allows( self::DECISIONS[ $action ], $ctx->status, array( Flow::ROLE_TK ) ) ) {
 			throw ResultException::conflict( $this->status_message( $ctx->status ) );
 		}
@@ -296,7 +297,7 @@ final class ResultService {
 			case 'confirm':
 				// Entscheid der TK: immer by_tk, mit Bemerkung; die Meldung an beide Seiten löst
 				// das Ereignis «confirmed» aus, ein zusätzliches «decided» braucht es nicht.
-				return $this->confirm_result( $fixture_id, $actor, null, $comment, true );
+				return $this->confirm_result( $fixture_id, $actor, $version, $comment, true );
 
 			case 'finalize':
 				if ( ! $ctx->has_result() ) {
@@ -375,10 +376,11 @@ final class ResultService {
 		$now = $this->now();
 		$this->write(
 			$ctx,
-			function () use ( $ctx, $actor, $attachment_id, $now ): void {
+			function ( FixtureContext $current ) use ( $ctx, $actor, $attachment_id, $now ): void {
 				$this->repo->update_fixture( $ctx->id, array( 'photo_attachment_id' => $attachment_id ) );
 				$this->repo->add_event( $ctx->id, 'photo', $actor->user_id, $actor->person_id, null, array( 'attachment_id' => $attachment_id ), $now );
-				$this->audit->record( 'fixture', $ctx->id, 'photo', $actor->user_id, array( 'photo_attachment_id' => $ctx->photo_id ), array( 'photo_attachment_id' => $attachment_id ) );
+				// Vorheriger Wert aus dem gesperrt gelesenen Stand: Die Foto-ID gehört nicht zur Version.
+				$this->audit->record( 'fixture', $ctx->id, 'photo', $actor->user_id, array( 'photo_attachment_id' => $current->photo_id ), array( 'photo_attachment_id' => $attachment_id ) );
 			}
 		);
 		$this->events->photo_added( $ctx->id, $actor->user_id, $attachment_id );
@@ -564,7 +566,7 @@ final class ResultService {
 				);
 				continue;
 			}
-			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at );
+			$loaded         = null === $club ? null : $this->eligibility->for_club( $ctx->season_id, $club, $ctx->rules, $ctx->id, $ctx->scheduled_at ?? $this->clock->now()->setTimezone( $this->timezone )->format( 'Y-m-d H:i:s' ) );
 			$sides[ $side ] = new SideRoster( $loaded['players'] ?? array(), $loaded['checker'] ?? null, $info['team_id'], array(), $info['name'] );
 		}
 		return $sides;
@@ -738,7 +740,10 @@ final class ResultService {
 	 * ab. So setzt keine von zwei gleichzeitigen Aktionen eine veraltete Version oder einen
 	 * inzwischen unzulässigen Statuswechsel durch.
 	 *
-	 * @param callable():void $work Schreibvorgänge.
+	 * Rollen lädt die AccessPolicy getrennt; ändern sie sich genau während einer Anfrage, erkennt
+	 * das der Vergleich nicht. Das ist bewusst so (Rollen ändert nur die TK, selten).
+	 *
+	 * @param callable(FixtureContext):void $work Schreibvorgänge; erhält den gesperrt gelesenen Stand.
 	 * @throws ResultException 409, wenn sich die Begegnung inzwischen geändert hat.
 	 */
 	private function write( FixtureContext $ctx, callable $work ): void {
@@ -749,7 +754,7 @@ final class ResultService {
 				if ( null === $current || ! hash_equals( $ctx->version(), $current->version() ) ) {
 					throw ResultException::conflict( __( 'Die Begegnung wurde inzwischen geändert. Bitte lade die Seite neu.', 'ttleague' ) );
 				}
-				$work();
+				$work( $current );
 			}
 		);
 	}

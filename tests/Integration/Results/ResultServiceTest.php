@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Tests\Integration\Results;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use TTLeague\Access\AccessPolicy;
 use TTLeague\Domain\Match\GameOrder;
 use TTLeague\Infrastructure\AuditLog;
@@ -669,6 +670,19 @@ final class ResultServiceTest extends IntegrationTestCase {
 		$away = array_column( $this->service->entry( $this->id['derby'], $this->actor['captain_h1'] )['candidates']['away'], null, 'player_id' );
 		self::assertFalse( $away[ $this->id['h4'] ]['eligible'], 'gebunden an Seefeld 1' );
 		self::assertSame( 'blocked_bound_elsewhere', $away[ $this->id['h4'] ]['reason'] );
+		$home = array_column( $this->service->entry( $this->id['derby'], $this->actor['captain_h1'] )['candidates']['home'], null, 'player_id' );
+		self::assertSame( 3, $home[ $this->id['h4'] ]['substitute_appearances'], 'Bindung aus dem Kader zählt die Einsätze nicht doppelt' );
+	}
+
+	public function test_without_date_the_entry_time_is_the_cutoff(): void {
+		// Uhr: 10.11.2026 21:30. f1 (10.11.) liegt davor, f3 (24.11.) danach.
+		foreach ( array( 'f1', 'f3' ) as $fixture ) {
+			$this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		}
+		$this->db->update( 'fixture', array( 'scheduled_at' => null ), array( 'id' => $this->id['f4'] ) );
+		$warnings = implode( ' ', $this->service->submit( $this->id['f4'], $this->with_substitute_h4(), $this->actor['captain_h1'] )['warnings'] );
+		self::assertStringContainsString( '2. von höchstens 3', $warnings, 'nur f1 zählt, f3 liegt nach dem Stichtag' );
+		self::assertNull( $this->binding_of( 'h4' ), 'der Einsatz ohne Termin bindet nicht' );
 	}
 
 	public function test_only_earlier_appearances_count_when_results_come_out_of_order(): void {
@@ -705,7 +719,7 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertNull( $this->binding_of( 'h4' ), 'die Korrektur ohne h4 hebt die Bindung auf' );
 	}
 
-	public function test_a_change_between_check_and_write_is_rejected(): void {
+	public function test_a_change_between_check_and_write_is_rejected_even_with_matching_version(): void {
 		$clock   = new TriggerClock( new FixedClock( '2026-11-10 21:30:00' ) );
 		$service = $this->service_with( $clock );
 		$service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
@@ -725,6 +739,101 @@ final class ResultServiceTest extends IntegrationTestCase {
 		$clock->before_next = fn() => $this->service->decide( $this->id['f1'], $this->actor['tk'], array( 'action' => 'reset' ) );
 		self::expect_error( fn() => $service->object( $this->id['f1'], $this->actor['captain_a1'], 'Das Doppel ging an uns.' ), 409 );
 		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
+	}
+
+	/**
+	 * @return array<string,array{0:string}>
+	 */
+	public static function write_paths(): array {
+		$paths = array();
+		foreach ( array( 'submit', 'confirm', 'tk_confirm', 'object', 'correct', 'finalize', 'forfeit', 'reset', 'photo' ) as $path ) {
+			$paths[ $path ] = array( $path );
+		}
+		return $paths;
+	}
+
+	/**
+	 * Jeder Schreibvorgang liest die Begegnung in seiner Transaktion neu. Ändert die Heimseite das
+	 * Resultat genau zwischen Prüfung und Schreiben, wird er mit 409 abgewiesen und schreibt nichts.
+	 */
+	#[DataProvider( 'write_paths' )]
+	public function test_every_write_rejects_a_change_between_check_and_write( string $path ): void {
+		$clock   = new TriggerClock( new FixedClock( '2026-11-10 21:30:00' ) );
+		$service = $this->service_with( $clock );
+		$service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		$events = count( $service->repository()->events( $this->id['f1'] ) );
+
+		$changed                          = $this->six_four();
+		$changed['games'][6]['sets_home'] = 1;
+		$changed['games'][6]['sets_away'] = 3;
+		$clock->before_next               = fn() => $this->service->submit( $this->id['f1'], $changed, $this->actor['captain_h1'] );
+		$f1                               = $this->id['f1'];
+		$tk                               = $this->actor['tk'];
+		$call                             = match ( $path ) {
+			'submit'   => fn() => $service->submit( $f1, $this->six_four(), $this->actor['chef_home'] ),
+			'confirm'  => fn() => $service->confirm( $f1, $this->actor['captain_a1'] ),
+			'tk_confirm' => fn() => $service->decide( $f1, $tk, array( 'action' => 'confirm' ) ),
+			'object'   => fn() => $service->object( $f1, $this->actor['captain_a1'], 'Das Doppel ging an uns.' ),
+			'correct'  => fn() => $service->decide(
+				$f1,
+				$tk,
+				array(
+					'action' => 'correct',
+					'result' => $this->six_four(),
+				)
+			),
+			'finalize' => fn() => $service->decide( $f1, $tk, array( 'action' => 'finalize' ) ),
+			'forfeit'  => fn() => $service->decide(
+				$f1,
+				$tk,
+				array(
+					'action' => 'forfeit',
+					'winner' => 'away',
+				)
+			),
+			'reset'    => fn() => $service->decide( $f1, $tk, array( 'action' => 'reset' ) ),
+			'photo'    => fn() => $service->attach_photo( $f1, $this->actor['captain_h1'], 555 ),
+		};
+		self::expect_error( $call, 409 );
+
+		$fixture = $this->db->get_row( "SELECT status, home_score, away_score, confirmed_by, photo_attachment_id FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $f1 ) );
+		self::assertSame( array( 'provisional', '5', '5', null, null ), array( $fixture['status'], (string) $fixture['home_score'], (string) $fixture['away_score'], $fixture['confirmed_by'], $fixture['photo_attachment_id'] ) );
+		self::assertCount( $events + 1, $service->repository()->events( $f1 ), 'nur das Ändern der Heimseite steht im Verlauf' );
+	}
+
+	public function test_stale_version_is_rejected_for_submit_and_decisions(): void {
+		$this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		$old                              = $this->service->entry( $this->id['f1'], $this->actor['tk'] )['version'];
+		$changed                          = $this->six_four();
+		$changed['games'][9]['sets_home'] = 2;
+		$changed['games'][9]['sets_away'] = 3;
+		$this->service->submit( $this->id['f1'], $changed, $this->actor['captain_h1'] );
+
+		$stale            = $this->six_four();
+		$stale['version'] = $old;
+		self::expect_error( fn() => $this->service->submit( $this->id['f1'], $stale, $this->actor['captain_h1'] ), 409 );
+		foreach ( array( 'confirm', 'finalize', 'reset' ) as $action ) {
+			self::expect_error(
+				fn() => $this->service->decide(
+					$this->id['f1'],
+					$this->actor['tk'],
+					array(
+						'action'  => $action,
+						'version' => $old,
+					)
+				),
+				409
+			);
+		}
+		self::assertSame( 'provisional', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
+	}
+
+	public function test_appearances_without_date_do_not_bind(): void {
+		$this->db->update( 'fixture', array( 'scheduled_at' => null ), array( 'id' => $this->id['f3'] ) );
+		foreach ( array( 'f1', 'f3', 'f4' ) as $fixture ) {
+			$this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		}
+		self::assertNull( $this->binding_of( 'h4' ), 'zwei Einsätze mit Termin binden nicht' );
 	}
 
 	public function test_confirmation_by_the_tk_is_a_decision_with_comment(): void {
