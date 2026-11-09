@@ -38,6 +38,9 @@ final class Plugin {
 		// Resultaterfassung (REST-API, Neuberechnung der Wertungszahl).
 		\TTLeague\Results\Results::register();
 
+		// Benachrichtigungen per E-Mail und Web-Push, Fristen und Erinnerungen.
+		\TTLeague\Notifications\Notifications::register();
+
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
 			\TTLeague\Content\Content::register();
