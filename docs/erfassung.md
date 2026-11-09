@@ -183,3 +183,96 @@ Nach jeder Änderung: `DataVersion::bump()` und eine entprellte Neuberechnung de
 | Forfait-Vorschlag | TK | 16 Tage nach Anspielzeit ohne Resultat |
 
 Jede Benachrichtigung wird pro Person, Ereignis, Bezug und Kanal genau einmal versendet (`notification_log`). Personen wählen pro Ereignistyp E-Mail und Push (`notification_pref`); ohne Eintrag gilt E-Mail an.
+
+### Umsetzung
+
+Code in `src/Notifications/`, Einstieg `Notifications::register()` aus `Plugin::boot()`. Die Fachlogik (Empfänger, Dedupe, Fristen, Texte, Verschlüsselung) läuft ohne WordPress gegen `Db`, `Clock` und das Interface `Channel`; WordPress liefert nur Kanäle, Adressen (`Links`), die TK-Konten (`TkDirectory`) und die Hooks.
+
+**Empfänger** (`RecipientResolver`), immer aus der Saison der Begegnung:
+
+| Seite | Meisterschaft | Cup |
+|---|---|---|
+| Heim- oder Gastseite | Captains des Teams (`club_role.role = captain` mit `team_id`) und TK-Chefs des Clubs | Spieler der Cup-Mannschaft (Personen von `player1_id` und `player2_id`) und TK-Chefs des Clubs |
+
+- TK: Konten mit der Rolle `ttl_tk`, auch ohne verknüpfte Person (dann mit der Adresse des Kontos). Konten, die das Recht nur als Administrator haben, nur wenn sie mit einer Person verknüpft sind; sonst erhielte jede Website-Verwaltung alles.
+- Clubduell: Der TK-Chef gehört zu beiden Seiten und erhält jede Nachricht einmal.
+- Nur aktive Personen (`person.status = active`). Ohne gültige E-Mail-Adresse geht keine E-Mail hinaus; Push nur mit Abo.
+- Die handelnde Person (Konto oder Person) erhält nie eine Nachricht über ihre eigene Aktion, z. B. kein «Bitte bestätigen» an den TK-Chef, der im Clubduell erfasst hat.
+
+**Sofortmeldungen** (`ResultNotifications`, an den Aktionen `ttleague_result_entered`, `…_confirmed`, `…_disputed`, `…_decided`): Erfassung und Änderung gehen als «Bitte bestätigen» bzw. «Geändertes Resultat bestätigen» an die Gastseite, die Einsprache mit Begründung an die TK und die Heimseite, Entscheide der TK (abschliessen, korrigieren, Forfait, zurücksetzen) und die Bestätigung durch die TK an beide Seiten. Die Bestätigung durch die Gastseite löst keine Nachricht aus. Fehler beim Versand brechen die Erfassung nie ab; sie landen im Fehlerprotokoll und in der Aktion `ttleague_notification_error` (`\Throwable $error`, `string $context`).
+
+**Fristen** (`Deadlines`): eigener Cron-Hook `ttleague_notifications_hourly`, stündlich, bei der Deaktivierung entfernt. Die Uhr ist injiziert (`Clock`, in Tests `FixedClock`). Werte aus den `SeasonRules` der Saison (`season.rules_json`, Standard in Klammern):
+
+| Art (`event_type`) | Einstellung | Empfänger | Fällig | Regel |
+|---|---|---|---|---|
+| `match_reminder` | `match_reminder` | beide Seiten | ab Anspielzeit minus 2 Tage bis zur Anspielzeit | `match_reminder_days` (2) |
+| `result_missing` | `result_missing` | Heimseite | ab Anspielzeit plus 24 h bis zum Forfait-Vorschlag | `result_reminder_hours` (24) |
+| `result_missing_tk` | `result_missing` | TK | ab Anspielzeit plus 48 h | `entry_deadline_hours` (48) |
+| `forfeit_proposal` | `result_missing` | TK | ab Anspielzeit plus 16 Tage ohne Resultat | `forfeit_after_days` (16) |
+| `confirm_request` | `confirm_request` | Gastseite | sofort nach Erfassung oder Änderung | – |
+| `confirm_reminder` | `confirm_reminder` | Gastseite | 3 und 6 Tage nach der letzten Erfassung | `confirm_reminder_days` ([3, 6]) |
+| `confirm_overdue` | `confirm_reminder` | TK | 7 Tage nach der letzten Erfassung | `objection_days` (7) |
+| `result_disputed` | `result_disputed` | TK und Heimseite | sofort | – |
+| `result_decided` | `result_decided` | beide Seiten | sofort | – |
+| `tk_digest` | `tk_digest` | TK | täglich ab 7 Uhr, nur mit offenen Punkten | – |
+
+- Spieltermine sind Ortszeit (`wp_timezone()`), `entered_at` ist UTC. Tage vor und nach der Anspielzeit sind Kalendertage in Ortszeit, Stunden sind echte Stunden.
+- Geprüft werden Meisterschaft und Cup der aktiven Saison: `scheduled` und `postponed` für die Erinnerung vor dem Spiel und fehlende Resultate, `provisional` für Bestätigungen, `disputed` für die Übersicht.
+- Ein verpasster Lauf wird nachgeholt. Von den Erinnerungen an die Gastseite geht nur die höchste fällige Stufe hinaus; ist der Forfait-Vorschlag schon fällig, erhält die Heimseite keine Erinnerung mehr und die TK nur den Vorschlag.
+- Nach einer Verschiebung gelten Erinnerung und Fristen für den neuen Termin; nach einer Änderung des Resultats beginnen die Erinnerungen an die Gastseite neu.
+- Zwischen 22 und 7 Uhr Ortszeit geht nichts hinaus, fällige Nachrichten folgen im ersten Lauf ab 7 Uhr. Anpassbar mit dem Filter `ttleague_notification_hours` (`from_hour`, `until_hour`, `digest_hour`). Sofortmeldungen gehen immer sofort hinaus.
+- Die Übersicht der TK listet fehlende Resultate (ab 48 h), Forfait-Vorschläge, Resultate, die die TK bestätigen muss, und Einsprachen, jede Zeile mit Link auf die Erfassungsseite.
+- Von Hand: `wp cron event run ttleague_notifications_hourly` oder `wp ttleague notifications run [--at="2026-11-12 08:00"]`. Mit `--at` (Ortszeit) rechnet der Lauf mit einer festen Uhr; die Nachrichten werden trotzdem versendet und protokolliert, deshalb nur zum Testen.
+
+**Genau einmal** (`NotificationLog`): eindeutiger Schlüssel aus Empfänger (`person_id`, bei einem TK-Konto ohne Person 0 und `user_id`), Art (`event_type`), Bezug (`ref_type` `fixture`, `fixture_event` oder `day` mit `ref_id` als JJJJMMTT), Zusatz `ref_key` (Termin der Begegnung `2026-11-10 20:00`, Stufe `3` oder `6`, Aktion der TK) und Kanal. Sofortmeldungen beziehen sich auf den Verlaufseintrag, deshalb folgt nach jeder Änderung eine neue Nachricht. Vor dem Versand wird der Eintrag reserviert (`INSERT IGNORE`), scheitert der Versand, wird er wieder freigegeben und der nächste Lauf versucht es erneut. So versenden auch zwei gleichzeitige Läufe nichts doppelt. Einträge älter als 365 Tage löscht jeder Lauf. Schemaversion 2026111005 ersetzt den Index `once` durch `recipient_once` (der Installer entfernt ersetzte Indizes über `Schema::OBSOLETE_INDEXES`, weil `dbDelta()` das nicht kann).
+
+**Kanäle und Einstellungen**: Pro Ereignistyp E-Mail und Push (`notification_pref`, «Mein Bereich»); ohne Eintrag E-Mail an, Push aus. Konten ohne Person erhalten E-Mail. Wer für ein Ereignis nur Push gewählt hat, aber auf keinem Gerät Push aktiviert hat oder bei dem kein Gerät die Nachricht annimmt, erhält sie per E-Mail. E-Mails gehen über `Mailer` (wp_mail) mit Text- und HTML-Teil: Anrede mit Vorname, Link auf die Erfassungsseite (`Results::entry_url`) und Hinweis auf «Mein Bereich» für die Einstellungen; Typ der Message `notification_<art>` für den Filter `ttleague_mail`.
+
+### Web Push
+
+Ohne Bibliothek, mit der OpenSSL-Erweiterung von PHP (P-256, ECDH, AES-128-GCM). Code in `src/Notifications/Push/`.
+
+- **VAPID** (RFC 8292): Schlüsselpaar aus `wp-config.php` oder einmalig erzeugt in der Option `ttleague_vapid` (nicht automatisch geladen). Beide Werte sind Base64url-kodierte Rohschlüssel (öffentlich 65 Byte, privat 32 Byte), dasselbe Format wie bei anderen Web-Push-Werkzeugen. Der öffentliche Schlüssel ist optional und muss zum privaten passen, sonst ist Push abgeschaltet (Hinweis im Fehlerprotokoll).
+
+  ```php
+  define( 'TTLEAGUE_VAPID_PUBLIC_KEY', '…' );
+  define( 'TTLEAGUE_VAPID_PRIVATE_KEY', '…' );
+  ```
+
+  `wp ttleague notifications vapid` zeigt Herkunft und öffentlichen Schlüssel, `--generate` gibt ein neues Paar für `wp-config.php` aus. Ein Wechsel der Schlüssel macht alle Abos ungültig; «Mein Bereich» erneuert das Abo des Geräts beim nächsten Besuch. Das JWT (ES256, Signatur als r||s) gilt 12 Stunden, `aud` ist die Herkunft des Endpunkts, `sub` die Adresse der Verwaltung als `mailto:` (Filter `ttleague_vapid_subject`, nur `mailto:` oder `https:`).
+- **Verschlüsselung** aes128gcm (RFC 8291, RFC 8188): pro Nachricht ein neues Schlüsselpaar des Servers und ein zufälliges Salz, ein Datensatz mit 4096 Byte Datensatzgrösse. Geprüft mit dem Testvektor aus RFC 8291, Anhang A.
+- **Abos**: `POST /wp-json/ttleague/v1/push/subscriptions` mit `{ "endpoint": "…", "keys": { "p256dh": "…", "auth": "…" } }` (wie `PushSubscription.toJSON()`), Antwort 201 `{ "subscribed": true }`; `DELETE` mit `{ "endpoint": "…" }`, Antwort `{ "deleted": true }`. Anmeldung über das Cookie mit `X-WP-Nonce`. Fehler: 401 `rest_forbidden`, 403 `ttl_forbidden` (Konto ohne Person), 503 `ttl_unavailable` (keine VAPID-Schlüssel), 422 `ttl_invalid` mit `endpoint`, `keys.p256dh`, `keys.auth`.
+  - Endpunkte nur über https bei einem bekannten Push-Dienst (`fcm.googleapis.com`, `push.services.mozilla.com`, `push.apple.com`, `notify.windows.com` mit Unterdomänen), ohne Benutzerangaben, höchstens 2048 Zeichen. Für lokale Tests erweiterbar mit dem Filter `ttleague_push_endpoint_allowed` (`bool $allowed`, `string $endpoint`).
+  - `p256dh` muss ein Punkt auf P-256 sein, `auth` 16 Byte lang.
+  - Höchstens zehn Abos pro Person (Filter `ttleague_push_max_subscriptions`), beim Überschreiten fällt das älteste weg. Ein Endpunkt gehört der Person, die ihn zuletzt gemeldet hat.
+- **Versand**: `wp_remote_post` mit `reject_unsafe_urls` (keine Weiterleitungen, keine Adressen im lokalen Netz), Zeitlimit 10 Sekunden, Kopfzeilen `TTL` (24 Stunden, Übersicht 12 Stunden), `Urgency` (`high` für «Bitte bestätigen» und Einsprache, `low` für die Übersicht, sonst `normal`), `Content-Encoding: aes128gcm` und `Authorization: vapid t=…, k=…`. Inhalt `{ "title", "body", "url", "tag", "icon" }`, höchstens 3000 Byte; `tag` `ttleague-fixture-{id}` ersetzt auf dem Gerät ältere Nachrichten zur selben Begegnung. Antwort 201 heisst zugestellt, 404 und 410 löschen das Abo, andere Antworten landen im Fehlerprotokoll, und ohne zugestelltes Gerät folgt die E-Mail.
+- **Service Worker** (`assets/pwa/sw.js`): Ereignis `push` zeigt die Benachrichtigung an (Text statt JSON wird als Inhalt angezeigt), `notificationclick` fokussiert ein offenes Fenster mit derselben Adresse oder öffnet sie. Adressen anderer Herkunft ersetzt er durch die Startadresse.
+- **«Mein Bereich»**: Der Filter `ttleague_push_available` liefert `true`, sobald VAPID-Schlüssel bereitstehen; dann sind die Push-Spalten der Einstellungen aktiv, und unter der Tabelle erscheint über den Filter `ttleague_push_controls` der Knopf «Push auf diesem Gerät aktivieren/deaktivieren» (`assets/js/push.js`, ohne Build-Schritt). Das Skript meldet den Service Worker bei Bedarf selbst an (auch für Konten mit Redaktionsrechten, für die `register.js` das nicht tut), fragt die Erlaubnis an, abonniert mit dem öffentlichen VAPID-Schlüssel und meldet das Abo der REST-API. Ein bestehendes Abo meldet es bei jedem Besuch erneut und ersetzt es nach einem Schlüsselwechsel.
+- **iPhone und iPad**: Push gibt es erst ab iOS 16.4 und nur, wenn die Website als App auf dem Home-Bildschirm installiert ist und von dort geöffnet wird. «Mein Bereich» weist darauf hin; im Browser-Tab meldet das Skript «zuerst zum Home-Bildschirm hinzufügen».
+
+### Datenschutz
+
+| Daten | Ort | Inhalt | Gelöscht |
+|---|---|---|---|
+| Einstellungen | `notification_pref` | Person, Ereignistyp, E-Mail und Push ja oder nein | mit der Person |
+| Versandprotokoll | `notification_log` | Person oder Konto, Art, Bezug (IDs), Zusatz, Kanal, Zeitpunkt; kein Inhalt, keine Adresse | nach 365 Tagen |
+| Push-Abos | `push_subscription` | Person, Endpunkt beim Push-Dienst des Browsers (Google, Mozilla, Apple oder Microsoft), öffentlicher Schlüssel und Geheimnis des Browsers für die Verschlüsselung, Zeitpunkt | beim Deaktivieren auf dem Gerät, bei Antwort 404 oder 410 des Dienstes, als ältestes von mehr als zehn Abos |
+| VAPID-Schlüssel | Option `ttleague_vapid` oder `wp-config.php` | Schlüsselpaar der Website | Option bei der Deinstallation mit `ttleague_remove_data_on_uninstall` |
+| E-Mails | Mail-Dienst der Website | Namen, Begegnung, Resultat, Begründung einer Einsprache, Bemerkung der TK | nach den Regeln des Mail-Dienstes |
+| Push-Nachrichten | Push-Dienst des Browsers | Inhalt Ende-zu-Ende verschlüsselt; der Dienst sieht Endpunkt, Zeitpunkt, Grösse, TTL, Dringlichkeit und den Kontakt (`sub`) der Website | nach Zustellung oder Ablauf der TTL |
+
+- Das Fehlerprotokoll nennt Empfänger nur als ID (`p123` für eine Person, `u45` für ein Konto).
+- Ein Push-Abo gehört dem Browser, nicht der Anmeldung: Vor dem Abmelden auf einem fremden Gerät «Push auf diesem Gerät deaktivieren» wählen. Öffnet eine andere Person auf demselben Browser «Mein Bereich», geht das Abo an sie über.
+
+### Betrieb
+
+- **E-Mail**: wp_mail über ein SMTP- oder API-Plugin des Hostings mit SPF und DKIM für die Absenderdomäne; ohne zuverlässigen Mailversand gehen Fristen verloren.
+- **Cron**: WP-Cron läuft nur bei Seitenaufrufen. Für pünktliche Fristen `define( 'DISABLE_WP_CRON', true );` setzen und `wp-cron.php` per Server-Cron alle fünf Minuten aufrufen (oder `wp cron event run --due-now`).
+- **Push**: nur über HTTPS (Service Worker und Push API brauchen einen sicheren Kontext). VAPID-Schlüssel für die Produktion als Konstanten in `wp-config.php` hinterlegen, damit sie eine Wiederherstellung der Datenbank überstehen; ausgehende HTTPS-Verbindungen zu den Push-Diensten müssen erlaubt sein.
+- **Kopien der Website** (Staging, Entwicklung): Versand abschalten, z. B. `add_filter( 'ttleague_mail', '__return_false' );`, und die Tabelle `push_subscription` leeren, sonst erhalten echte Personen Nachrichten aus der Kopie.
+
+### Tests
+
+- `tests/Integration/Notifications/`: Empfänger je Fall (Meisterschaft, Cup, Clubduell, TK mit und ohne Person, Administratoren, inaktive Personen, ungültige Adressen), Versand mit Einstellungen, Dedupe, Rückfall und Fehlern (`NotifierTest`), Sofortmeldungen über den `ResultService` (`ResultNotificationsTest`), Fristen an ihren Grenzen mit `FixedClock` (`DeadlinesTest`), Push-Abos und Versand mit einem Fake-Transport, dessen Nachrichten der Test wie ein Browser entschlüsselt (`PushChannelTest`).
+- `tests/Unit/Notifications/`: Texte und E-Mail (Schweizer Schreibweise, Links, Escaping), Verschlüsselung mit dem Testvektor aus RFC 8291, JWT mit dem Beispiel aus RFC 8292 und eigenen Schlüsseln (geprüft mit `openssl_verify`), Prüfung der Abos.
+- Im Browser lässt sich `pushManager.subscribe()` headless nicht prüfen: In einem Playwright-Kontext (Inkognito) bricht Chromium mit «Registration failed - permission denied» ab, in einem dauerhaften Profil wartet es ohne Verbindung zum Push-Dienst. Prüfbar sind der Knopf bis zur Anfrage, die REST-API mit Cookie und Nonce und die Anzeige im Service Worker über das DevTools-Protokoll (`ServiceWorker.deliverPushMessage`).

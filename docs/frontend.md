@@ -166,7 +166,7 @@ Neue oder geänderte Rewrite-Regeln erneuert das Plugin einmalig selbst (Option 
 
 ## Web-App (PWA)
 
-Grundlage einer installierbaren Web-App, ohne Push-Benachrichtigungen. Registrierung aus `Plugin::boot()` über `TTLeague\Pwa\Pwa`; Manifest und Service Worker werden wie die Kalender bei `parse_request` ausgeliefert.
+Grundlage einer installierbaren Web-App. Registrierung aus `Plugin::boot()` über `TTLeague\Pwa\Pwa`; Manifest und Service Worker werden wie die Kalender bei `parse_request` ausgeliefert. Push-Benachrichtigungen (Abos, VAPID, Versand) beschreibt `docs/erfassung.md`, Abschnitt «Web Push».
 
 | Adresse | Antwort |
 |---|---|
@@ -185,6 +185,7 @@ Grundlage einer installierbaren Web-App, ohne Push-Benachrichtigungen. Registrie
 - Stile, Skripte, Schriften und Bilder der eigenen Website: stale-while-revalidate (höchstens 120 Dateien, die ältesten fallen weg).
 - Nie gespeichert: alles ausser GET, fremde Adressen, die Pfade `wp-admin`, `wp-login.php`, `wp-json`, `wp-cron.php`, `xmlrpc.php`, `anmelden`, `mein-bereich`, `erfassen`, `kalender` (Filter `ttleague_pwa_never_cache`), Vorschau, Customizer und REST über Abfrageparameter sowie Antworten mit `Cache-Control: private` oder `no-store` – WordPress sendet beides für angemeldete Personen. Ausgeschlossene Seiten kommen nur aus dem Netz, offline erscheint die Offline-Seite. Neue Module mit persönlichen Seiten tragen ihre Pfade in den Filter ein oder senden `nocache_headers()`.
 - Beim Installieren werden die Startadresse und bereits offene Seiten gespeichert, damit sie schon nach dem ersten Besuch offline verfügbar sind.
+- Push: Das Ereignis `push` zeigt eine Benachrichtigung aus `{title, body, url, tag, icon}` an, ein Klick darauf fokussiert ein offenes Fenster mit der Adresse oder öffnet sie; Adressen anderer Herkunft ersetzt der Service Worker durch die Startadresse.
 - Cache-Namen `ttleague:{pfad}:pages:{version}` und `…:assets:{version}`; die Version ist ein Hash aus Vorlage und Konfiguration. Ein Update des Plugins ändert die Bytes von `/sw.js`, der neue Service Worker übernimmt sofort (`skipWaiting`, `clients.claim`) und löscht ältere Caches mit demselben Pfad; Caches anderer Websites auf derselben Domain bleiben.
 
 **Registrierung**: `assets/pwa/register.js` (verzögert, nach dem Laden) mit den Einstellungen aus `window.ttleaguePwa`. Nicht eingebunden für angemeldete Personen mit Redaktionsrechten (`edit_posts`), in Vorschau und Customizer; ganz abschaltbar mit `ttleague_pwa_service_worker`. Ohne Unterstützung für Service Worker oder ohne HTTPS bleibt die Website unverändert.

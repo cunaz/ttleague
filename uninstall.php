@@ -22,4 +22,5 @@ require_once __DIR__ . '/src/Infrastructure/Database/Installer.php';
 
 \TTLeague\Infrastructure\Database\Installer::drop_all();
 delete_option( 'ttleague_db_version' );
+delete_option( 'ttleague_vapid' );
 delete_option( 'ttleague_remove_data_on_uninstall' );
