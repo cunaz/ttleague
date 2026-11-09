@@ -12,6 +12,7 @@ namespace TTLeague\Tests\Integration\Results;
 use TTLeague\Access\AccessPolicy;
 use TTLeague\Domain\Match\GameOrder;
 use TTLeague\Infrastructure\AuditLog;
+use TTLeague\Infrastructure\Time\Clock;
 use TTLeague\Infrastructure\Time\FixedClock;
 use TTLeague\Results\Actor;
 use TTLeague\Results\ResultException;
@@ -171,14 +172,52 @@ final class ResultServiceTest extends IntegrationTestCase {
 
 		$this->clock   = new FixedClock( '2026-11-10 21:30:00' );
 		$this->events  = new RecordingEvents();
-		$this->service = new ResultService(
+		$this->service = $this->service_with( $this->clock );
+	}
+
+	private function service_with( Clock $clock ): ResultService {
+		return new ResultService(
 			$this->db,
 			new AccessPolicy( $this->db ),
-			$this->clock,
+			$clock,
 			new \DateTimeZone( 'Europe/Zurich' ),
 			new AuditLog( $this->db ),
 			$this->events,
 			static fn( int $id ): ?string => 103 === $id ? 'TK' : null
+		);
+	}
+
+	/**
+	 * Bindung eines Spielers im Kader: Team und Datum, oder null.
+	 *
+	 * @return array{0:int,1:string|null}|null
+	 */
+	private function binding_of( string $player ): ?array {
+		$row = $this->db->get_row(
+			"SELECT team_id, valid_from FROM {$this->db->table( 'team_roster' )} WHERE player_id = %d AND kind = 'bound'",
+			array( $this->id[ $player ] )
+		);
+		return null === $row ? null : array( (int) $row['team_id'], $row['valid_from'] );
+	}
+
+	/**
+	 * Seefeld 1 mit h4 (Stamm Seefeld 2) als Ersatz auf C gegen Wollishofen 1.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private function with_substitute_h4(): array {
+		return $this->team_payload(
+			array(
+				'A' => 'h1',
+				'B' => 'h2',
+				'C' => 'h4',
+			),
+			array(
+				'X' => 'a1',
+				'Y' => 'a2',
+				'Z' => 'a3',
+			),
+			array( '3:1', '3:0', '3:2', '1:3', '3:1', '0:3', '3:2', '2:3', '1:3', '3:0' )
 		);
 	}
 
@@ -612,31 +651,122 @@ final class ResultServiceTest extends IntegrationTestCase {
 	public function test_third_substitute_appearance_binds_player(): void {
 		$warnings = array();
 		foreach ( array( 'f1', 'f3', 'f4' ) as $fixture ) {
-			$payload              = $this->team_payload(
-				array(
-					'A' => 'h1',
-					'B' => 'h2',
-					'C' => 'h4',
-				),
-				array(
-					'X' => 'a1',
-					'Y' => 'a2',
-					'Z' => 'a3',
-				),
-				array( '3:1', '3:0', '3:2', '1:3', '3:1', '0:3', '3:2', '2:3', '1:3', '3:0' )
-			);
-			$warnings[ $fixture ] = implode( ' ', $this->service->submit( $this->id[ $fixture ], $payload, $this->actor['captain_h1'] )['warnings'] );
+			$warnings[ $fixture ] = implode( ' ', $this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] )['warnings'] );
 		}
 		self::assertStringContainsString( '1. von höchstens 3', $warnings['f1'] );
 		self::assertStringContainsString( '2. von höchstens 3', $warnings['f3'] );
 		self::assertStringContainsString( '3. Ersatzeinsatz', $warnings['f4'] );
 		self::assertStringContainsString( 'erst am 01.12.2026 angesetzt', $warnings['f4'] );
-		self::assertSame( 'bound', $this->db->get_var( "SELECT kind FROM {$this->db->table( 'team_roster' )} WHERE team_id = %d AND player_id = %d", array( $this->id['h1team'], $this->id['h4'] ) ) );
+		self::assertSame( array( $this->id['h1team'], '2026-12-01' ), $this->binding_of( 'h4' ) );
 		self::assertSame( '1', (string) $this->db->get_var( "SELECT is_substitute FROM {$this->db->table( 'lineup' )} WHERE fixture_id = %d AND player_id = %d", array( $this->id['f4'], $this->id['h4'] ) ) );
 
+		// Das Derby am 17.11. liegt vor dem dritten Einsatz: Dort spielt h4 noch frei für sein Stammteam.
+		$away = array_column( $this->service->entry( $this->id['derby'], $this->actor['captain_h1'] )['candidates']['away'], null, 'player_id' );
+		self::assertTrue( $away[ $this->id['h4'] ]['eligible'], 'spätere Einsätze zählen nicht (Art. 12.4)' );
+
+		// Nach dem dritten Einsatz ist er an Seefeld 1 gebunden.
+		$this->db->update( 'fixture', array( 'scheduled_at' => '2026-12-08 20:00:00' ), array( 'id' => $this->id['derby'] ) );
 		$away = array_column( $this->service->entry( $this->id['derby'], $this->actor['captain_h1'] )['candidates']['away'], null, 'player_id' );
 		self::assertFalse( $away[ $this->id['h4'] ]['eligible'], 'gebunden an Seefeld 1' );
 		self::assertSame( 'blocked_bound_elsewhere', $away[ $this->id['h4'] ]['reason'] );
+	}
+
+	public function test_only_earlier_appearances_count_when_results_come_out_of_order(): void {
+		$warnings = array();
+		foreach ( array( 'f4', 'f3', 'f1' ) as $fixture ) {
+			$warnings[ $fixture ] = implode( ' ', $this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] )['warnings'] );
+		}
+		foreach ( $warnings as $fixture => $text ) {
+			self::assertStringContainsString( '1. von höchstens 3', $text, $fixture . ': keine früheren Einsätze erfasst' );
+		}
+		self::assertSame( array( $this->id['h1team'], '2026-12-01' ), $this->binding_of( 'h4' ), 'gebunden ab dem dritten Einsatz in zeitlicher Folge' );
+	}
+
+	public function test_reset_and_correction_recompute_the_binding(): void {
+		foreach ( array( 'f1', 'f3', 'f4' ) as $fixture ) {
+			$this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		}
+		self::assertNotNull( $this->binding_of( 'h4' ) );
+
+		$this->service->decide( $this->id['f3'], $this->actor['tk'], array( 'action' => 'reset' ) );
+		self::assertNull( $this->binding_of( 'h4' ), 'ohne den zweiten Einsatz keine Bindung' );
+
+		$this->service->submit( $this->id['f3'], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		self::assertSame( array( $this->id['h1team'], '2026-12-01' ), $this->binding_of( 'h4' ) );
+
+		$this->service->decide(
+			$this->id['f4'],
+			$this->actor['tk'],
+			array(
+				'action' => 'correct',
+				'result' => $this->six_four(),
+			)
+		);
+		self::assertNull( $this->binding_of( 'h4' ), 'die Korrektur ohne h4 hebt die Bindung auf' );
+	}
+
+	public function test_a_change_between_check_and_write_is_rejected(): void {
+		$clock   = new TriggerClock( new FixedClock( '2026-11-10 21:30:00' ) );
+		$service = $this->service_with( $clock );
+		$service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		$version = $service->entry( $this->id['f1'], $this->actor['captain_a1'] )['version'];
+
+		// Die Heimseite ändert das Resultat, während die Gastseite die alte Fassung bestätigt.
+		$changed                          = $this->six_four();
+		$changed['games'][6]['sets_home'] = 1;
+		$changed['games'][6]['sets_away'] = 3;
+		$clock->before_next               = fn() => $this->service->submit( $this->id['f1'], $changed, $this->actor['captain_h1'] );
+		self::expect_error( fn() => $service->confirm( $this->id['f1'], $this->actor['captain_a1'], $version ), 409 );
+
+		$fixture = $this->db->get_row( "SELECT status, home_score, away_score, confirmed_by FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) );
+		self::assertSame( array( 'provisional', '5', '5', null ), array( $fixture['status'], (string) $fixture['home_score'], (string) $fixture['away_score'], $fixture['confirmed_by'] ) );
+
+		// Ebenso ohne mitgeschickte Version: Einsprache und Entscheid der TK überschneiden sich.
+		$clock->before_next = fn() => $this->service->decide( $this->id['f1'], $this->actor['tk'], array( 'action' => 'reset' ) );
+		self::expect_error( fn() => $service->object( $this->id['f1'], $this->actor['captain_a1'], 'Das Doppel ging an uns.' ), 409 );
+		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
+	}
+
+	public function test_confirmation_by_the_tk_is_a_decision_with_comment(): void {
+		$this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		// Ein TK-Mitglied, das zugleich Captain der Gastseite ist, bestätigt als TK.
+		$tk_away = new Actor( 102, $this->actor['captain_a1']->person_id, true );
+		$this->service->decide(
+			$this->id['f1'],
+			$tk_away,
+			array(
+				'action'  => 'confirm',
+				'comment' => 'Matchblatt geprüft.',
+			)
+		);
+		$events = $this->service->repository()->events( $this->id['f1'] );
+		$last   = $events[ count( $events ) - 1 ];
+		self::assertSame( array( 'confirmed', 'Matchblatt geprüft.', true ), array( $last['type'], $last['comment'], $last['data']['by_tk'] ) );
+		self::assertSame( array( 'confirmed', $this->id['f1'], 102, true ), $this->events->calls[ count( $this->events->calls ) - 1 ] );
+	}
+
+	public function test_cup_side_needs_two_players(): void {
+		$error = self::expect_error(
+			fn() => $this->service->submit(
+				$this->id['cup'],
+				array(
+					'lineup' => array(
+						'home' => array(
+							'A' => $this->id['h1'],
+							'B' => null,
+						),
+						'away' => array(
+							'Y' => $this->id['a1'],
+							'Z' => $this->id['a2'],
+						),
+					),
+					'games'  => array( self::game( 1, '3:0' ), self::game( 2, 'wo:a' ), self::game( 3, 'wo:a' ), self::game( 4, 'wo:a' ) ),
+				),
+				$this->actor['chef_home']
+			),
+			422
+		);
+		self::assertContains( 'lineup.home', array_column( $error->errors, 'field' ) );
 	}
 
 	public function test_cup_is_decided_at_third_win(): void {

@@ -19,36 +19,33 @@ use TTLeague\Infrastructure\Database\Db;
 
 /**
  * Grundlage: Teams des Clubs in der Saison (Kategorie aus der Gruppe), gemeldete Spieler
- * (player_season), Stammspieler und Bindungen (team_roster) sowie alle Einsätze in
- * Aufstellungen der Saison ausser in der Begegnung, die gerade erfasst wird.
+ * (player_season), Stammspieler und Bindungen (team_roster) sowie die Einsätze in
+ * Aufstellungen der Saison vor der Begegnung, die gerade erfasst wird (Art. 12.4 und 12.5
+ * zählen frühere Einsätze). Bei gleicher Anspielzeit entscheidet die kleinere ID.
  */
 final class EligibilityLoader {
 
 	public function __construct( private readonly Db $db ) {}
 
 	/**
+	 * @param string|null $before Anspielzeit der Begegnung (Ortszeit); ohne Termin zählen alle
+	 *                            übrigen Einsätze der Saison.
 	 * @return array{checker:EligibilityChecker,players:array<int,array{player_id:int,first_name:string,last_name:string,license_no:int,classification:int|null,stamm_team_id:int|null}>}
 	 */
-	public function for_club( int $season_id, int $club_id, SeasonRules $rules, int $exclude_fixture_id ): array {
+	public function for_club( int $season_id, int $club_id, SeasonRules $rules, int $exclude_fixture_id, ?string $before = null ): array {
 		$checker = new EligibilityChecker( $rules );
-		$teams   = array();
-		foreach ( $this->db->get_results(
-			"SELECT t.id, t.number, COALESCE(c.category, '') AS category FROM {$this->db->table( 'team' )} t
-			LEFT JOIN {$this->db->table( 'competition' )} c ON c.id = t.competition_id
-			WHERE t.season_id = %d AND t.club_id = %d",
-			array( $season_id, $club_id )
-		) as $row ) {
-			$teams[ (int) $row['id'] ] = true;
-			$checker->add_team( new TeamInfo( (int) $row['id'], $club_id, (int) $row['number'], (string) $row['category'] ) );
-		}
+		$teams   = $this->teams( $season_id, $club_id, $checker );
 
-		$stamm = array();
-		$bound = array();
+		// Bindungen gelten ab dem Tag nach dem bindenden Einsatz; am selben Tag zählen die Einsätze.
+		$bound_filter = null === $before ? '' : " AND ( r.kind <> 'bound' OR r.valid_from IS NULL OR r.valid_from < %s )";
+		$args         = null === $before ? array( $season_id, $club_id ) : array( $season_id, $club_id, substr( $before, 0, 10 ) );
+		$stamm        = array();
+		$bound        = array();
 		foreach ( $this->db->get_results(
 			"SELECT r.player_id, r.team_id, r.kind FROM {$this->db->table( 'team_roster' )} r
 			JOIN {$this->db->table( 'team' )} t ON t.id = r.team_id
-			WHERE t.season_id = %d AND t.club_id = %d",
-			array( $season_id, $club_id )
+			WHERE t.season_id = %d AND t.club_id = %d{$bound_filter}",
+			$args
 		) as $row ) {
 			if ( 'bound' === $row['kind'] ) {
 				$bound[] = array( (int) $row['player_id'], (int) $row['team_id'] );
@@ -86,13 +83,17 @@ final class EligibilityLoader {
 			}
 		}
 
+		$earlier = null === $before ? '' : ' AND f.scheduled_at IS NOT NULL AND ( f.scheduled_at < %s OR ( f.scheduled_at = %s AND f.id < %d ) )';
+		$args    = null === $before
+			? array( $season_id, $club_id, $exclude_fixture_id )
+			: array( $season_id, $club_id, $exclude_fixture_id, $before, $before, $exclude_fixture_id );
 		foreach ( $this->db->get_results(
 			"SELECT l.player_id, t.id AS team_id FROM {$this->db->table( 'lineup' )} l
 			JOIN {$this->db->table( 'fixture' )} f ON f.id = l.fixture_id
 			JOIN {$this->db->table( 'team' )} t ON t.id = CASE WHEN l.side = 'home' THEN f.home_team_id ELSE f.away_team_id END
-			WHERE t.season_id = %d AND t.club_id = %d AND f.id <> %d
+			WHERE t.season_id = %d AND t.club_id = %d AND f.id <> %d{$earlier}
 			ORDER BY f.scheduled_at, f.id",
-			array( $season_id, $club_id, $exclude_fixture_id )
+			$args
 		) as $row ) {
 			$player_id = (int) $row['player_id'];
 			if ( isset( $players[ $player_id ] ) ) {
@@ -104,6 +105,71 @@ final class EligibilityLoader {
 			'checker' => $checker,
 			'players' => $players,
 		);
+	}
+
+	/**
+	 * Bindung eines Spielers aus seinen Einsätzen der Saison (Art. 12.5): das Team, in dem er
+	 * zuerst die Höchstzahl der Ersatzeinsätze erreicht, ab dem Tag dieses Einsatzes.
+	 *
+	 * @return array{team_id:int,valid_from:string|null}|null
+	 */
+	public function binding( int $season_id, int $player_id, SeasonRules $rules ): ?array {
+		$club = $this->db->get_var(
+			"SELECT club_id FROM {$this->db->table( 'player_season' )} WHERE season_id = %d AND player_id = %d",
+			array( $season_id, $player_id )
+		);
+		if ( null === $club ) {
+			return null;
+		}
+		$club_id = (int) $club;
+		$checker = new EligibilityChecker( $rules );
+		$teams   = $this->teams( $season_id, $club_id, $checker );
+		$stamm   = $this->db->get_var(
+			"SELECT r.team_id FROM {$this->db->table( 'team_roster' )} r
+			JOIN {$this->db->table( 'team' )} t ON t.id = r.team_id
+			WHERE r.player_id = %d AND r.kind <> 'bound' AND t.season_id = %d AND t.club_id = %d
+			ORDER BY r.id LIMIT 1",
+			array( $player_id, $season_id, $club_id )
+		);
+		$checker->add_player( $player_id, $club_id, null === $stamm || ! isset( $teams[ (int) $stamm ] ) ? null : (int) $stamm );
+
+		foreach ( $this->db->get_results(
+			"SELECT t.id AS team_id, f.scheduled_at FROM {$this->db->table( 'lineup' )} l
+			JOIN {$this->db->table( 'fixture' )} f ON f.id = l.fixture_id
+			JOIN {$this->db->table( 'team' )} t ON t.id = CASE WHEN l.side = 'home' THEN f.home_team_id ELSE f.away_team_id END
+			WHERE l.player_id = %d AND t.season_id = %d AND t.club_id = %d
+			ORDER BY f.scheduled_at, f.id",
+			array( $player_id, $season_id, $club_id )
+		) as $row ) {
+			$checker->add_appearance( $player_id, (int) $row['team_id'] );
+			$team = $checker->bound_team( $player_id );
+			if ( null !== $team ) {
+				return array(
+					'team_id'    => (int) $team,
+					'valid_from' => null === $row['scheduled_at'] ? null : substr( (string) $row['scheduled_at'], 0, 10 ),
+				);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Teams des Clubs in der Saison, im Checker angemeldet.
+	 *
+	 * @return array<int,true>
+	 */
+	private function teams( int $season_id, int $club_id, EligibilityChecker $checker ): array {
+		$teams = array();
+		foreach ( $this->db->get_results(
+			"SELECT t.id, t.number, COALESCE(c.category, '') AS category FROM {$this->db->table( 'team' )} t
+			LEFT JOIN {$this->db->table( 'competition' )} c ON c.id = t.competition_id
+			WHERE t.season_id = %d AND t.club_id = %d",
+			array( $season_id, $club_id )
+		) as $row ) {
+			$teams[ (int) $row['id'] ] = true;
+			$checker->add_team( new TeamInfo( (int) $row['id'], $club_id, (int) $row['number'], (string) $row['category'] ) );
+		}
+		return $teams;
 	}
 
 	/**
