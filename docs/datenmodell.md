@@ -96,7 +96,8 @@ Satz- und Punkteverhältnisse zählen nur Spiele mit `status = played`.
 
 - `rl_round.round_no` 1 bis 3, Finalrunde 4 mit `is_final` 1.
 - `rl_group.category` 1 bis 3, `group_no` ab 1, `start_at` Ortszeit, `host_club_id` Platzclub, `note` Rohtext des Aufgebots.
-- `rl_group_player.status`: `played`, `absent`, `disqualified`, `forfeit`; `rank_no` und `points` nach `GroupRanking`.
+- `rl_group_player.status`: `played`, `absent`, `disqualified`, `forfeit` oder `scheduled` (aufgeboten, Gruppe hat noch nicht gespielt); `rank_no` und `points` nach `GroupRanking`, bei `scheduled` leer.
+- `rl_group.venue_id`: Lokal des Platzclubs, sofern bekannt.
 - `rl_participant.category` 1 bis 3.
 
 ## Wertungszahl (`player_rating`, `rating_event`)

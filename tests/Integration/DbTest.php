@@ -75,6 +75,14 @@ final class DbTest extends IntegrationTestCase {
 		self::assertSame( '1', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'club' )}" ) );
 	}
 
+	public function test_integer_placeholder_works_in_limit(): void {
+		$this->insert_club( 1, 'A' );
+		$this->insert_club( 2, 'B' );
+		$this->insert_club( 3, 'C' );
+		$rows = $this->db->get_col( "SELECT number FROM {$this->db->table( 'club' )} ORDER BY number LIMIT %d", array( 2 ) );
+		self::assertSame( array( '1', '2' ), $rows );
+	}
+
 	public function test_wrong_argument_count_is_rejected(): void {
 		$this->expectException( DbException::class );
 		$this->db->get_var( 'SELECT %d + %d', array( 1 ) );

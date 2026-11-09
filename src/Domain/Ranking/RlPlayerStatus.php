@@ -18,6 +18,8 @@ enum RlPlayerStatus: string {
 	case Disqualified = 'disqualified';
 	/** Forfait für ausstehende Partien: alle Spiele der Runde annulliert. */
 	case Forfeit = 'forfeit';
+	/** Aufgeboten für eine Gruppe, die noch nicht gespielt hat. */
+	case Scheduled = 'scheduled';
 
 	public function is_ranked(): bool {
 		return self::Played === $this;

@@ -137,21 +137,21 @@ final class PdoDb implements Db {
 		}
 		$out .= str_replace( '%%', '%', $parts['literals'][ count( $parts['tokens'] ) ] );
 
-		$values = array();
+		$stmt = $this->pdo->prepare( $out );
 		foreach ( $parts['tokens'] as $i => $token ) {
 			$value = $args[ $i ];
+			// Typgerecht binden: %d als Ganzzahl (sonst scheitert z. B. LIMIT '10' in MariaDB).
 			if ( null === $value ) {
-				$values[] = null;
+				$stmt->bindValue( $i + 1, null, \PDO::PARAM_NULL );
 			} elseif ( '%d' === $token ) {
-				$values[] = (int) $value;
+				$stmt->bindValue( $i + 1, (int) $value, \PDO::PARAM_INT );
 			} elseif ( '%f' === $token ) {
-				$values[] = (float) $value;
+				$stmt->bindValue( $i + 1, (string) (float) $value, \PDO::PARAM_STR );
 			} else {
-				$values[] = (string) $value;
+				$stmt->bindValue( $i + 1, (string) $value, \PDO::PARAM_STR );
 			}
 		}
-		$stmt = $this->pdo->prepare( $out );
-		$stmt->execute( $values );
+		$stmt->execute();
 		return $stmt;
 	}
 
