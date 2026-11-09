@@ -140,6 +140,24 @@ final class DeadlinesTest extends NotificationTestCase {
 		self::assertSame( $this->both_sides(), $this->to( 'match_reminder', $this->id['f1'] ), 'die übrigen Saisons laufen weiter' );
 	}
 
+	public function test_a_run_with_a_simulated_clock_keeps_the_log(): void {
+		$entries_2026 = fn(): int => (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'notification_log' )} WHERE sent_at < %s", array( '2027-01-01 00:00:00' ) );
+		$this->run_at( '2026-11-08 20:00:00' );
+		$kept         = $entries_2026();
+		self::assertGreaterThan( 0, $kept );
+
+		// Zwei Jahre später gespielt, wie mit --at: Das Protokoll bleibt stehen.
+		$utc       = ( new \DateTimeImmutable( '2028-11-08 20:00:00', new \DateTimeZone( 'Europe/Zurich' ) ) )->setTimezone( new \DateTimeZone( 'UTC' ) );
+		$clock     = new FixedClock( $utc->format( 'Y-m-d H:i:s' ) );
+		$log       = new NotificationLog( $this->db, $clock );
+		$deadlines = new Deadlines( $clock, new \DateTimeZone( 'Europe/Zurich' ), new FixtureQueries( $this->db ), $this->repo, $this->recipients, new Notifier( new Preferences( $this->db ), $log, array( $this->email ) ), $this->messages, $log, self::ALL_DAY );
+		$deadlines->run( false );
+		self::assertSame( $kept, $entries_2026() );
+
+		$deadlines->run();
+		self::assertSame( 0, $entries_2026(), 'ein gewöhnlicher Lauf löscht Einträge älter als 365 Tage' );
+	}
+
 	public function test_postponed_fixture_is_reminded_again_for_its_new_date(): void {
 		$this->run_at( '2026-11-08 20:00:00' );
 		$this->db->update(
@@ -164,6 +182,17 @@ final class DeadlinesTest extends NotificationTestCase {
 
 		$this->run_at( '2026-11-09 07:00:00', array() );
 		self::assertSame( $this->both_sides(), $this->to( 'match_reminder', $this->id['f1'] ) );
+	}
+
+	public function test_reminder_hours_are_elapsed_hours_across_the_change_to_summer_time(): void {
+		// Anspielzeit Samstag, 27.3.2027, 20:00 MEZ; in der Nacht beginnt die Sommerzeit.
+		$this->db->update( 'fixture', array( 'scheduled_at' => '2027-03-27 20:00:00' ), array( 'id' => $this->id['f1'] ) );
+
+		$this->run_at( '2027-03-28 20:30:00' );
+		self::assertSame( array(), $this->to( 'result_missing', $this->id['f1'] ), 'erst 23,5 Stunden vergangen' );
+
+		$this->run_at( '2027-03-28 21:00:00' );
+		self::assertSame( array( $this->p( 'captain_h1' ), $this->p( 'chef_home' ) ), $this->to( 'result_missing', $this->id['f1'] ) );
 	}
 
 	public function test_missing_result_reminds_home_side_after_24_hours_and_tk_after_48_hours(): void {

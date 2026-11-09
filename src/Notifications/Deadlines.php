@@ -11,6 +11,7 @@ namespace TTLeague\Notifications;
 
 use TTLeague\Domain\Rules\SeasonRules;
 use TTLeague\Infrastructure\Time\Clock;
+use TTLeague\Infrastructure\Time\Hours;
 use TTLeague\Results\FixtureContext;
 use TTLeague\Results\ResultRepository;
 
@@ -67,13 +68,18 @@ final class Deadlines {
 	/**
 	 * Ein Lauf; liefert, was versendet wurde.
 	 *
+	 * @param bool $purge Alte Einträge des Versandprotokolls löschen. Ein Lauf mit gespielter Uhr
+	 *                    (wp ttleague notifications run --at) lässt das aus: Ein Zeitpunkt in der
+	 *                    Zukunft würde sonst aktuelle Einträge löschen, und Erinnerungen gingen erneut hinaus.
 	 * @return list<array{event:string,ref:int,deliveries:list<array{recipient:string,channel:string,status:string}>}>
 	 */
-	public function run(): array {
+	public function run( bool $purge = true ): array {
 		$this->tk = null;
 		$now      = $this->clock->now()->setTimezone( new \DateTimeZone( 'UTC' ) );
 		$local    = $now->setTimezone( $this->timezone );
-		$this->log?->purge();
+		if ( $purge ) {
+			$this->log?->purge();
+		}
 
 		$hour = (int) $local->format( 'G' );
 		if ( $hour < $this->from_hour || $hour >= $this->until_hour ) {
@@ -153,8 +159,8 @@ final class Deadlines {
 			if ( null === $start ) {
 				continue;
 			}
-			$home_due = $local >= $start->modify( '+' . $rules->result_reminder_hours . ' hours' );
-			$tk_due   = $local >= $start->modify( '+' . $rules->entry_deadline_hours . ' hours' );
+			$home_due = $local >= Hours::after( $start, $rules->result_reminder_hours );
+			$tk_due   = $local >= Hours::after( $start, $rules->entry_deadline_hours );
 			$forfeit  = $local >= $start->modify( '+' . $rules->forfeit_after_days . ' days' );
 			if ( ! $home_due && ! $tk_due ) {
 				continue;
@@ -164,7 +170,7 @@ final class Deadlines {
 				continue;
 			}
 			if ( $home_due && ! $forfeit ) {
-				$deadline     = $start->modify( '+' . $rules->entry_deadline_hours . ' hours' );
+				$deadline     = Hours::after( $start, $rules->entry_deadline_hours );
 				$notification = $this->messages->result_missing( $ctx, $deadline->format( 'Y-m-d H:i:s' ), $local >= $deadline );
 				$report[]     = self::entry( $notification, $this->notifier->send( $notification, $this->recipients->side( $ctx, 'home' ) ) );
 			}

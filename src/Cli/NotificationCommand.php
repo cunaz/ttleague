@@ -28,8 +28,9 @@ final class NotificationCommand {
 	 * ## OPTIONS
 	 *
 	 * [--at=<zeit>]
-	 * : Zeitpunkt in Ortszeit der Website statt jetzt, z. B. «2026-11-12 08:00». Nur zum Testen:
-	 * Die Nachrichten werden wirklich versendet und protokolliert.
+	 * : Zeitpunkt in Ortszeit der Website statt jetzt, z. B. «2026-11-12 08:00». Nur zum Testen auf
+	 * einer Kopie der Website: Die Nachrichten werden wirklich versendet und protokolliert. Alte
+	 * Einträge des Versandprotokolls bleiben dabei stehen.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -52,7 +53,7 @@ final class NotificationCommand {
 			\WP_CLI::log( 'Zeitpunkt: ' . $local->format( 'Y-m-d H:i' ) . ' Ortszeit' );
 		}
 		$rows = array();
-		foreach ( Notifications::deadlines( $clock )->run() as $entry ) {
+		foreach ( Notifications::deadlines( $clock )->run( null === $clock ) as $entry ) {
 			foreach ( $entry['deliveries'] as $delivery ) {
 				$rows[] = array(
 					'art'        => $entry['event'],

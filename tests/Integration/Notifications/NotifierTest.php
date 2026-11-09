@@ -83,7 +83,7 @@ final class NotifierTest extends NotificationTestCase {
 		self::assertSame( 'email', $report[0]['channel'] );
 	}
 
-	public function test_failed_push_falls_back_to_email_and_failed_delivery_is_retried_later(): void {
+	public function test_failed_push_falls_back_to_email_once(): void {
 		( new Preferences( $this->db ) )->set( $this->person['captain_h1'], EventTypes::MATCH_REMINDER, false, true );
 		$this->push->push_people = array( $this->person['captain_h1'] );
 		$this->push->fail        = true;
@@ -95,9 +95,50 @@ final class NotifierTest extends NotificationTestCase {
 		self::assertSame( 1, $this->log_count(), 'nur die E-Mail ist protokolliert' );
 
 		$this->push->fail = false;
-		$this->notifier->send( $this->reminder(), $recipient );
-		self::assertSame( array( $this->p( 'captain_h1' ) ), $this->push->recipients( 'match_reminder' ), 'nächster Versuch klappt' );
+		$report           = $this->notifier->send( $this->reminder(), $recipient );
+		self::assertSame( array(), $this->push->sent, 'nach dem Rückfall kein zweiter Push' );
+		self::assertSame( array( 'email' ), array_column( $report, 'channel' ) );
+		self::assertSame( array( 'duplicate' ), array_column( $report, 'status' ) );
 		self::assertCount( 1, $this->email->sent );
+	}
+
+	public function test_failed_push_and_fallback_email_are_retried_later(): void {
+		( new Preferences( $this->db ) )->set( $this->person['captain_h1'], EventTypes::MATCH_REMINDER, false, true );
+		$this->push->push_people = array( $this->person['captain_h1'] );
+		$this->push->fail        = true;
+		$this->email->fail       = true;
+		$recipient               = $this->recipients->persons( array( $this->person['captain_h1'] ) );
+
+		self::assertSame( array( 'failed', 'failed' ), array_column( $this->notifier->send( $this->reminder(), $recipient ), 'status' ) );
+		self::assertSame( 0, $this->log_count() );
+
+		$this->push->fail  = false;
+		$this->email->fail = false;
+		$report            = $this->notifier->send( $this->reminder(), $recipient );
+		self::assertSame( array( 'push' ), array_column( $report, 'channel' ), 'der Push klappt, kein Rückfall nötig' );
+		self::assertSame( array( $this->p( 'captain_h1' ) ), $this->push->recipients( 'match_reminder' ) );
+		self::assertSame( array(), $this->email->sent );
+	}
+
+	public function test_confirmation_after_a_takeover_is_reported(): void {
+		$recipient = $this->recipients->persons( array( $this->person['captain_a1'] ) );
+		$errors    = array();
+		$notifier  = new Notifier(
+			new Preferences( $this->db ),
+			new NotificationLog( $this->db, $this->clock ),
+			array( $this->email ),
+			static function ( \Throwable $e, string $context ) use ( &$errors ): void {
+				$errors[] = $e->getMessage() . ' | ' . $context;
+			}
+		);
+		// Der Versand hängt länger als die Frist; ein anderer Lauf übernimmt die Reservierung.
+		$this->email->during = function ( $who, Notification $notification ): void {
+			$this->clock->advance( '+' . NotificationLog::LEASE_MINUTES . ' minutes' );
+			self::assertNotNull( ( new NotificationLog( $this->db, $this->clock ) )->claim( $who, $notification, 'email' ) );
+		};
+
+		self::assertSame( 'sent', $notifier->send( $this->reminder(), $recipient )[0]['status'] );
+		self::assertSame( array( 'Reservierung übernommen, Nachricht möglicherweise doppelt versendet. | email match_reminder ' . $this->p( 'captain_a1' ) ), $errors );
 	}
 
 	public function test_failed_email_is_released_for_a_later_attempt(): void {

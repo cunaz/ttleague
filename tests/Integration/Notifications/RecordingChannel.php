@@ -26,6 +26,9 @@ final class RecordingChannel implements Channel {
 
 	public ?\Throwable $throw = null;
 
+	/** Läuft während der Zustellung, z. B. um einen gleichzeitigen Lauf zu spielen. */
+	public ?\Closure $during = null;
+
 	/**
 	 * @param string    $name        email oder push.
 	 * @param list<int> $push_people Personen mit Push-Abo.
@@ -44,6 +47,9 @@ final class RecordingChannel implements Channel {
 	}
 
 	public function deliver( Recipient $recipient, Notification $notification ): bool {
+		if ( null !== $this->during ) {
+			( $this->during )( $recipient, $notification );
+		}
 		if ( null !== $this->throw ) {
 			throw $this->throw;
 		}

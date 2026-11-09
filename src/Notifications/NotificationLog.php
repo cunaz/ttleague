@@ -1,6 +1,6 @@
 <?php
 /**
- * Protokoll der versendeten Benachrichtigungen (notification_log) für «genau einmal».
+ * Protokoll der versendeten Benachrichtigungen (notification_log) gegen doppelten Versand.
  *
  * @package TTLeague
  */
@@ -13,13 +13,17 @@ use TTLeague\Infrastructure\Database\Db;
 use TTLeague\Infrastructure\Time\Clock;
 
 /**
- * Eine Nachricht geht pro Empfänger (Person, sonst Konto), Art, Bezug, Zusatz und Kanal genau
- * einmal hinaus. Vor dem Versand wird der Eintrag reserviert (INSERT IGNORE auf den
- * eindeutigen Schlüssel, Status pending); nach dem Versand bestätigt (sent), nach einem
- * Fehlschlag wieder freigegeben. So versenden auch zwei gleichzeitige Cron-Läufe nichts doppelt.
+ * Eine Nachricht geht pro Empfänger (Person, sonst Konto), Art, Bezug, Zusatz und Kanal
+ * höchstens einmal pro Reservierung hinaus. Vor dem Versand wird der Eintrag reserviert
+ * (INSERT IGNORE auf den eindeutigen Schlüssel, Status pending), nach dem Versand bestätigt
+ * (sent) und nach einem Fehlschlag wieder freigegeben. Zwei gleichzeitige Cron-Läufe
+ * versenden so nichts doppelt.
  *
  * Endet der Prozess zwischen Reservierung und Bestätigung (Zeitlimit, schwerer Fehler), bleibt
  * die Reservierung offen. Nach LEASE_MINUTES darf genau ein späterer Lauf sie übernehmen.
+ * Lieber doppelt als gar nicht: Brach der Prozess erst nach dem Versand ab oder dauerte ein
+ * Versuch länger als LEASE_MINUTES, geht die Nachricht ein zweites Mal hinaus. Den zweiten Fall
+ * meldet Notifier, weil confirm() dann false liefert.
  */
 final class NotificationLog {
 
@@ -28,9 +32,9 @@ final class NotificationLog {
 
 	/**
 	 * Eine offene Reservierung gilt nach so vielen Minuten als verwaist. Ein Versand dauert
-	 * höchstens Sekunden bis wenige Minuten (Push: Zeitlimit 10 Sekunden; E-Mail über SMTP:
-	 * Zeitlimit von PHPMailer 5 Minuten), ein laufender Versuch wird also nicht doppelt
-	 * ausgeführt. Der nächste stündliche Lauf holt einen abgebrochenen Versand nach.
+	 * normalerweise Sekunden (Push: Zeitlimit 10 Sekunden; E-Mail über SMTP: Zeitlimit von
+	 * PHPMailer 5 Minuten je Verbindungsschritt), ein laufender Versuch wird also in aller Regel
+	 * nicht doppelt ausgeführt. Ein späterer Lauf holt eine noch fällige Fristmeldung nach.
 	 */
 	public const LEASE_MINUTES = 15;
 
@@ -68,11 +72,11 @@ final class NotificationLog {
 
 	/**
 	 * Versand bestätigen. Nur die eigene Reservierung: Hat ein späterer Lauf sie übernommen,
-	 * bleibt sie dessen.
+	 * bleibt sie dessen, und das Ergebnis ist false.
 	 */
-	public function confirm( Recipient $recipient, Notification $notification, string $channel, string $token ): void {
+	public function confirm( Recipient $recipient, Notification $notification, string $channel, string $token ): bool {
 		[ $person, $user ] = self::identity( $recipient );
-		$this->db->query(
+		return 1 === $this->db->query(
 			"UPDATE {$this->db->table( 'notification_log' )} SET status = %s, sent_at = %s
 			WHERE person_id = %d AND user_id = %d AND event_type = %s AND ref_type = %s AND ref_id = %d AND ref_key = %s AND channel = %s
 			AND status = %s AND sent_at = %s",
@@ -83,9 +87,9 @@ final class NotificationLog {
 	/**
 	 * Reservierung nach gescheitertem Versand freigeben, nur die eigene (siehe confirm()).
 	 */
-	public function release( Recipient $recipient, Notification $notification, string $channel, string $token ): void {
+	public function release( Recipient $recipient, Notification $notification, string $channel, string $token ): bool {
 		[ $person, $user ] = self::identity( $recipient );
-		$this->db->query(
+		return 1 === $this->db->query(
 			"DELETE FROM {$this->db->table( 'notification_log' )}
 			WHERE person_id = %d AND user_id = %d AND event_type = %s AND ref_type = %s AND ref_id = %d AND ref_key = %s AND channel = %s
 			AND status = %s AND sent_at = %s",

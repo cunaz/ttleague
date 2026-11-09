@@ -17,7 +17,8 @@ use TTLeague\Accounts\Preferences;
  * versenden, den Versand bestätigen oder bei Misserfolg die Reservierung freigeben.
  *
  * Rückfall: Wer für ein Ereignis nur Push gewählt hat, aber kein gültiges Abo besitzt oder bei
- * dem der Push-Versand scheitert, erhält eine E-Mail. So geht keine Frist verloren.
+ * dem der Push-Versand scheitert, erhält eine E-Mail. So geht keine Frist verloren. Ist die
+ * E-Mail zugestellt, folgt für dieselbe Nachricht kein Push mehr.
  */
 final class Notifier {
 
@@ -67,8 +68,10 @@ final class Notifier {
 			$wants    = $this->wants( $recipient, $notification->type );
 			$push     = $this->channels[ Channel::PUSH ] ?? null;
 			$email    = $this->channels[ Channel::EMAIL ] ?? null;
-			$use_push = $wants[ Channel::PUSH ] && null !== $push && $push->reaches( $recipient );
 			$fallback = $wants[ Channel::PUSH ] && ! $wants[ Channel::EMAIL ];
+			// Ist die E-Mail als Rückfall schon zugestellt, wäre ein späterer Push doppelt.
+			$use_push = $wants[ Channel::PUSH ] && null !== $push && $push->reaches( $recipient )
+				&& ! ( $fallback && $this->log->was_sent( $recipient, $notification, Channel::EMAIL ) );
 
 			$pushed = false;
 			if ( $use_push ) {
@@ -118,7 +121,11 @@ final class Notifier {
 			$this->log->release( $recipient, $notification, $channel->name(), $token );
 			return self::FAILED;
 		}
-		$this->log->confirm( $recipient, $notification, $channel->name(), $token );
+		if ( ! $this->log->confirm( $recipient, $notification, $channel->name(), $token ) ) {
+			// Ein späterer Lauf hat die Reservierung übernommen, weil der Versand länger als die
+			// Frist dauerte. Die Nachricht ist dann möglicherweise doppelt hinausgegangen.
+			( $this->on_error )( new \RuntimeException( 'Reservierung übernommen, Nachricht möglicherweise doppelt versendet.' ), $channel->name() . ' ' . $notification->event . ' ' . $recipient->key() );
+		}
 		return self::SENT;
 	}
 
