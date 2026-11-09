@@ -128,7 +128,7 @@ final class EntryPageTest extends IntegrationTestCase {
 			$fixture ?? $this->id['fixture'],
 			'' === $actor ? null : $this->actor[ $actor ],
 			self::LINKS,
-			static fn( int $attachment, string $size ): ?string => 'https://liga.example/wp-content/uploads/spielbericht-' . $attachment . ( 'full' === $size ? '' : '-300x400' ) . '.jpg'
+			static fn( int $fixture ): string => 'https://liga.example/wp-json/ttleague/v1/fixtures/' . $fixture . '/photo?_wpnonce=abc'
 		);
 	}
 
@@ -244,8 +244,9 @@ final class EntryPageTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'id="ttl-e-reason"', $html );
 		self::assertStringContainsString( 'Erfasstes Resultat', $html );
 		self::assertStringContainsString( 'Total 6:4', $html );
-		self::assertStringContainsString( 'href="https://liga.example/wp-content/uploads/spielbericht-77.jpg"', $html );
-		self::assertSame( 'https://liga.example/wp-content/uploads/spielbericht-77-300x400.jpg', $result['state']['photo']['thumb'], 'Vorschau in mittlerer Grösse' );
+		$url = 'https://liga.example/wp-json/ttleague/v1/fixtures/' . $this->id['fixture'] . '/photo?_wpnonce=abc';
+		self::assertStringContainsString( 'href="' . esc_url( $url ) . '"', $html, 'geschützte Adresse statt Datei' );
+		self::assertSame( $url, $result['state']['photo']['thumb'], 'Vorschau über dieselbe Adresse (keine Bildvarianten)' );
 		self::assertStringNotContainsString( 'id="ttl-e-form"', $html, 'Gastseite erfasst nicht' );
 		self::assertStringContainsString( 'Provisorisch erfasst am Di, 10.11.2026, 22:30 von Hanna Heim.', $html );
 		self::assertStringContainsString( 'Resultat erfasst (6:4)', $html, 'Verlauf' );

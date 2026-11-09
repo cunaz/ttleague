@@ -30,7 +30,7 @@ final class EntryPage {
 	 * @param int                                                    $fixture_id Begegnung aus der Adresse (0 = keine).
 	 * @param Actor|null                                             $actor      Angemeldete Person oder null.
 	 * @param array{login:string,my_area:string,report:string,rest:string} $links Adressen (Anmeldung mit Rücksprung, Mein Bereich, Matchreport, REST-Basis der Begegnung).
-	 * @param (callable(int,string):?string)|null                    $photo_url  Adresse eines Anhangs in einer Grösse (full, medium).
+	 * @param (callable(int):string)|null                           $photo_url  Geschützte Adresse des Fotos einer Begegnung (Results::photo_url).
 	 * @return array{html:string,state:array<string,mixed>|null,config:array<string,mixed>|null}
 	 */
 	public function build( int $fixture_id, ?Actor $actor, array $links, ?callable $photo_url = null ): array {
@@ -58,7 +58,7 @@ final class EntryPage {
 		$mode      = $entry['can']['enter'] ? 'enter' : '';
 		$decisions = $this->decisions( $entry );
 		$photo_id  = null === $photo_url ? null : $entry['current']['photo_id'];
-		$photo     = null === $photo_id ? null : $photo_url( (int) $photo_id, 'full' );
+		$photo     = null === $photo_id ? null : $photo_url( (int) $entry['fixture']['id'] );
 		$photo     = '' === $photo ? null : $photo;
 		$state     = array(
 			'form'      => $form,
@@ -85,8 +85,8 @@ final class EntryPage {
 			),
 			'photo'     => array(
 				'url'   => $photo,
-				// Vorschau in mittlerer Grösse, damit die Seite nicht jedes Mal das ganze Foto lädt.
-				'thumb' => null === $photo ? null : ( $photo_url( (int) $photo_id, 'medium' ) ?? $photo ),
+				// Fotos haben keine Bildvarianten (PhotoStorage); die Vorschau verkleinert das CSS.
+				'thumb' => $photo,
 				'text'  => null === $photo ? '' : __( 'Ein Foto ist gespeichert. Ein neues Foto ersetzt es.', 'ttleague' ),
 				'busy'  => false,
 			),

@@ -60,10 +60,7 @@ final class EntryBlock {
 			$fixture_id,
 			$actor,
 			self::links( $fixture_id ),
-			static function ( int $attachment_id, string $size ): ?string {
-				$url = wp_get_attachment_image_url( $attachment_id, $size );
-				return false === $url ? null : $url;
-			}
+			array( Results::class, 'photo_url' )
 		);
 		if ( null !== $result['state'] && null !== $result['config'] ) {
 			wp_interactivity_state( EntryMarkup::NS, $result['state'] );
