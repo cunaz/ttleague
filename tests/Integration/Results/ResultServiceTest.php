@@ -18,6 +18,7 @@ use TTLeague\Infrastructure\Time\FixedClock;
 use TTLeague\Results\Actor;
 use TTLeague\Results\ResultException;
 use TTLeague\Results\ResultService;
+use TTLeague\Tests\Integration\Database\RecordingDb;
 use TTLeague\Tests\Integration\Frontend\Seeder;
 use TTLeague\Tests\Integration\IntegrationTestCase;
 
@@ -743,9 +744,11 @@ final class ResultServiceTest extends IntegrationTestCase {
 
 	/**
 	 * Zwei Erfassungen verschiedener Begegnungen mit demselben Ersatzspieler überschneiden sich:
-	 * Während die Heimseite das Derby (8.12.) mit h4 für Seefeld 2 prüft, wird f4 (1.12.) mit h4
-	 * als drittem Ersatzeinsatz für Seefeld 1 gespeichert. Die Spielberechtigung gilt erst nach
-	 * der Sperre der Saison als geprüft, also mit der Bindung an Seefeld 1.
+	 * Nach der Prüfung von Rechten, Status und Version für das Derby (8.12., h4 für Seefeld 2) wird
+	 * f4 (1.12.) mit h4 als drittem Ersatzeinsatz für Seefeld 1 gespeichert. Die Prüfung der
+	 * Spielberechtigung sieht diesen Einsatz und die Bindung. Dass sie dabei unter der Sperre der
+	 * Saison läuft, zeigen test_eligibility_reads_happen_only_under_the_season_lock und
+	 * test_writes_in_the_same_season_wait_for_the_season_lock.
 	 */
 	public function test_eligibility_is_checked_again_after_a_concurrent_entry_of_another_fixture(): void {
 		foreach ( array( 'f1', 'f3' ) as $fixture ) {
@@ -776,6 +779,33 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertSame( array( $this->id['h1team'], '2026-12-01' ), $this->binding_of( 'h4' ) );
 		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['derby'] ) ) );
 		self::assertSame( '0', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'lineup' )} WHERE fixture_id = %d", array( $this->id['derby'] ) ), 'nichts gespeichert' );
+	}
+
+	/**
+	 * Die Spielberechtigung liest Einsätze und Kader (lineup, team_roster) nur in der
+	 * Schreibtransaktion, und deren erste Abfragen sperren Saison und Begegnung. Gezählt über
+	 * eine Db, die jede Abfrage mitschreibt.
+	 */
+	public function test_eligibility_reads_happen_only_under_the_season_lock(): void {
+		$db      = new RecordingDb( $this->db );
+		$service = new ResultService(
+			$db,
+			new AccessPolicy( $db ),
+			$this->clock,
+			new \DateTimeZone( 'Europe/Zurich' ),
+			new AuditLog( $db ),
+			$this->events,
+			static fn(): ?string => null
+		);
+
+		$service->submit( $this->id['f1'], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+
+		$inside   = $db->statements( true );
+		$eligible = '/\b(' . preg_quote( $this->db->table( 'lineup' ), '/' ) . '|' . preg_quote( $this->db->table( 'team_roster' ), '/' ) . ')\b/';
+		self::assertSame( "SELECT id FROM {$this->db->table( 'season' )} WHERE id = %d FOR UPDATE", $inside[0], 'zuerst die Saison sperren' );
+		self::assertSame( "SELECT id FROM {$this->db->table( 'fixture' )} WHERE id = %d FOR UPDATE", $inside[1], 'dann die Begegnung' );
+		self::assertSame( array(), array_values( preg_grep( $eligible, $db->statements( false ) ) ), 'keine Abfrage von Einsätzen oder Kader vor der Sperre' );
+		self::assertNotSame( array(), preg_grep( $eligible, array_slice( $inside, 2 ) ), 'Spielberechtigung unter der Sperre geprüft' );
 	}
 
 	/**

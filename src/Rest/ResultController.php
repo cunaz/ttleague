@@ -31,15 +31,9 @@ final class ResultController {
 	public const PHOTO_MAX_BYTES = 10485760;
 
 	/**
-	 * Erlaubte Bildformate für Fotos des Spielberichts.
+	 * Erlaubte Bildformate für Fotos des Spielberichts (siehe PhotoStorage::MIMES).
 	 */
-	public const PHOTO_MIMES = array(
-		'jpg|jpeg|jpe' => 'image/jpeg',
-		'png'          => 'image/png',
-		'webp'         => 'image/webp',
-		'heic'         => 'image/heic',
-		'heif'         => 'image/heif',
-	);
+	public const PHOTO_MIMES = PhotoStorage::MIMES;
 
 	public static function register_routes(): void {
 		$id     = array(
