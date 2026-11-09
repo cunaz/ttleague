@@ -1,0 +1,33 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ttleague/archive",
+	"version": "0.1.0",
+	"title": "Archiv",
+	"category": "ttleague",
+	"icon": "archive",
+	"description": "Alle Saisons mit Einstiegen und Gruppensiegern.",
+	"keywords": [
+		"ttleague",
+		"tischtennis"
+	],
+	"textdomain": "ttleague",
+	"attributes": {
+		"compact": {
+			"type": "boolean",
+			"default": false
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [
+			"wide",
+			"full"
+		],
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "ttleague-editor",
+	"style": "ttleague-frontend"
+}

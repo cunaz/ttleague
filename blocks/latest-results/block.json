@@ -1,0 +1,37 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ttleague/latest-results",
+	"version": "0.1.0",
+	"title": "Letzte Resultate",
+	"category": "ttleague",
+	"icon": "list-view",
+	"description": "Zuletzt gespielte Begegnungen aus Meisterschaft und Cup.",
+	"keywords": [
+		"ttleague",
+		"tischtennis"
+	],
+	"textdomain": "ttleague",
+	"attributes": {
+		"season": {
+			"type": "string",
+			"default": ""
+		},
+		"count": {
+			"type": "integer",
+			"default": 6
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [
+			"wide",
+			"full"
+		],
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "ttleague-editor",
+	"style": "ttleague-frontend"
+}

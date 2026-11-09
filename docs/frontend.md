@@ -1,0 +1,130 @@
+# Öffentliche Darstellung (Frontend)
+
+Dieses Dokument beschreibt die lesende Darstellung des Plugins: Seiten und Adressen, Blöcke und Shortcode, die Lesemodelle, Caching, Gestaltung und Tests. Alle Beispiele verwenden erfundene Daten (Lizenznummern ab 90001, «TTC Seefeld»).
+
+## Überblick
+
+| Schicht | Ort | Aufgabe |
+|---|---|---|
+| Lesemodelle | `src/ReadModel/` | Abfragen über `Db`, Tabellenberechnung mit `StandingsCalculator`, RL-Ranglisten mit `GroupRanking` und `FinalQualification`, Statistik. Rückgabe als einfache Arrays. |
+| Routing | `src/Frontend/Routes.php`, `Resolver.php`, `Router.php`, `PageInstaller.php` | Rewrite-Regeln, Auflösung der Adresse in einen Kontext (Objekt, Titel, 404, Weiterleitung), Seiten-Installer. |
+| Ansichten | `src/Frontend/Views/` | Serverseitiges HTML pro Ansicht, escaped. |
+| Blöcke, Shortcode | `src/Frontend/Blocks.php`, `Shortcode.php`, `blocks/*/block.json`, `assets/js/editor.js` | Dynamische Blöcke mit `render_callback`, Shortcode `[ttleague view="…"]`, Editor ohne Build-Schritt. |
+| Gestaltung | `assets/css/frontend.css` | Mobile first, Tabellen werden unter 600px zu Karten, Farben und Abstände aus den Presets des aktiven Block-Themes. |
+
+Einstieg ist `TTLeague\Frontend\Frontend::register()`, aufgerufen von `TTLeague\Plugin::boot()`.
+
+## Seiten und Adressen
+
+Jede Ansicht ist eine echte WordPress-Seite mit dem passenden Block als Inhalt. So rendert das Block-Theme Kopf- und Fusszeile, und die TK kann über oder unter dem Block Text ergänzen. Detailansichten (Gruppe, Club, Spielerprofil) sind Unterseiten; Begegnung und Mannschaft sind eigene Seiten.
+
+| Adresse | Seite (Schlüssel) | Block |
+|---|---|---|
+| `/meisterschaft/`, `/meisterschaft/2026-27/` | Meisterschaft (`championship`) | `ttleague/season-overview` |
+| `/meisterschaft/2026-27/gruppe-a/`, `…/gruppe-a-2/` (group_no > 1) | Meisterschaft › Gruppe (`group`) | `ttleague/group` |
+| `/begegnung/123/` (Meisterschaft und Cup) | Begegnung (`fixture`) | `ttleague/match-report` |
+| `/mannschaft/2026-27/seefeld-1/` | Mannschaft (`team`) | `ttleague/team` |
+| `/clubs/`, `/clubs/?saison=2025-26` | Clubs (`clubs`) | `ttleague/clubs` |
+| `/clubs/seefeld/`, `/clubs/seefeld/?saison=2025-26` | Clubs › Club (`club`) | `ttleague/club` |
+| `/spieler/`, `/spieler/?club=seefeld&q=muster` | Spieler (`players`) | `ttleague/players` |
+| `/spieler/90001-hans-muster/`, `…/?saison=2025-26` | Spieler › Spielerprofil (`player`) | `ttleague/player` |
+| `/ranglistenturnier/`, `/ranglistenturnier/2026-27/` | Ranglistenturnier (`ranking`) | `ttleague/ranking-tournament` |
+| `/cup/`, `/cup/2026-27/`, `/cup/2026-27/a/` | Mannschaftscup (`cup`) | `ttleague/cup` |
+| `/dokumente/` | Dokumente (`documents`) | `ttleague/documents` (Inhaltsmodul) |
+| `/archiv/` | Archiv (`archive`) | `ttleague/archive` |
+
+Regeln:
+
+- Ohne Saison gilt die aktive Saison (`season.status = active`, sonst die neueste nicht geplante).
+- Unbekannte Saison, Gruppe, Begegnung, Mannschaft, Club, Lizenznummer oder Cup-Kategorie: HTTP 404, die Seite zeigt eine freundliche Meldung mit Wegweisern, `noindex`.
+- Spielerprofil mit falschem oder fehlendem Namensteil: 301 auf `/spieler/<Lizenz>-<vorname-nachname>/` (ein Saisonfilter bleibt erhalten).
+- Detailseite ohne Parameter (z. B. `/meisterschaft/gruppe/`, `/begegnung/`): 302 auf die Übersicht.
+- Dokumenttitel und Seitenüberschrift zeigen das konkrete Objekt: Überschrift «Hans Muster», Titel «Hans Muster – Spieler – Website». Die kanonische Adresse ist die des Objekts.
+- Slugs: Kleinbuchstaben, Umlaute als ae/oe/ue, ß als ss (`ReadModel\Support\Slug`). Teamslug aus dem Teamnamen, Spielerslug aus «Vorname Nachname».
+- Die Rewrite-Regeln zeigen per `page_id` auf die Seiten und folgen deren aktuellen Pfaden: Benennt die TK eine Seite um, werden die Regeln beim nächsten Aufruf neu aufgebaut.
+- Abfrageparameter (`saison`, `club`, `q`) werden bewusst nicht als WordPress-Query-Variablen registriert, damit z. B. `/?saison=…` die Startseite nicht verändert.
+
+### Seiten installieren
+
+Die Seiten werden beim ersten Aufruf nach der Aktivierung (bzw. nach einem Update mit neuer Seitenversion) automatisch angelegt, danach die Rewrite-Regeln erneuert. Manuell und idempotent:
+
+```bash
+wp ttleague pages              # Tabelle mit Seite, ID, Adresse, Aktion (angelegt, übernommen, vorhanden)
+wp ttleague pages --format=json
+```
+
+Vorhandene Seiten (auch umbenannte oder bearbeitete) bleiben unverändert; fehlt eine, wird sie über ihren Pfad wiedergefunden oder neu angelegt. Die IDs stehen in der Option `ttleague_pages`. Bei der Deaktivierung werden die Rewrite-Regeln verworfen.
+
+## Blöcke und Shortcode
+
+Alle Blöcke sind dynamisch (`blocks/<name>/block.json` mit `render_callback` in `Blocks::render_block()`), Kategorie «Spielbetrieb (ttleague)». Ohne Attribut lesen sie ihren Parameter aus der Adresse, sonst gilt die aktive Saison.
+
+| Block | Attribute |
+|---|---|
+| `ttleague/season-overview` | `season` |
+| `ttleague/group` | `season`, `group` (`a`, `a-2`), `show` (`all`, `table`, `schedule`) |
+| `ttleague/match-report` | `fixture` (ID) |
+| `ttleague/team` | `season`, `team` (Slug) |
+| `ttleague/clubs` | `season` |
+| `ttleague/club` | `season`, `club` (Slug) |
+| `ttleague/players` | `season`, `club` |
+| `ttleague/player` | `player` (Lizenznummer) |
+| `ttleague/ranking-tournament` | `season`, `category` (1–3, 0 = alle) |
+| `ttleague/cup` | `season`, `category` (`a`, `b`) |
+| `ttleague/latest-results` | `season`, `count` |
+| `ttleague/upcoming-fixtures` | `season`, `count` |
+| `ttleague/standings-compact` | `season`, `group` |
+| `ttleague/season-switcher` | `label` |
+| `ttleague/archive` | `compact` |
+
+Shortcode: `[ttleague view="<Blockname ohne ttleague/>" …Attribute…]`, z. B. `[ttleague view="group" season="2026-27" group="a"]`, `[ttleague view="player" player="90001"]`, `[ttleague view="latest-results" count="5"]`. Deutsche Kurzformen: `meisterschaft`, `gruppe`, `begegnung`, `mannschaft`, `spieler`, `spielerprofil`, `ranglistenturnier`, `resultate`, `termine`, `tabellen`, `saisonwahl`, `archiv`.
+
+Editor: `assets/js/editor.js` registriert alle Blöcke (auch `ttleague/documents` aus dem Inhaltsmodul) mit `ServerSideRender` und einfachen Einstellungen (Saison, Gruppe, Kategorie, Anzahl …). Saisons und Clubs für die Auswahllisten kommen als `window.ttleagueEditor`.
+
+**Saisonwahl** (`ttleague/season-switcher`, in der Kopfzeile des Themes): ein `<details>`-Menü ohne JavaScript. Es wechselt dieselbe Ansicht in eine andere Saison: Gruppe → gleiche Gruppe, Mannschaft → gleiche Mannschaft (sonst Saisonübersicht), Club, Spielerliste, Spielerprofil (Saisonfilter), Ranglistenturnier, Cup; auf anderen Seiten zur Meisterschaft der Saison.
+
+## Lesemodelle
+
+`TTLeague\ReadModel\ReadModel` bündelt alle Abfragen (`ReadModel::instance()` in WordPress, in Tests `new ReadModel( $pdo_db, new NullCache() )`).
+
+| Klasse | Liefert |
+|---|---|
+| `Seasons` | Saisons, aktive Saison, `SeasonRules` aus `rules_json` |
+| `Championship` | pro Saison: Gruppen mit berechneter Tabelle, Teams, Begegnungen mit Satzsummen; `standings()` als reine Funktion |
+| `MatchReports` | Kopf, Lokal, Aufstellungen mit Klassierung und Ersatz, Spiele in Spielfolge (Slots aus `GameOrder`), Summen |
+| `Teams` | Stammspieler und gebundene Spieler, Captains, Heimlokal, Einsatzmatrix (`Teams::matrix()` als reine Funktion) |
+| `Clubs` | Clubliste einer Saison, Club-Detail mit Teams, Lokalen (Anspielzeiten der Heimteams), Funktionen, Spielern |
+| `Players` | Spielerliste einer Saison mit Wertungszahl, Suche (Name mit und ohne Umlaut-Ausschreibung, Lizenznummer), Lookup per Lizenz |
+| `PlayerProfile` | Klassierung pro Saison, Wertungszahl, Verlauf, alle Spiele aus Spielersicht; `balance()` und `classification_analysis()` als reine Funktionen |
+| `RankingTournament` | Runden → Kategorien → Gruppen mit Rangliste, Partien, Aufgebot; Gesamtrangliste mit `FinalQualification` |
+| `Cup` | Kategorien mit Meldeliste (Setzung, Spieler mit Klassierung, Punktesumme) und Begegnungen |
+| `Fixtures` | letzte Resultate und nächste Begegnungen über Meisterschaft und Cup |
+
+Fachliche Festlegungen:
+
+- **Tabelle** immer aus den Begegnungen mit `StandingsCalculator`; gezählt werden `provisional`, `confirmed`, `disputed`, `final`, `forfeit` mit erfasstem Resultat. Sätze nur aus Spielen mit `status = played`; Ballpunkte nur, wenn für alle gespielten Spiele einer Begegnung Sätze erfasst sind. Geteilte Ränge erhalten ein Sternchen und den Hinweis des Tabellenrechners (erst, wenn in der Gruppe gespielt wurde). Provisorische Resultate sind eingerechnet und im Spielplan markiert.
+- **Bilanz und Klassierungsauswertung** zählen nur Spiele mit `status = played`; kampflose (w.o.) und nicht gespielte erscheinen in der Spielliste mit Kennzeichnung. Die Gegner-Klassierung ist die Klassierung des Gegners in der Saison des Spiels.
+- **Einsatzmatrix**: Spalten sind die Begegnungen des Teams mit Aufstellung (Forfaits ohne Aufstellung fehlen), Zeilen zuerst die Stammspieler, dann weitere eingesetzte Spieler; «S» bei `is_substitute = 0`, «E» bei `is_substitute = 1`, «–» ohne Einsatz.
+- **Ranglistenturnier**: Rang und Punkte aus `rl_group_player` (offiziell, Punkte als Dezimalzahl, z. B. 5,5 bei geteilten Punkten); fehlen sie, rechnet `GroupRanking`. Siege und Sätze rechnet immer `GroupRanking` aus den Partien. Gesamtrangliste: Summe der gespeicherten Punkte der Runden 1–3 pro Kategorie (float), geordnet mit `FinalQualification`; Finalisten und nötige Lose werden markiert. Gruppen ohne Partien zeigen das Aufgebot.
+- **Wertungszahl**: aktueller Wert aus `player_rating`, Verlauf aus `rating_event`. Die Grafik zeigt pro Saison eine eigene Linie (Neuverankerung bei Klassierung × 100 zu Saisonbeginn) mit senkrechter Saisongrenze, ohne Daten eine freundliche Meldung. Der Klassierungsvorschlag ist `ClassificationScale::from_rating( rating, 100 )`.
+
+## Caching
+
+`WpCache` speichert Ergebnisse im Object-Cache (Gruppe `ttleague`) und, ohne persistenten Object-Cache, zusätzlich als Transient (24 Stunden). Der Schlüssel enthält `DataVersion::key()`; jeder Schreibvorgang, der `DataVersion::bump()` aufruft, macht alle abgeleiteten Daten ungültig. Gecacht werden u. a. Meisterschaft pro Saison, Matchreports, Teamdetails, Clubdetails, Spielerlisten, Spielerprofile, RL und Cup pro Saison. Ungecacht kostet das Laden aller Daten einer Saison (Meisterschaft, RL, Cup, Clubs, Spieler) rund 0,6 s; gecacht liefert WordPress die Seiten in unter 0,1 s.
+
+## Gestaltung
+
+- `assets/css/frontend.css`: mobile first, nur Theme-Presets (`--wp--preset--color--base|contrast|accent-1…6`, Abstände, Schriftgrössen) mit Fallbacks, keine externen Ressourcen. Tabellen mit `ttl-table--cards` werden unter 600px zu Karten (`data-label`); Tabelle, Spielplan und Spiellisten haben eigene Kartenlayouts (Rang, Team und Punkte bzw. Datum und Resultat oben). Die Einsatzmatrix scrollt horizontal mit fixierter Namensspalte. Touch-Ziele mindestens 44px, sichtbarer Fokus, `forced-colors` und Druck berücksichtigt.
+- Verlaufsgrafik: gestrecktes Inline-SVG mit nicht skalierenden Linien, Beschriftungen als HTML (auf dem Handy lesbar), `role="img"` mit Titel und Beschreibung, Hover-Bänder mit nativer Beschriftung pro Spieltag, Tabelle als Alternative. Das SVG läuft durch `wp_kses`.
+- Theme: Die Blöcke funktionieren mit jedem Block-Theme und übernehmen dessen Farben, Schriften und Abstände (getestet mit Twenty Twenty-Five). Ein eigenes Child-Theme mit Navigation, Startseite und Kontaktangaben gehört zur jeweiligen Instanz und wird in deren Repository gepflegt. Navigationslinks auf die Seiten des Plugins sind relative Pfade (`/meisterschaft/` …).
+
+
+## Tests
+
+- `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
+- `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping.
+
+```bash
+vendor/bin/phpunit
+vendor/bin/phpcs
+```

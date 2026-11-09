@@ -1,0 +1,1364 @@
+/**
+ * ttleague – öffentliche Darstellung.
+ *
+ * Mobile first. Farben, Schrift und Abstände kommen aus den Presets des Themes
+ * (--wp--preset--…); die Fallbacks greifen in Themes ohne diese Presets.
+ * Tabellen mit .ttl-table--cards erscheinen unter 600px als Karten (data-label).
+ */
+
+.ttl {
+	--ttl-ink: var(--wp--preset--color--contrast, #13213a);
+	--ttl-surface: var(--wp--preset--color--base, #ffffff);
+	--ttl-muted: var(--wp--preset--color--accent-4, #4d5b70);
+	--ttl-accent: var(--wp--preset--color--accent-1, #0b4a9e);
+	--ttl-highlight: var(--wp--preset--color--accent-2, #c2410c);
+	--ttl-soft: var(--wp--preset--color--accent-5, #f1f4f9);
+	--ttl-line: var(--wp--preset--color--accent-6, color-mix(in srgb, currentColor 16%, transparent));
+	--ttl-win: #1d7a3a;
+	--ttl-loss: #b42318;
+	--ttl-warn: #a15c00;
+	--ttl-radius: 0.6rem;
+	--ttl-gap: var(--wp--preset--spacing--30, 1rem);
+	--ttl-small: var(--wp--preset--font-size--small, 0.875rem);
+	--ttl-touch: 2.75rem;
+
+	color: var(--ttl-ink);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.5;
+}
+
+.ttl * {
+	box-sizing: border-box;
+}
+
+.ttl a {
+	color: var(--ttl-accent);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.18em;
+}
+
+.ttl a:hover {
+	text-decoration-thickness: 2px;
+	text-decoration-color: currentColor;
+}
+
+.ttl :where(.ttl-table, .ttl-fixture-list, .ttl-lineup__list, .ttl-roster, .ttl-games-list, .ttl-facts) a {
+	text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.ttl a:focus-visible,
+.ttl summary:focus-visible,
+.ttl button:focus-visible,
+.ttl input:focus-visible,
+.ttl select:focus-visible,
+.ttl .ttl-scroll:focus-visible {
+	outline: 3px solid var(--ttl-highlight);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.ttl :where(p, ul, ol, dl, table, figure) {
+	margin-block: 0 var(--ttl-gap);
+}
+
+.ttl .screen-reader-text {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Abschnitte und Überschriften */
+
+.ttl-section {
+	margin-block: var(--wp--preset--spacing--40, 1.75rem) 0;
+}
+
+.ttl-section:first-child {
+	margin-block-start: 0;
+}
+
+.ttl .ttl-section__title {
+	font-size: var(--wp--preset--font-size--large, 1.375rem);
+	line-height: 1.25;
+	margin-block: 0 0.75rem;
+}
+
+.ttl .ttl-subtitle {
+	font-size: var(--wp--preset--font-size--medium, 1.0625rem);
+	font-weight: 700;
+	margin-block: 1.25rem 0.5rem;
+}
+
+.ttl-kicker {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	margin-block: 0 0.75rem;
+}
+
+.ttl-lead {
+	color: var(--ttl-muted);
+}
+
+.ttl-muted {
+	color: var(--ttl-muted);
+}
+
+.ttl-footnote {
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+}
+
+.ttl-note {
+	background: var(--ttl-soft);
+	border-inline-start: 3px solid var(--ttl-accent);
+	border-radius: 0.25rem;
+	padding: 0.5rem 0.75rem;
+	font-size: var(--ttl-small);
+}
+
+.ttl-notice {
+	background: var(--ttl-soft);
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	padding: 0.75rem 1rem;
+}
+
+.ttl-notice--warning {
+	border-color: color-mix(in srgb, var(--ttl-warn) 55%, transparent);
+	background: color-mix(in srgb, var(--ttl-warn) 10%, var(--ttl-surface));
+}
+
+.ttl-total {
+	font-weight: 700;
+}
+
+/* Listen */
+
+.ttl-inline-list {
+	list-style: none;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 1rem;
+}
+
+.ttl-inline-list a,
+.ttl-list a,
+.ttl-roster a {
+	display: inline-block;
+	padding-block: 0.3rem;
+}
+
+.ttl-list,
+.ttl-roster {
+	padding-inline-start: 1.1rem;
+}
+
+.ttl-roster {
+	list-style: none;
+	padding: 0;
+	display: grid;
+	gap: 0.15rem 1.25rem;
+	grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+}
+
+/* Badges und Klassierung */
+
+.ttl-badge {
+	display: inline-block;
+	font-size: 0.78rem;
+	font-weight: 600;
+	line-height: 1.2;
+	padding: 0.15rem 0.45rem;
+	border-radius: 999px;
+	border: 1px solid var(--ttl-line);
+	background: var(--ttl-soft);
+	color: var(--ttl-ink);
+	white-space: nowrap;
+	vertical-align: 0.08em;
+}
+
+.ttl-badge--muted {
+	color: var(--ttl-muted);
+	background: transparent;
+}
+
+.ttl-badge--warning {
+	border-color: color-mix(in srgb, var(--ttl-warn) 60%, transparent);
+	background: color-mix(in srgb, var(--ttl-warn) 14%, var(--ttl-surface));
+}
+
+.ttl-badge--win {
+	border-color: color-mix(in srgb, var(--ttl-win) 55%, transparent);
+	background: color-mix(in srgb, var(--ttl-win) 14%, var(--ttl-surface));
+}
+
+.ttl-badge--loss {
+	border-color: color-mix(in srgb, var(--ttl-loss) 50%, transparent);
+	background: color-mix(in srgb, var(--ttl-loss) 11%, var(--ttl-surface));
+}
+
+.ttl-badge--draw {
+	background: transparent;
+}
+
+.ttl-class {
+	display: inline-block;
+	min-width: 2.4em;
+	font-size: 0.78rem;
+	font-weight: 700;
+	line-height: 1.2;
+	text-align: center;
+	padding: 0.12rem 0.35rem;
+	border-radius: 0.3rem;
+	background: var(--ttl-soft);
+	border: 1px solid var(--ttl-line);
+	color: var(--ttl-ink);
+	vertical-align: 0.08em;
+}
+
+.ttl-shared {
+	color: var(--ttl-highlight);
+	font-weight: 700;
+	margin-inline-start: 0.1em;
+}
+
+/* Tabellen */
+
+.ttl-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.95rem;
+}
+
+.ttl-table th,
+.ttl-table td {
+	text-align: start;
+	padding: 0.55rem 0.6rem;
+	border-bottom: 1px solid var(--ttl-line);
+	vertical-align: top;
+}
+
+.ttl-table thead th {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+	color: var(--ttl-muted);
+	border-bottom-width: 2px;
+	white-space: nowrap;
+}
+
+.ttl-table abbr[title] {
+	text-decoration: none;
+	cursor: help;
+}
+
+.ttl-table .ttl-num,
+.ttl-table .ttl-col-points {
+	text-align: end;
+	white-space: nowrap;
+}
+
+.ttl-table .ttl-col-rank {
+	width: 3.2rem;
+	white-space: nowrap;
+}
+
+.ttl-table .ttl-col-date {
+	white-space: nowrap;
+}
+
+.ttl-balance td,
+.ttl-balance th {
+	white-space: nowrap;
+}
+
+.ttl-table .ttl-col-result {
+	white-space: nowrap;
+}
+
+.ttl-table tbody tr:hover {
+	background: color-mix(in srgb, var(--ttl-soft) 70%, transparent);
+}
+
+.ttl-table a {
+	display: inline-block;
+	padding-block: 0.15rem;
+}
+
+.ttl-table--compact th,
+.ttl-table--compact td {
+	padding: 0.4rem 0.45rem;
+}
+
+.ttl-table__caption {
+	text-align: start;
+	font-weight: 600;
+	padding-block-end: 0.5rem;
+}
+
+.ttl-score {
+	font-size: 1.02rem;
+}
+
+.ttl-table tr.is-provisional .ttl-score,
+.ttl-table tr.is-forfeit .ttl-score {
+	font-style: italic;
+}
+
+.ttl-table tr.is-absent,
+.ttl-table tr.is-not_played,
+.ttl-table tr.is-uncounted {
+	color: var(--ttl-muted);
+}
+
+.ttl-table tr.is-qualified td,
+.ttl-table tr.is-qualified th {
+	background: color-mix(in srgb, var(--ttl-win) 7%, transparent);
+}
+
+.ttl-winner {
+	font-weight: 700;
+}
+
+.ttl-sets {
+	display: block;
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+}
+
+/* Horizontal scrollbarer Bereich (Einsatzmatrix, Verlaufstabelle) */
+
+.ttl-scroll {
+	overflow-x: auto;
+	max-width: 100%;
+	margin-block-end: var(--ttl-gap);
+	-webkit-overflow-scrolling: touch;
+}
+
+.ttl-scroll > .ttl-table {
+	margin: 0;
+}
+
+.ttl-matrix {
+	width: auto;
+	min-width: 100%;
+}
+
+.ttl-matrix th,
+.ttl-matrix td {
+	white-space: nowrap;
+	text-align: center;
+}
+
+.ttl-matrix .ttl-matrix__name {
+	text-align: start;
+}
+
+.ttl-matrix tbody th {
+	text-align: start;
+	position: sticky;
+	inset-inline-start: 0;
+	background: var(--ttl-surface);
+	z-index: 1;
+}
+
+.ttl-matrix .ttl-matrix__col a {
+	font-weight: 600;
+	min-width: 2.75rem;
+	padding: 0.35rem 0.2rem;
+}
+
+.ttl-mark {
+	font-weight: 700;
+	min-width: 2.75rem;
+}
+
+.ttl-mark--e {
+	background: color-mix(in srgb, var(--ttl-highlight) 13%, transparent);
+}
+
+.ttl-mark--none {
+	color: var(--ttl-muted);
+	font-weight: 400;
+}
+
+.ttl-matrix tr.is-substitute th {
+	font-style: italic;
+}
+
+/* Karten und Raster */
+
+.ttl-grid {
+	display: grid;
+	gap: var(--ttl-gap);
+	grid-template-columns: minmax(0, 1fr);
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-card {
+	background: var(--ttl-surface);
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	padding: 0.9rem 1rem;
+	min-width: 0;
+}
+
+.ttl .ttl-card__title {
+	font-size: var(--wp--preset--font-size--medium, 1.125rem);
+	font-weight: 700;
+	line-height: 1.3;
+	margin-block: 0 0.5rem;
+}
+
+.ttl-card__meta {
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+	margin-block: 0 0.5rem;
+}
+
+.ttl-card__label {
+	font-size: var(--ttl-small);
+	font-weight: 700;
+	margin-block: 0.5rem 0.25rem;
+}
+
+.ttl-card__more {
+	margin: 0;
+	font-size: var(--ttl-small);
+}
+
+.ttl-card__more a {
+	display: inline-block;
+	padding-block: 0.5rem;
+}
+
+.ttl-card .ttl-table:last-child,
+.ttl-card > :last-child {
+	margin-block-end: 0;
+}
+
+/* Begriffslisten (Kopfdaten) */
+
+.ttl-facts {
+	display: grid;
+	gap: 0.6rem 1.25rem;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-facts--match,
+.ttl-facts--roles {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.ttl-facts__item {
+	min-width: 0;
+}
+
+.ttl-facts dt {
+	font-size: var(--ttl-small);
+	color: var(--ttl-muted);
+	font-weight: 600;
+}
+
+.ttl-facts dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.ttl-facts--compact {
+	gap: 0.25rem 1rem;
+}
+
+.ttl-facts--compact .ttl-facts__item {
+	display: flex;
+	gap: 0.5rem;
+	justify-content: space-between;
+	border-bottom: 1px solid var(--ttl-line);
+	padding-block: 0.3rem;
+}
+
+.ttl-facts--compact dt {
+	color: var(--ttl-ink);
+	font-weight: 400;
+}
+
+/* Reiter (Gruppen, Runden, Saisonfilter) */
+
+.ttl-tabs ul {
+	list-style: none;
+	margin: 0 0 var(--ttl-gap);
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.ttl-tabs a {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--ttl-touch);
+	padding: 0.35rem 0.9rem;
+	border: 1px solid var(--ttl-line);
+	border-radius: 999px;
+	text-decoration: none;
+	font-weight: 600;
+	background: var(--ttl-surface);
+}
+
+.ttl-tabs a[aria-current] {
+	background: var(--ttl-accent);
+	border-color: var(--ttl-accent);
+	color: var(--ttl-surface);
+}
+
+.ttl-tabs--small a {
+	min-height: 2.5rem;
+	font-size: var(--ttl-small);
+	padding: 0.25rem 0.75rem;
+}
+
+/* Ranglistenturnier: Runden aufklappbar */
+
+.ttl-round {
+	border-top: 1px solid var(--ttl-line);
+	padding-block-start: 0.5rem;
+}
+
+.ttl-round__summary {
+	cursor: pointer;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.25rem 1rem;
+	min-height: var(--ttl-touch);
+	padding-block: 0.25rem;
+}
+
+.ttl-round__summary .ttl-section__title {
+	margin: 0;
+}
+
+.ttl-round__summary::after {
+	content: "";
+	width: 0.55rem;
+	height: 0.55rem;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg);
+	margin-inline-start: auto;
+	align-self: center;
+}
+
+.ttl-round[open] > .ttl-round__summary::after {
+	transform: rotate(-135deg);
+}
+
+.ttl-round__summary::-webkit-details-marker {
+	display: none;
+}
+
+.ttl-round__meta {
+	color: var(--ttl-muted);
+}
+
+/* Matchreport */
+
+.ttl-match-head {
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-scoreline {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	gap: 0.75rem;
+	padding: 1rem;
+	margin-block-end: var(--ttl-gap);
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	background: var(--ttl-soft);
+}
+
+.ttl-scoreline__team {
+	font-weight: 700;
+	font-size: 1.05rem;
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+.ttl-scoreline__team--away {
+	text-align: end;
+}
+
+.ttl-scoreline__score {
+	font-size: clamp(1.75rem, 7vw, 2.75rem);
+	font-weight: 800;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.ttl-lineups {
+	display: grid;
+	gap: var(--ttl-gap);
+	grid-template-columns: minmax(0, 1fr);
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-lineup {
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	padding: 0.75rem 1rem;
+}
+
+.ttl .ttl-lineup__title {
+	font-size: var(--wp--preset--font-size--medium, 1.0625rem);
+	margin-block: 0 0.4rem;
+}
+
+.ttl-lineup__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.ttl-lineup__list li {
+	padding-block: 0.3rem;
+	border-bottom: 1px solid var(--ttl-line);
+}
+
+.ttl-lineup__list li:last-child {
+	border-bottom: 0;
+}
+
+.ttl-slot {
+	display: inline-block;
+	width: 1.6rem;
+	height: 1.6rem;
+	line-height: 1.6rem;
+	text-align: center;
+	border-radius: 50%;
+	background: var(--ttl-accent);
+	color: var(--ttl-surface);
+	font-weight: 700;
+	font-size: 0.8rem;
+	margin-inline-end: 0.25rem;
+}
+
+/* Startseite: Resultat- und Terminlisten */
+
+.ttl-fixture-list {
+	list-style: none;
+	margin: 0 0 var(--ttl-gap);
+	padding: 0;
+}
+
+.ttl-fixture-list__item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 0.1rem 0.75rem;
+	padding-block: 0.6rem;
+	border-bottom: 1px solid var(--ttl-line);
+}
+
+.ttl-fixture-list__meta {
+	grid-column: 1 / -1;
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+}
+
+.ttl-fixture-list__pairing {
+	font-weight: 600;
+	min-width: 0;
+}
+
+.ttl-fixture-list__score {
+	font-weight: 800;
+	font-size: 1.1rem;
+	white-space: nowrap;
+	align-self: center;
+}
+
+.ttl-fixture-list__venue {
+	grid-column: 1 / -1;
+	font-size: var(--ttl-small);
+}
+
+/* Filterformular */
+
+.ttl-filter {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 0.75rem 1rem;
+	padding: 0.9rem 1rem;
+	margin-block-end: var(--ttl-gap);
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	background: var(--ttl-soft);
+}
+
+.ttl-filter__field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	flex: 1 1 12rem;
+}
+
+.ttl-filter label {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+}
+
+.ttl-filter input,
+.ttl-filter select {
+	min-height: var(--ttl-touch);
+	padding: 0.4rem 0.6rem;
+	font: inherit;
+	color: var(--ttl-ink);
+	background: var(--ttl-surface);
+	border: 1px solid color-mix(in srgb, var(--ttl-ink) 45%, transparent);
+	border-radius: 0.4rem;
+	width: 100%;
+}
+
+.ttl-filter__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.ttl-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: var(--ttl-touch);
+	padding: 0.4rem 1.1rem;
+	font: inherit;
+	font-weight: 700;
+	border-radius: 0.4rem;
+	border: 1px solid var(--ttl-accent);
+	background: var(--ttl-accent);
+	color: var(--ttl-surface);
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.ttl .ttl-button--secondary {
+	background: transparent;
+	color: var(--ttl-accent);
+}
+
+/* Aufklappbare Bereiche */
+
+.ttl-details {
+	margin-block: 0.5rem var(--ttl-gap);
+}
+
+.ttl-details--season {
+	border-top: 1px solid var(--ttl-line);
+	margin-block: 0;
+}
+
+.ttl-details--season:last-of-type {
+	border-bottom: 1px solid var(--ttl-line);
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-details--season > summary {
+	font-size: var(--wp--preset--font-size--medium, 1.0625rem);
+	color: var(--ttl-ink);
+}
+
+.ttl-details__count {
+	color: var(--ttl-muted);
+	font-weight: 400;
+	font-size: var(--ttl-small);
+}
+
+.ttl-details > summary {
+	cursor: pointer;
+	font-weight: 600;
+	color: var(--ttl-accent);
+	min-height: var(--ttl-touch);
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.ttl-games-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	font-size: 0.92rem;
+}
+
+.ttl-games-list li {
+	padding-block: 0.25rem;
+	border-bottom: 1px solid var(--ttl-line);
+}
+
+.ttl-games-list__score {
+	font-weight: 700;
+	white-space: nowrap;
+}
+
+/* Spielerprofil */
+
+.ttl-rating {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.25rem 0.75rem;
+}
+
+.ttl-rating__value {
+	font-size: clamp(2.25rem, 9vw, 3rem);
+	font-weight: 800;
+	line-height: 1;
+	font-variant-numeric: proportional-nums;
+}
+
+.ttl-rating__text {
+	color: var(--ttl-muted);
+	flex: 1 1 16rem;
+}
+
+.ttl-meter {
+	display: inline-block;
+	width: 4.5rem;
+	height: 0.5rem;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--ttl-accent) 16%, transparent);
+	vertical-align: middle;
+	overflow: hidden;
+}
+
+.ttl-meter__fill {
+	display: block;
+	height: 100%;
+	border-radius: 999px;
+	background: var(--ttl-accent);
+}
+
+/* Verlaufsgrafik: gestrecktes SVG, Beschriftungen als HTML */
+
+.ttl-chart {
+	margin: 0 0 var(--ttl-gap);
+	--ttl-chart-line: var(--ttl-accent);
+}
+
+.ttl-chart__plot {
+	position: relative;
+	height: clamp(13rem, 42vw, 18rem);
+	padding: 1.6rem 3.4rem 1.9rem 2.9rem;
+}
+
+.ttl-chart__area {
+	position: relative;
+	width: 100%;
+	height: 100%;
+}
+
+.ttl-chart__svg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	overflow: visible;
+}
+
+.ttl-chart__grid line,
+.ttl-chart__axis line {
+	stroke: var(--ttl-line);
+	stroke-width: 1px;
+}
+
+.ttl-chart__boundary {
+	stroke: color-mix(in srgb, var(--ttl-ink) 45%, transparent);
+	stroke-width: 1px;
+}
+
+.ttl-chart__line {
+	fill: none;
+	stroke: var(--ttl-chart-line);
+	stroke-width: 2px;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+
+.ttl-chart__band rect {
+	fill: transparent;
+}
+
+.ttl-chart__band line {
+	stroke: transparent;
+	stroke-width: 1px;
+}
+
+.ttl-chart__band:hover rect {
+	fill: color-mix(in srgb, var(--ttl-accent) 7%, transparent);
+}
+
+.ttl-chart__band:hover line {
+	stroke: var(--ttl-muted);
+}
+
+.ttl-chart__ytick,
+.ttl-chart__season,
+.ttl-chart__year {
+	position: absolute;
+	font-size: 0.75rem;
+	line-height: 1;
+	color: var(--ttl-muted);
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.ttl-chart__ytick {
+	right: calc(100% + 0.45rem);
+	transform: translateY(-50%);
+}
+
+.ttl-chart__season {
+	top: -1.25rem;
+	font-weight: 700;
+	padding-inline-start: 0.2rem;
+}
+
+.ttl-chart__year {
+	top: calc(100% + 0.5rem);
+	transform: translateX(-50%);
+}
+
+.ttl-chart__end {
+	position: absolute;
+	width: 0.75rem;
+	height: 0.75rem;
+	margin: -0.375rem 0 0 -0.375rem;
+	border-radius: 50%;
+	background: var(--ttl-chart-line);
+	box-shadow: 0 0 0 2px var(--ttl-surface);
+	pointer-events: none;
+}
+
+.ttl-chart__end-value {
+	position: absolute;
+	left: calc(100% + 0.4rem);
+	top: 50%;
+	transform: translateY(-50%);
+	font-size: 0.85rem;
+	font-weight: 800;
+	color: var(--ttl-ink);
+}
+
+/* Saisonwahl (Kopfzeile) */
+
+.ttl-season-switch {
+	position: relative;
+	font-size: var(--ttl-small);
+}
+
+.ttl-season-switch summary {
+	list-style: none;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	min-height: var(--ttl-touch);
+	padding: 0.25rem 0.8rem;
+	border: 1px solid var(--ttl-line);
+	border-radius: 999px;
+	background: var(--ttl-surface);
+	font-weight: 700;
+	white-space: nowrap;
+}
+
+.ttl-season-switch summary::-webkit-details-marker {
+	display: none;
+}
+
+.ttl-season-switch summary::after {
+	content: "";
+	width: 0.45rem;
+	height: 0.45rem;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-0.15rem) rotate(45deg);
+	margin-inline-start: 0.2rem;
+}
+
+.ttl-season-switch details[open] summary::after {
+	transform: translateY(0.1rem) rotate(-135deg);
+}
+
+.ttl-season-switch__label {
+	font-weight: 400;
+	color: var(--ttl-muted);
+}
+
+.ttl-season-switch__list {
+	position: absolute;
+	z-index: 60;
+	inset-inline-end: 0;
+	top: calc(100% + 0.35rem);
+	min-width: 13rem;
+	list-style: none;
+	margin: 0;
+	padding: 0.35rem;
+	background: var(--ttl-surface);
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--ttl-ink) 18%, transparent);
+}
+
+.ttl-season-switch__list a {
+	display: flex;
+	align-items: center;
+	min-height: var(--ttl-touch);
+	padding: 0.25rem 0.75rem;
+	border-radius: 0.4rem;
+	text-decoration: none;
+	color: var(--ttl-ink);
+}
+
+.ttl-season-switch__list a:hover,
+.ttl-season-switch__list a[aria-current] {
+	background: var(--ttl-soft);
+}
+
+.ttl-season-switch__list a[aria-current] {
+	font-weight: 700;
+}
+
+.ttl-season-switch__archive {
+	border-top: 1px solid var(--ttl-line);
+	margin-top: 0.25rem;
+	padding-top: 0.25rem;
+}
+
+.ttl-season-switch__archive a {
+	color: var(--ttl-accent);
+}
+
+/* Nicht gefunden */
+
+.ttl-not-found .ttl-inline-list a {
+	min-height: var(--ttl-touch);
+	display: inline-flex;
+	align-items: center;
+}
+
+/* Dokumente (Block ttleague/documents aus dem Inhaltsmodul) */
+
+.ttl-documents {
+	display: grid;
+	gap: var(--ttl-gap, 1rem);
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.ttl-documents.ttl-empty {
+	display: block;
+	color: var(--wp--preset--color--accent-4, #4d5b70);
+}
+
+.ttl-documents__group {
+	border: 1px solid var(--wp--preset--color--accent-6, color-mix(in srgb, currentColor 16%, transparent));
+	border-radius: 0.6rem;
+	padding: 0.9rem 1rem;
+}
+
+.ttl-documents .ttl-documents__type {
+	font-size: var(--wp--preset--font-size--medium, 1.0625rem);
+	margin: 0 0 0.4rem;
+}
+
+.ttl-documents__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.ttl-documents__item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.15rem 0.6rem;
+	padding-block: 0.35rem;
+	border-bottom: 1px solid var(--wp--preset--color--accent-6, color-mix(in srgb, currentColor 16%, transparent));
+}
+
+.ttl-documents__item:last-child {
+	border-bottom: 0;
+}
+
+.ttl-documents__link {
+	display: inline-flex;
+	align-items: center;
+	min-height: 2.75rem;
+	font-weight: 600;
+	color: var(--wp--preset--color--accent-1, #0b4a9e);
+	text-underline-offset: 0.18em;
+}
+
+.ttl-documents__meta {
+	color: var(--wp--preset--color--accent-4, #4d5b70);
+	font-size: var(--wp--preset--font-size--small, 0.875rem);
+}
+
+/* Karten unter 600px */
+
+@media (max-width: 599.98px) {
+
+	.ttl-table--cards,
+	.ttl-table--cards tbody,
+	.ttl-table--cards tr,
+	.ttl-table--cards td,
+	.ttl-table--cards tbody th {
+		display: block;
+	}
+
+	.ttl-table--cards thead {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+	}
+
+	.ttl-table--cards tr {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.2rem 1rem;
+		padding: 0.7rem 0.85rem;
+		margin-block-end: 0.6rem;
+		border: 1px solid var(--ttl-line);
+		border-radius: var(--ttl-radius);
+		background: var(--ttl-surface);
+	}
+
+	.ttl-table--cards tbody tr:hover {
+		background: var(--ttl-surface);
+	}
+
+	.ttl-table--cards td,
+	.ttl-table--cards tbody th {
+		border: 0;
+		padding: 0;
+		text-align: start;
+		white-space: normal;
+		width: auto;
+	}
+
+	.ttl-table--cards td.ttl-num {
+		text-align: start;
+	}
+
+	.ttl-table--cards td[data-label]::before {
+		content: attr(data-label) " ";
+		color: var(--ttl-muted);
+		font-size: 0.8rem;
+		font-weight: 400;
+	}
+
+	.ttl-table--cards .ttl-cell--primary {
+		order: -5;
+		flex: 1 0 100%;
+		font-weight: 700;
+		font-size: 1.02rem;
+	}
+
+	.ttl-table--cards .ttl-cell--empty {
+		display: none;
+	}
+
+	/* Tabelle: Rang, Team, Punkte in einer Zeile, Kennzahlen darunter. */
+	.ttl-standings.ttl-table--cards tr::before {
+		content: "";
+		order: -3;
+		flex: 1 0 100%;
+		height: 0;
+	}
+
+	.ttl-standings.ttl-table--cards .ttl-col-rank {
+		order: -6;
+		width: auto;
+		min-width: 1.6rem;
+		font-weight: 800;
+		font-size: 1.02rem;
+	}
+
+	.ttl-standings.ttl-table--cards .ttl-col-rank::before,
+	.ttl-standings.ttl-table--cards .ttl-col-team::before {
+		content: none;
+	}
+
+	.ttl-standings.ttl-table--cards .ttl-col-team {
+		order: -5;
+		flex: 1 1 auto;
+	}
+
+	.ttl-standings.ttl-table--cards .ttl-col-points {
+		order: -4;
+		margin-inline-start: auto;
+		font-size: 1.02rem;
+	}
+
+	/* Spielplan und Spiellisten: Datum und Resultat oben, Begegnung darunter. */
+	.ttl-schedule.ttl-table--cards tr::before,
+	.ttl-games.ttl-table--cards tr::before,
+	.ttl-player-games.ttl-table--cards tr::before {
+		content: "";
+		order: -4;
+		flex: 1 0 100%;
+		height: 0;
+	}
+
+	.ttl-schedule.ttl-table--cards .ttl-col-date,
+	.ttl-games.ttl-table--cards .ttl-col-seq,
+	.ttl-player-games.ttl-table--cards .ttl-col-date {
+		order: -7;
+		flex: 1 1 auto;
+		color: var(--ttl-muted);
+		font-size: var(--ttl-small);
+	}
+
+	.ttl-schedule.ttl-table--cards .ttl-col-date::before,
+	.ttl-games.ttl-table--cards .ttl-col-seq::before,
+	.ttl-player-games.ttl-table--cards .ttl-col-date::before,
+	.ttl-schedule.ttl-table--cards .ttl-col-result::before,
+	.ttl-games.ttl-table--cards .ttl-col-result::before,
+	.ttl-player-games.ttl-table--cards .ttl-col-result::before {
+		content: none;
+	}
+
+	.ttl-schedule.ttl-table--cards .ttl-col-result,
+	.ttl-games.ttl-table--cards .ttl-col-result,
+	.ttl-player-games.ttl-table--cards .ttl-col-result {
+		order: -6;
+		margin-inline-start: auto;
+		text-align: end;
+	}
+
+	.ttl-schedule.ttl-table--cards .ttl-cell--primary,
+	.ttl-player-games.ttl-table--cards .ttl-cell--primary {
+		order: -3;
+	}
+
+	.ttl-games.ttl-table--cards .ttl-col-side {
+		flex: 0 1 auto;
+	}
+
+	.ttl-games.ttl-table--cards td.ttl-col-side:nth-child(2)::before {
+		content: none;
+	}
+
+	.ttl-games.ttl-table--cards td.ttl-col-side:nth-child(3) {
+		margin-inline-start: -0.6rem;
+	}
+
+	.ttl-games.ttl-table--cards td.ttl-col-side:nth-child(3)::before {
+		content: "–";
+		color: var(--ttl-muted);
+		margin-inline-end: 0.35rem;
+	}
+
+	.ttl-hide-mobile {
+		display: none;
+	}
+
+	.ttl-chart__plot {
+		padding-inline: 2.6rem 2.9rem;
+	}
+}
+
+/* Ab Tablet */
+
+@media (min-width: 600px) {
+
+	.ttl-lineups {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.ttl-facts {
+		grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+	}
+
+	.ttl-facts--match {
+		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+	}
+
+	.ttl-grid--cards {
+		grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+	}
+
+	.ttl-grid--mini {
+		grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+	}
+
+	.ttl-documents {
+		grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+	}
+
+	.ttl-scoreline {
+		padding: 1.25rem 1.5rem;
+	}
+
+	.ttl-scoreline__team {
+		font-size: 1.25rem;
+	}
+}
+
+@media (min-width: 900px) {
+
+	.ttl-grid--groups {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+/* Hoher Kontrast / erzwungene Farben */
+
+@media (forced-colors: active) {
+
+	.ttl-badge,
+	.ttl-class,
+	.ttl-tabs a,
+	.ttl-card,
+	.ttl-chart__end {
+		border: 1px solid CanvasText;
+	}
+
+	.ttl-chart__line {
+		stroke: CanvasText;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+	.ttl * {
+		scroll-behavior: auto;
+		transition: none;
+	}
+}
+
+@media print {
+
+	.ttl-season-switch,
+	.ttl-filter,
+	.ttl-tabs {
+		display: none;
+	}
+
+	.ttl-details > *:not(summary) {
+		display: block;
+	}
+}

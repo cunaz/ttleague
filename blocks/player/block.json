@@ -1,0 +1,33 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ttleague/player",
+	"version": "0.1.0",
+	"title": "Spielerprofil",
+	"category": "ttleague",
+	"icon": "id-alt",
+	"description": "Klassierungen, Wertungszahl mit Verlauf, Bilanzen und alle Spiele; ohne Angabe der Spieler aus der Adresse.",
+	"keywords": [
+		"ttleague",
+		"tischtennis"
+	],
+	"textdomain": "ttleague",
+	"attributes": {
+		"player": {
+			"type": "integer",
+			"default": 0
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [
+			"wide",
+			"full"
+		],
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "ttleague-editor",
+	"style": "ttleague-frontend"
+}
