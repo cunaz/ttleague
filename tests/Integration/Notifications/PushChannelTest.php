@@ -118,6 +118,20 @@ final class PushChannelTest extends NotificationTestCase {
 		self::assertSame( array( 'https://fcm.googleapis.com/fcm/send/alt', 'https://fcm.googleapis.com/fcm/send/chef-2', 'https://fcm.googleapis.com/fcm/send/chef-3' ), $endpoints );
 	}
 
+	public function test_reported_endpoint_stays_at_the_limit_within_the_same_second(): void {
+		// Ohne Vorrücken der Uhr: alle Abos mit demselben Zeitpunkt, das übernommene mit der kleinsten ID.
+		$old = PushTestKit::browser( 'https://fcm.googleapis.com/fcm/send/alt' );
+		$this->subscriptions->save( $this->person['captain_a1'], $old['subscription'] );
+		foreach ( array( 1, 2, 3 ) as $i ) {
+			$this->subscriptions->save( $this->person['chef_away'], PushTestKit::browser( 'https://fcm.googleapis.com/fcm/send/chef-' . $i )['subscription'] );
+		}
+
+		$this->subscriptions->save( $this->person['chef_away'], $old['subscription'] );
+
+		$endpoints = $this->db->get_col( "SELECT endpoint FROM {$this->db->table( 'push_subscription' )} WHERE person_id = %d ORDER BY endpoint", array( $this->person['chef_away'] ) );
+		self::assertSame( array( 'https://fcm.googleapis.com/fcm/send/alt', 'https://fcm.googleapis.com/fcm/send/chef-2', 'https://fcm.googleapis.com/fcm/send/chef-3' ), $endpoints );
+	}
+
 	public function test_push_is_encrypted_with_headers_and_vapid(): void {
 		$browser = $this->subscribe( 'captain_a1', 'https://fcm.googleapis.com/fcm/send/handy' );
 		$this->service()->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );

@@ -15,7 +15,8 @@ use TTLeague\Infrastructure\Time\Clock;
 /**
  * Ein Endpunkt gehört genau einer Person (eindeutig über den SHA-256-Hash). Meldet sich auf
  * demselben Browser eine andere Person an und abonniert, geht das Abo an sie über. Pro Person
- * gelten höchstens $max Abos; beim Überschreiten fallen die ältesten weg.
+ * gelten höchstens $max Abos; beim Überschreiten fallen die am längsten nicht gemeldeten weg,
+ * das eben gemeldete bleibt immer.
  */
 final class Subscriptions {
 
@@ -28,16 +29,19 @@ final class Subscriptions {
 	) {}
 
 	public function save( int $person_id, Subscription $subscription ): void {
+		$hash = self::hash( $subscription->endpoint );
 		$this->db->query(
 			"INSERT INTO {$this->db->table( 'push_subscription' )} (person_id, endpoint_hash, endpoint, keys_json, created_at) VALUES (%d, %s, %s, %s, %s)
 			ON DUPLICATE KEY UPDATE person_id = VALUES(person_id), endpoint = VALUES(endpoint), keys_json = VALUES(keys_json), created_at = VALUES(created_at)",
-			array( $person_id, self::hash( $subscription->endpoint ), $subscription->endpoint, $subscription->keys_json(), $this->clock->now()->format( 'Y-m-d H:i:s' ) )
+			array( $person_id, $hash, $subscription->endpoint, $subscription->keys_json(), $this->clock->now()->format( 'Y-m-d H:i:s' ) )
 		);
+		// Das eben gemeldete Abo zuerst: created_at ist sekundengenau, und bei gleichem Zeitpunkt
+		// darf die kleinere ID eines übernommenen Endpunkts es nicht verdrängen.
 		$ids = array_map(
 			'intval',
 			$this->db->get_col(
-				"SELECT id FROM {$this->db->table( 'push_subscription' )} WHERE person_id = %d ORDER BY created_at DESC, id DESC",
-				array( $person_id )
+				"SELECT id FROM {$this->db->table( 'push_subscription' )} WHERE person_id = %d ORDER BY endpoint_hash = %s DESC, created_at DESC, id DESC",
+				array( $person_id, $hash )
 			)
 		);
 		foreach ( array_slice( $ids, max( 1, $this->max ) ) as $old ) {
