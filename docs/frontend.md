@@ -51,11 +51,13 @@ Regeln:
 Die Seiten werden beim ersten Aufruf nach der Aktivierung (bzw. nach einem Update mit neuer Seitenversion) automatisch angelegt, danach die Rewrite-Regeln erneuert. Manuell und idempotent:
 
 ```bash
-wp ttleague pages              # Tabelle mit Seite, ID, Adresse, Aktion (angelegt, übernommen, vorhanden)
+wp ttleague pages              # Tabelle mit Seite, ID, Adresse, Aktion (angelegt, übernommen, vorhanden; «(Block fehlt)», wenn der Block fehlt)
 wp ttleague pages --format=json
 ```
 
-Vorhandene Seiten (auch umbenannte oder bearbeitete) bleiben unverändert; fehlt eine, wird sie über ihren Pfad wiedergefunden oder neu angelegt. Die IDs stehen in der Option `ttleague_pages`. Bei der Deaktivierung werden die Rewrite-Regeln verworfen.
+Vorhandene Seiten (auch umbenannte oder bearbeitete) bleiben unverändert; fehlt eine, wird sie über ihren Pfad wiedergefunden oder neu angelegt. Eine wiedergefundene Seite wird auch ohne ihren Block übernommen und nicht verändert. Die IDs stehen in der Option `ttleague_pages`. Bei der Deaktivierung werden die Rewrite-Regeln verworfen.
+
+«Werkzeuge → Website-Zustand» meldet jede Seite, die fehlt, nicht veröffentlicht ist oder ihren Block nicht enthält, mit Link zum Bearbeiten (Test `ttleague_pages`). Der Test prüft bei jedem Aufruf den aktuellen Stand, also auch nach einem automatischen Update oder einer Bearbeitung durch die TK. Eine fehlende Seite legt `wp ttleague pages` oder das erneute Aktivieren des Plugins neu an.
 
 ## Blöcke und Shortcode
 

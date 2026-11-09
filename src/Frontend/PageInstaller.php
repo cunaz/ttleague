@@ -15,13 +15,20 @@ use TTLeague\Frontend\Support\Urls;
  * Jede Ansicht ist eine echte Seite mit dem passenden Block als Inhalt; das Block-Theme
  * rendert Kopf- und Fusszeile, die TK kann Text ergänzen. Die Seiten-IDs stehen in der
  * Option ttleague_pages. Bestehende Seiten (auch umbenannte oder bearbeitete) bleiben
- * unverändert; fehlende werden angelegt oder über ihren Pfad wiedergefunden.
+ * unverändert; fehlende werden angelegt oder über ihren Pfad wiedergefunden. Fehlt einer
+ * Seite ihr Block, ist sie nicht veröffentlicht oder fehlt sie, meldet das «Website-Zustand»
+ * zur Korrektur von Hand, auch nach automatischen Updates.
  */
 final class PageInstaller {
 
 	public const OPTION         = 'ttleague_pages';
 	public const VERSION_OPTION = 'ttleague_pages_version';
-	public const VERSION        = '2';
+	public const VERSION        = '3';
+
+	/** Probleme einer Seite, siehe problems(). */
+	public const MISSING     = 'missing';
+	public const UNPUBLISHED = 'unpublished';
+	public const NO_BLOCK    = 'no_block';
 
 	/**
 	 * Seitendefinitionen: Schlüssel => Titel, Slug, Elternseite, Block.
@@ -128,11 +135,20 @@ final class PageInstaller {
 				'block'      => 'ttleague/my-area',
 				'menu_order' => 91,
 			),
+			'entry'        => array(
+				'title'      => __( 'Resultat erfassen', 'ttleague' ),
+				'slug'       => 'erfassen',
+				'parent'     => null,
+				'block'      => 'ttleague/result-entry',
+				'menu_order' => 92,
+			),
 		);
 	}
 
 	/**
-	 * Legt fehlende Seiten an und erneuert die Rewrite-Regeln.
+	 * Legt fehlende Seiten an und erneuert die Rewrite-Regeln. Eine vorhandene oder über ihren
+	 * Pfad wiedergefundene Seite ohne ihren Block bleibt unverändert; die Aktion erhält den
+	 * Zusatz «(Block fehlt)».
 	 *
 	 * @return list<array{key:string,title:string,id:int,url:string,action:string}>
 	 */
@@ -148,7 +164,7 @@ final class PageInstaller {
 				$found = get_page_by_path( $path, OBJECT, 'page' );
 				if ( $found instanceof \WP_Post && 'trash' !== $found->post_status ) {
 					$id     = (int) $found->ID;
-					$action = 'übernommen';
+					$action = has_block( $page['block'], $found ) ? 'übernommen' : 'übernommen (Block fehlt)';
 				} else {
 					$id     = self::create( $page, null === $page['parent'] ? 0 : (int) ( $ids[ $page['parent'] ] ?? 0 ) );
 					$action = $id > 0 ? 'angelegt' : 'Fehler';
@@ -180,6 +196,93 @@ final class PageInstaller {
 		if ( self::VERSION !== get_option( self::VERSION_OPTION ) ) {
 			self::install();
 		}
+	}
+
+	/**
+	 * Seiten, die von Hand zu korrigieren sind: Sie fehlen, sind nicht veröffentlicht oder
+	 * enthalten ihren Block nicht. Prüft den aktuellen Stand und ändert nichts.
+	 *
+	 * @return list<array{key:string,title:string,id:int,block:string,problem:string}>
+	 */
+	public static function problems(): array {
+		$ids      = self::ids();
+		$problems = array();
+		foreach ( self::definitions() as $key => $page ) {
+			$id   = $ids[ $key ] ?? 0;
+			$post = $id > 0 ? get_post( $id ) : null;
+			if ( ! $post instanceof \WP_Post || 'page' !== $post->post_type || 'trash' === $post->post_status ) {
+				$id      = 0;
+				$problem = self::MISSING;
+			} elseif ( 'publish' !== $post->post_status ) {
+				$problem = self::UNPUBLISHED;
+			} elseif ( ! has_block( $page['block'], $post ) ) {
+				$problem = self::NO_BLOCK;
+			} else {
+				continue;
+			}
+			$problems[] = array(
+				'key'     => $key,
+				'title'   => $page['title'],
+				'id'      => $id,
+				'block'   => $page['block'],
+				'problem' => $problem,
+			);
+		}
+		return $problems;
+	}
+
+	/**
+	 * Test für «Werkzeuge → Website-Zustand».
+	 *
+	 * @param array<string,mixed> $tests Tests von WordPress.
+	 * @return array<string,mixed>
+	 */
+	public static function site_status_tests( array $tests ): array {
+		$tests['direct']['ttleague_pages'] = array(
+			'label' => __( 'Seiten des Plugins', 'ttleague' ),
+			'test'  => array( self::class, 'site_status' ),
+		);
+		return $tests;
+	}
+
+	/**
+	 * Test für «Website-Zustand»: jede Seite, die von Hand zu korrigieren ist, mit Link zum
+	 * Bearbeiten. Prüft bei jedem Aufruf neu.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function site_status(): array {
+		$items = '';
+		foreach ( self::problems() as $row ) {
+			if ( self::MISSING === $row['problem'] ) {
+				/* translators: %s: Titel der Seite. */
+				$text = sprintf( __( '«%s» fehlt.', 'ttleague' ), $row['title'] );
+			} elseif ( self::UNPUBLISHED === $row['problem'] ) {
+				/* translators: %s: Titel der Seite. */
+				$text = sprintf( __( '«%s» ist nicht veröffentlicht.', 'ttleague' ), $row['title'] );
+			} else {
+				/* translators: 1: Titel der Seite, 2: Name des Blocks. */
+				$text = sprintf( __( '«%1$s» enthält den Block %2$s nicht.', 'ttleague' ), $row['title'], $row['block'] );
+			}
+			$link   = $row['id'] > 0 ? get_edit_post_link( $row['id'], 'raw' ) : null;
+			$items .= '<li>' . esc_html( $text ) . ( null === $link ? '' : ' <a href="' . esc_url( $link ) . '">' . esc_html__( 'Bearbeiten', 'ttleague' ) . '</a>' ) . '</li>';
+		}
+		$ok = '' === $items;
+		return array(
+			'label'       => $ok
+				? __( 'Die Seiten des Plugins sind vollständig', 'ttleague' )
+				: __( 'Seiten des Plugins brauchen eine Korrektur von Hand', 'ttleague' ),
+			'status'      => $ok ? 'good' : 'recommended',
+			'badge'       => array(
+				'label' => __( 'Spielbetrieb', 'ttleague' ),
+				'color' => 'blue',
+			),
+			'description' => $ok
+				? '<p>' . esc_html__( 'Jede Ansicht des Plugins hat eine veröffentlichte Seite mit ihrem Block.', 'ttleague' ) . '</p>'
+				: '<p>' . esc_html__( 'Das Plugin ändert bestehende Seiten nicht. Fehlt einer Seite ihr Block, füge ihn im Editor ein; ist sie nicht veröffentlicht, veröffentliche sie. Eine fehlende Seite legt «wp ttleague pages» oder das erneute Aktivieren des Plugins neu an.', 'ttleague' ) . '</p><ul>' . $items . '</ul>',
+			'actions'     => '',
+			'test'        => 'ttleague_pages',
+		);
 	}
 
 	/**

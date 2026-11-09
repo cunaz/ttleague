@@ -77,6 +77,21 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	function wp_json_encode( mixed $value, int $flags = 0, int $depth = 512 ): string|false {
+		return json_encode( $value, $flags, $depth ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+	}
+}
+
+if ( ! function_exists( 'is_user_logged_in' ) ) {
+	/**
+	 * In Tests ist niemand angemeldet (öffentliche Ausgabe).
+	 */
+	function is_user_logged_in(): bool {
+		return false;
+	}
+}
+
 if ( ! function_exists( 'is_email' ) ) {
 	function is_email( string $email ): string|false {
 		return false !== filter_var( $email, FILTER_VALIDATE_EMAIL ) ? $email : false;

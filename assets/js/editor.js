@@ -241,6 +241,9 @@
 		'ttleague/account-link': function () {
 			return [];
 		},
+		'ttleague/result-entry': function () {
+			return [];
+		},
 	};
 
 	/**
@@ -256,6 +259,11 @@
 			icon: 'id-alt',
 			label: __( 'Mein Bereich', 'ttleague' ),
 			text: __( 'Hier erscheinen für angemeldete Personen Einwilligung, Profil, Benachrichtigungen und ihre Spiele.', 'ttleague' ),
+		},
+		'ttleague/result-entry': {
+			icon: 'edit',
+			label: __( 'Resultat erfassen', 'ttleague' ),
+			text: __( 'Hier erscheint für angemeldete Captains, TK-Chefs und die TK die Erfassung der Begegnung aus der Adresse (?begegnung=123): Resultat erfassen, bestätigen, Einsprache, Entscheid der TK.', 'ttleague' ),
 		},
 	};
 
