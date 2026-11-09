@@ -742,6 +742,69 @@ final class ResultServiceTest extends IntegrationTestCase {
 	}
 
 	/**
+	 * Zwei Erfassungen verschiedener Begegnungen mit demselben Ersatzspieler überschneiden sich:
+	 * Während die Heimseite das Derby (8.12.) mit h4 für Seefeld 2 prüft, wird f4 (1.12.) mit h4
+	 * als drittem Ersatzeinsatz für Seefeld 1 gespeichert. Die Spielberechtigung gilt erst nach
+	 * der Sperre der Saison als geprüft, also mit der Bindung an Seefeld 1.
+	 */
+	public function test_eligibility_is_checked_again_after_a_concurrent_entry_of_another_fixture(): void {
+		foreach ( array( 'f1', 'f3' ) as $fixture ) {
+			$this->service->submit( $this->id[ $fixture ], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		}
+		$this->db->update( 'fixture', array( 'scheduled_at' => '2026-12-08 20:00:00' ), array( 'id' => $this->id['derby'] ) );
+		$derby = $this->team_payload(
+			array(
+				'A' => 'h1',
+				'B' => 'h2',
+				'C' => 'h3',
+			),
+			array(
+				'X' => 'h4',
+				'Y' => 'h5',
+				'Z' => 'h6',
+			),
+			array( '3:1', '3:0', '3:2', '1:3', '3:1', '0:3', '3:2', '2:3', '1:3', '3:0' )
+		);
+
+		$clock              = new TriggerClock( new FixedClock( '2026-11-10 21:30:00' ) );
+		$service            = $this->service_with( $clock );
+		$clock->before_next = fn() => $this->service->submit( $this->id['f4'], $this->with_substitute_h4(), $this->actor['captain_h1'] );
+		$error              = self::expect_error( fn() => $service->submit( $this->id['derby'], $derby, $this->actor['captain_h1'] ), 422 );
+
+		self::assertSame( array( 'lineup.away.X' ), array_column( $error->errors, 'field' ) );
+		self::assertStringContainsString( 'an ein anderes Team gebunden', $error->errors[0]['message'] );
+		self::assertSame( array( $this->id['h1team'], '2026-12-01' ), $this->binding_of( 'h4' ) );
+		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['derby'] ) ) );
+		self::assertSame( '0', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'lineup' )} WHERE fixture_id = %d", array( $this->id['derby'] ) ), 'nichts gespeichert' );
+	}
+
+	/**
+	 * Eine andere Transaktion hält die Sperre der Saison (z. B. die Erfassung einer anderen
+	 * Begegnung). Die Erfassung wartet darauf, bevor sie etwas liest oder prüft; hier bricht sie
+	 * nach einer Sekunde Wartezeit ab und speichert nichts.
+	 */
+	public function test_writes_in_the_same_season_wait_for_the_season_lock(): void {
+		$other = self::another_connection();
+		$other->pdo()->beginTransaction();
+		$other->get_var( "SELECT id FROM {$other->table( 'season' )} WHERE id = %d FOR UPDATE", array( $this->id['season'] ) );
+		$this->db->pdo()->exec( 'SET SESSION innodb_lock_wait_timeout = 1' );
+		$waited = null;
+		try {
+			$this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		} catch ( \PDOException $e ) {
+			$waited = $e;
+		} finally {
+			$other->pdo()->rollBack();
+			$this->db->pdo()->exec( 'SET SESSION innodb_lock_wait_timeout = DEFAULT' );
+		}
+
+		self::assertInstanceOf( \PDOException::class, $waited, 'die Erfassung hätte auf die Sperre der Saison warten müssen' );
+		self::assertStringContainsString( '1205 Lock wait timeout', $waited->getMessage(), 'Wartezeit für die Sperre abgelaufen' );
+		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
+		self::assertSame( 'provisional', $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] )['status'], 'nach der Freigabe' );
+	}
+
+	/**
 	 * @return array<string,array{0:string}>
 	 */
 	public static function write_paths(): array {

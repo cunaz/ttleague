@@ -277,11 +277,14 @@ final class ResultRepository {
 	}
 
 	/**
-	 * Sperrt die Begegnung bis zum Ende der laufenden Transaktion (SELECT … FOR UPDATE).
-	 * Muss die erste Abfrage der Transaktion sein: Erst danach gelesene Daten zeigen den Stand
+	 * Sperrt Saison und Begegnung bis zum Ende der laufenden Transaktion (SELECT … FOR UPDATE),
+	 * immer in dieser Reihenfolge. Die Sperre der Saison reiht alle Schreibvorgänge einer Saison
+	 * hintereinander: Spielberechtigung und Bindungen hängen von Einsätzen in anderen Begegnungen
+	 * ab. Muss die erste Abfrage der Transaktion sein: Erst danach gelesene Daten zeigen den Stand
 	 * nach allen Transaktionen, die die Sperre vorher hielten.
 	 */
-	public function lock( int $fixture_id ): void {
+	public function lock( int $season_id, int $fixture_id ): void {
+		$this->db->get_var( "SELECT id FROM {$this->db->table( 'season' )} WHERE id = %d FOR UPDATE", array( $season_id ) );
 		$this->db->get_var( "SELECT id FROM {$this->db->table( 'fixture' )} WHERE id = %d FOR UPDATE", array( $fixture_id ) );
 	}
 

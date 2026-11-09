@@ -140,9 +140,9 @@ final class PhotoStorage {
 
 		$base   = self::base_dir();
 		$result = self::UNKNOWN;
-		$real   = self::protect( $base ) ? realpath( $base ) : false;
-		if ( false !== $real ) {
-			$url    = self::public_url( wp_normalize_path( $real ) );
+		if ( self::protect( $base ) ) {
+			// Ein Verzeichnis der Konstante ausserhalb von WordPress hat keine Adresse.
+			$url    = self::configured() ? self::url_of( $base ) : untrailingslashit( wp_upload_dir( null, false )['baseurl'] ) . '/' . self::DIR;
 			$result = null === $url ? self::PROTECTED : self::probe( $base, $url );
 		}
 		set_transient(
@@ -242,32 +242,33 @@ final class PhotoStorage {
 	}
 
 	/**
-	 * Adresse, unter der der Webserver ein Verzeichnis ausliefern würde. Das Standardverzeichnis
-	 * liegt in uploads; ein Verzeichnis der Konstante wird über uploads, wp-content oder ABSPATH
-	 * zugeordnet. null: ausserhalb von WordPress, also ohne Adresse.
+	 * Adresse, unter der der Webserver ein Verzeichnis innerhalb von WordPress ausliefern würde
+	 * (uploads, wp-content oder ABSPATH), sonst null. Symbolische Links werden aufgelöst.
 	 *
-	 * @param string $real Verzeichnis ohne symbolische Links (realpath, normalisiert).
+	 * @param string $dir Verzeichnis.
 	 */
-	private static function public_url( string $real ): ?string {
+	public static function url_of( string $dir ): ?string {
 		$uploads = wp_upload_dir( null, false );
-		if ( ! self::configured() ) {
-			return untrailingslashit( $uploads['baseurl'] ) . '/' . self::DIR;
-		}
+		$path    = self::resolved( $dir );
 		foreach ( array(
 			array( $uploads['basedir'], $uploads['baseurl'] ),
 			array( WP_CONTENT_DIR, content_url() ),
 			array( ABSPATH, site_url() ),
 		) as list( $root, $url ) ) {
-			$root = realpath( $root );
-			if ( false === $root ) {
-				continue;
-			}
-			$root = untrailingslashit( wp_normalize_path( $root ) );
-			if ( $real === $root || str_starts_with( $real, $root . '/' ) ) {
-				return untrailingslashit( $url ) . substr( $real, strlen( $root ) );
+			$root = self::resolved( $root );
+			if ( $path === $root || str_starts_with( $path, $root . '/' ) ) {
+				return untrailingslashit( $url ) . substr( $path, strlen( $root ) );
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Pfad ohne symbolische Links und abschliessenden Schrägstrich; unverändert, wenn es ihn nicht gibt.
+	 */
+	private static function resolved( string $path ): string {
+		$real = realpath( $path );
+		return untrailingslashit( wp_normalize_path( false === $real ? $path : $real ) );
 	}
 
 	/**
