@@ -24,11 +24,12 @@ final class PushUi {
 	/**
 	 * Filter ttleague_push_controls.
 	 *
-	 * @param string $html      Bisherige Ausgabe.
-	 * @param int    $person_id Person.
+	 * @param mixed $html      Bisherige Ausgabe.
+	 * @param mixed $person_id Person.
 	 */
-	public static function controls( string $html, int $person_id ): string {
+	public static function controls( mixed $html, mixed $person_id = 0 ): string {
 		unset( $person_id );
+		$html  = is_string( $html ) ? $html : '';
 		$vapid = VapidKeys::get();
 		if ( null === $vapid ) {
 			return $html;

@@ -56,7 +56,7 @@ final class Messages {
 			$subject = sprintf( __( 'Geändertes Resultat bestätigen: %s', 'ttleague' ), $title );
 			/* translators: 1: Name oder Team, 2: Begegnung mit Wettbewerb und Termin, 3: Resultat */
 			$first = sprintf( __( '%1$s hat das Resultat der Begegnung %2$s geändert. Neues Resultat: %3$s.', 'ttleague' ), $who, self::describe( $ctx ), $score );
-			/* translators: %s: Resultat */
+			/* translators: %s: Begegnung */
 			$push_title = sprintf( __( 'Resultat geändert: %s', 'ttleague' ), $title );
 			/* translators: %s: Resultat */
 			$push_body = sprintf( __( 'Neues Resultat %s. Bitte prüfen und bestätigen.', 'ttleague' ), $score );

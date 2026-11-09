@@ -70,8 +70,8 @@ final class Notifications {
 	/**
 	 * Filter ttleague_push_available: Push ist verfügbar, wenn VAPID-Schlüssel bereitstehen.
 	 */
-	public static function push_available( bool $available ): bool {
-		return $available || null !== VapidKeys::get();
+	public static function push_available( mixed $available ): bool {
+		return (bool) $available || null !== VapidKeys::get();
 	}
 
 	/**

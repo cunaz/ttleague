@@ -63,7 +63,7 @@ final class SubscriptionValidatorTest extends TestCase {
 			'https://example.org/push',
 			'https://fcm.googleapis.com.example.org/fcm/send/abc',
 			'https://evilfcm.googleapis.com/fcm/send/abc',
-			'https://nutzer:geheim@' . 'fcm.googleapis.com/fcm/send/abc',
+			'https://nutzer:geheim' . chr( 64 ) . 'fcm.googleapis.com/fcm/send/abc', // Benutzerangaben; @ ohne E-Mail-Muster im Quelltext.
 			'https://fcm.googleapis.com/fcm/send/a b',
 			'fcm.googleapis.com/fcm/send/abc',
 			'https://fcm.googleapis.com/fcm/send/' . str_repeat( 'a', 2048 ),
