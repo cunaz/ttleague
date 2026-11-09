@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Tests\WordPress\Rest;
 
+use TTLeague\Infrastructure\Cache\DataVersion;
 use TTLeague\Results\Results;
 use TTLeague\Tests\WordPress\League;
 use TTLeague\Tests\WordPress\TestCase;
@@ -161,6 +162,45 @@ final class ResultControllerTest extends TestCase {
 		$this->assert_error( 409, 'ttl_conflict', $this->request( 'POST', 'confirm', array( 'version' => $seen ) ) );
 		self::assertSame( 'provisional', $this->fixture()['status'] );
 		self::assertSame( '5', $this->fixture()['home_score'] );
+	}
+
+	/**
+	 * Die Aktionen kommen nach dem Speichern. Wirft ein Listener (z. B. einer Erweiterung), bleibt
+	 * die Antwort erfolgreich, Cache-Version und Neuberechnung sind schon erledigt, und der
+	 * Fehler steht im Fehlerprotokoll.
+	 */
+	public function test_a_failing_listener_neither_fails_nor_undoes_the_saved_entry(): void {
+		add_action(
+			'ttleague_data_changed',
+			static function (): void {
+				throw new \LogicException( 'Cache defekt' );
+			}
+		);
+		add_action(
+			'ttleague_result_entered',
+			static function (): void {
+				throw new \RuntimeException( 'Erweiterung defekt' );
+			}
+		);
+		$version  = DataVersion::get();
+		$log      = (string) tempnam( get_temp_dir(), 'ttl-log' );
+		$previous = ini_set( 'error_log', $log ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- Fehlerprotokoll im Test umleiten.
+		wp_set_current_user( $this->users['captain_h1'] );
+		try {
+			$response = $this->request( 'POST', 'result', $this->league->six_four() );
+		} finally {
+			ini_set( 'error_log', false === $previous ? '' : $previous ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- siehe oben.
+		}
+		$lines = (string) file_get_contents( $log ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Protokoll aus dem Test.
+		wp_delete_file( $log );
+
+		self::assertSame( 200, $response->get_status() );
+		self::assertSame( 'provisional', $response->get_data()['status'] );
+		self::assertSame( 'provisional', $this->fixture()['status'] );
+		self::assertGreaterThan( $version, DataVersion::get(), 'Cache-Version vor den Aktionen erhöht' );
+		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'Neuberechnung vor den Aktionen geplant' );
+		self::assertStringContainsString( 'ttleague: Fehler in ttleague_data_changed: LogicException: Cache defekt', $lines );
+		self::assertStringContainsString( 'ttleague: Fehler in ttleague_result_entered: RuntimeException: Erweiterung defekt', $lines );
 	}
 
 	public function test_photo_upload_checks_rights_before_the_file(): void {
