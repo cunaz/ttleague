@@ -12,7 +12,7 @@ namespace TTLeague\Domain\Rating;
 use TTLeague\Domain\Rules\SeasonRules;
 
 /**
- * Elo-artige Wertungszahl. Startwert ist die offizielle Klassierung × Punkte pro Stufe.
+ * Elo-artige Wertungszahl. Startwert ist die offizielle Klassierung × Punkte pro Stufe, Untergrenze 0.
  * Mit Neuverankerung (Standard) beginnt jede Saison wieder bei der offiziellen Klassierung
  * dieser Saison; die Wertungszahl zeigt dann, wie sich jemand innerhalb der Saison
  * gegenüber seiner Klassierung entwickelt. Ohne Neuverankerung läuft sie über alle Saisons weiter.
@@ -77,6 +77,9 @@ final class RatingEngine {
 			$result->predictions[] = array( $expected, $game->a_won ? 1 : 0 );
 
 			foreach ( $updates as [ $player, $before, $after ] ) {
+				// Untergrenze 0: eine negative Wertungszahl ergibt keine zusätzliche Information.
+				$after = max( 0.0, $after );
+
 				$result->ratings[ $player ]                        = $after;
 				$result->games[ $player ]                          = ( $result->games[ $player ] ?? 0 ) + 1;
 				$result->season_end[ $game->season_id ][ $player ] = $after;

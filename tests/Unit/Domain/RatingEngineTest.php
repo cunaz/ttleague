@@ -96,6 +96,16 @@ final class RatingEngineTest extends TestCase {
 		self::assertCount( 1, $result->predictions );
 	}
 
+	public function test_rating_does_not_fall_below_zero(): void {
+		$games = array();
+		for ( $i = 1; $i <= 20; $i++ ) {
+			$games[] = new RatingGame( $i, sprintf( '2026-09-%02d 20:00:00', $i ), 1, array( 2 ), array( 1 ), true );
+		}
+		$result = ( new RatingEngine( $this->rules() ) )->run( $games, static fn( int $p ) => 1 === $p ? 1 : 3 );
+		self::assertSame( 0.0, $result->ratings[1] );
+		self::assertGreaterThanOrEqual( 0.0, min( array_map( static fn( $e ) => $e->after, $result->events ) ) );
+	}
+
 	public function test_invalid_game_is_rejected(): void {
 		$this->expectException( \InvalidArgumentException::class );
 		new RatingGame( 1, '2026-09-01 20:00:00', 1, array( 1, 2 ), array( 3 ), true );
