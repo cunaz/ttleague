@@ -15,9 +15,10 @@ use TTLeague\Results\ResultException;
 use TTLeague\Tests\WordPress\TestCase;
 
 /**
- * Den Webserver spielt pre_http_request: Er liefert die Testdatei aus (offen), sperrt sie,
- * leitet weiter, liefert eine andere Seite oder ist nicht erreichbar. Die Testsuite setzt
- * TTLEAGUE_PRIVATE_UPLOADS nicht; geprüft wird das Standardverzeichnis uploads/ttleague-private.
+ * Den Webserver spielt pre_http_request: Er liefert die Testdateien aus (offen) oder nur eine
+ * Endung, sperrt sie, leitet weiter, liefert eine andere Seite oder ist nicht erreichbar. Die
+ * Testsuite setzt TTLEAGUE_PRIVATE_UPLOADS nicht; geprüft wird das Standardverzeichnis
+ * uploads/ttleague-private. Eine Prüfung ruft je erlaubter Endung eine Testdatei ab, zuerst .jpg.
  */
 final class PhotoStorageTest extends TestCase {
 
@@ -36,7 +37,7 @@ final class PhotoStorageTest extends TestCase {
 	}
 
 	/**
-	 * Antwort des Webservers auf den Abruf der Testdatei.
+	 * Antwort des Webservers auf den Abruf einer Testdatei.
 	 *
 	 * @param false|array<string,mixed>|\WP_Error $pre  Vorbelegung.
 	 * @param array<string,mixed>                 $args Anfrage.
@@ -46,14 +47,16 @@ final class PhotoStorageTest extends TestCase {
 	public function respond( $pre, array $args, string $url ) {
 		$this->requests[] = $url;
 		self::assertSame( 0, $args['redirection'], 'Weiterleitungen werden nicht verfolgt' );
-		$file = PhotoStorage::base_dir() . '/' . basename( (string) wp_parse_url( $url, PHP_URL_PATH ) );
-		return match ( $this->server ) {
-			'exposed'  => self::response( 200, (string) file_get_contents( $file ) ), // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Testdatei der Prüfung.
-			'redirect' => self::response( 301, '' ),
-			'other'    => self::response( 200, '<html>Seite nicht gefunden</html>' ),
-			'error'    => self::response( 500, '' ),
-			'offline'  => new \WP_Error( 'http_request_failed', 'cURL error 7: Failed to connect' ),
-			default    => self::response( (int) $this->server, '' ),
+		$file  = PhotoStorage::base_dir() . substr( $url, strlen( self::base_url() ) );
+		$serve = 'exposed' === $this->server || ( 'webp' === $this->server && str_ends_with( $url, '.webp' ) );
+		return match ( true ) {
+			$serve                     => self::response( 200, (string) file_get_contents( $file ) ), // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Testdatei der Prüfung.
+			'webp' === $this->server   => self::response( 403, '' ),
+			'redirect' === $this->server => self::response( 301, '' ),
+			'other' === $this->server  => self::response( 200, '<html>Seite nicht gefunden</html>' ),
+			'error' === $this->server  => self::response( 500, '' ),
+			'offline' === $this->server => new \WP_Error( 'http_request_failed', 'cURL error 7: Failed to connect' ),
+			default                    => self::response( (int) $this->server, '' ),
 		};
 	}
 
@@ -61,9 +64,9 @@ final class PhotoStorageTest extends TestCase {
 		$this->server = 'exposed';
 
 		self::assertSame( PhotoStorage::EXPOSED, PhotoStorage::exposure() );
-		self::assertCount( 1, $this->requests );
-		self::assertMatchesRegularExpression( '#^' . preg_quote( wp_upload_dir()['baseurl'], '#' ) . '/ttleague-private/pruefung-[A-Za-z0-9]{16}\.txt$#', $this->requests[0] );
-		self::assertSame( array(), glob( PhotoStorage::base_dir() . '/pruefung-*' ), 'Testdatei gelöscht' );
+		self::assertCount( 1, $this->requests, 'die erste ausgelieferte Testdatei genügt' );
+		self::assertMatchesRegularExpression( '#^' . preg_quote( self::base_url() . wp_upload_dir()['subdir'], '#' ) . '/pruefung-[A-Za-z0-9]{16}\.jpg$#', $this->requests[0], 'im Unterverzeichnis des nächsten Uploads' );
+		self::assertSame( array(), $this->leftovers(), 'Testdateien gelöscht' );
 
 		$error = $this->refusal();
 		self::assertSame( ResultException::UNAVAILABLE, $error->error_code );
@@ -83,12 +86,27 @@ final class PhotoStorageTest extends TestCase {
 	}
 
 	#[DataProvider( 'refusing_servers' )]
-	public function test_a_refused_test_file_allows_uploads( string $server ): void {
+	public function test_refused_test_files_in_every_format_allow_uploads( string $server ): void {
 		$this->server = $server;
 
 		self::assertSame( 'hochgeladen', PhotoStorage::in_private_dir( static fn(): string => 'hochgeladen' ) );
+		self::assertSame( PhotoStorage::extensions(), $this->extensions(), 'je eine Testdatei pro erlaubter Endung' );
+		self::assertSame( array( 'jpg', 'jpeg', 'jpe', 'png', 'webp', 'heic', 'heif' ), PhotoStorage::extensions() );
+		self::assertSame( array(), $this->leftovers() );
 		self::assertSame( PhotoStorage::PROTECTED, PhotoStorage::exposure() );
-		self::assertCount( 1, $this->requests, 'das bestätigte Ergebnis gilt weiter' );
+		self::assertSame( 1, $this->checks(), 'das bestätigte Ergebnis gilt weiter' );
+	}
+
+	/**
+	 * Eine Serverregel sperrt nur einen Teil der Endungen; unter nginx gewinnt etwa eine Regel für
+	 * Bilder mit regulärem Ausdruck gegen eine Sperre ohne ^~. Hier liefert der Server nur .webp.
+	 */
+	public function test_a_server_that_serves_one_photo_format_counts_as_exposed(): void {
+		$this->server = 'webp';
+
+		self::assertStringContainsString( 'von aussen erreichbar', $this->refusal()->getMessage() );
+		self::assertSame( array( 'jpg', 'jpeg', 'jpe', 'png', 'webp' ), $this->extensions() );
+		self::assertSame( PhotoStorage::EXPOSED, PhotoStorage::exposure() );
 	}
 
 	/**
@@ -112,6 +130,8 @@ final class PhotoStorageTest extends TestCase {
 		self::assertSame( 503, $error->status );
 		self::assertStringContainsString( 'liess sich nicht prüfen', $error->getMessage() );
 		self::assertSame( PhotoStorage::UNKNOWN, PhotoStorage::exposure() );
+		self::assertSame( array(), $this->leftovers() );
+		self::assertCount( 'offline' === $server ? 1 : 7, $this->requests, 'ohne Verbindung ein Abruf, sonst alle Endungen' );
 	}
 
 	/**
@@ -124,34 +144,47 @@ final class PhotoStorageTest extends TestCase {
 
 		$this->server = 'offline';
 		self::assertStringContainsString( 'liess sich nicht prüfen', $this->refusal()->getMessage() );
-		self::assertCount( 2, $this->requests, 'das gemerkte «offen» wird beim Upload neu geprüft' );
+		self::assertSame( 2, $this->checks(), 'das gemerkte «offen» wird beim Upload neu geprüft' );
 
 		$this->server = '403';
 		self::assertSame( 'hochgeladen', PhotoStorage::in_private_dir( static fn(): string => 'hochgeladen' ) );
-		self::assertCount( 3, $this->requests );
+		self::assertSame( 3, $this->checks() );
 
 		$this->server = 'exposed';
 		self::assertSame( 'hochgeladen', PhotoStorage::in_private_dir( static fn(): string => 'hochgeladen' ) );
-		self::assertCount( 3, $this->requests, 'bestätigter Schutz gilt 12 Stunden ohne neuen Abruf' );
+		self::assertSame( 3, $this->checks(), 'bestätigter Schutz gilt 12 Stunden ohne neuen Abruf' );
 		self::assertSame( PhotoStorage::EXPOSED, PhotoStorage::exposure( true ), 'neue Prüfung, z. B. im Website-Zustand' );
 		self::assertStringContainsString( 'von aussen erreichbar', $this->refusal()->getMessage() );
 	}
 
-	public function test_a_remembered_result_counts_only_for_the_same_directory(): void {
-		$this->server = 'exposed';
-		set_transient(
-			PhotoStorage::CHECK_TRANSIENT,
-			array(
-				'dir'   => '/anderes/verzeichnis',
-				'state' => PhotoStorage::PROTECTED,
-			)
-		);
-		self::assertStringContainsString( 'von aussen erreichbar', $this->refusal()->getMessage() );
+	/**
+	 * Das gemerkte Ergebnis gilt nur für dasselbe Verzeichnis und denselben Web-Root: WP-CLI kennt
+	 * keinen Web-Root und hätte ein Verzeichnis der Konstante darin nicht prüfen können.
+	 */
+	public function test_a_remembered_result_counts_only_for_the_same_scope(): void {
+		$this->server = '403';
+		self::assertSame( PhotoStorage::PROTECTED, PhotoStorage::exposure() );
 
-		// Ergebnis einer früheren Fassung ohne Verzeichnis.
-		set_transient( PhotoStorage::CHECK_TRANSIENT, PhotoStorage::PROTECTED );
-		self::assertSame( PhotoStorage::EXPOSED, PhotoStorage::exposure() );
-		self::assertCount( 2, $this->requests );
+		$this->server = 'exposed';
+		self::assertSame( PhotoStorage::PROTECTED, PhotoStorage::exposure(), 'gemerkt' );
+		self::assertSame( 1, $this->checks() );
+
+		$_SERVER['DOCUMENT_ROOT'] = get_temp_dir();
+		self::assertSame( PhotoStorage::EXPOSED, PhotoStorage::exposure(), 'anderer Web-Root, neu geprüft' );
+		self::assertSame( 2, $this->checks() );
+
+		// Ergebnisse früherer Fassungen ohne Bereich.
+		foreach ( array(
+			PhotoStorage::PROTECTED,
+			array(
+				'dir'   => PhotoStorage::base_dir(),
+				'state' => PhotoStorage::PROTECTED,
+			),
+		) as $old ) {
+			set_transient( PhotoStorage::CHECK_TRANSIENT, $old );
+			self::assertStringContainsString( 'von aussen erreichbar', $this->refusal()->getMessage() );
+		}
+		self::assertSame( 4, $this->checks() );
 	}
 
 	public function test_uploads_land_in_the_private_directory_without_image_sizes(): void {
@@ -255,8 +288,9 @@ final class PhotoStorageTest extends TestCase {
 	}
 
 	/**
-	 * Für TTLEAGUE_PRIVATE_UPLOADS: Ein Verzeichnis innerhalb von WordPress hat eine Adresse und
-	 * wird über HTTP geprüft, eines ausserhalb nicht. Symbolische Links werden aufgelöst.
+	 * Für TTLEAGUE_PRIVATE_UPLOADS: Ein Verzeichnis innerhalb von WordPress oder des Web-Roots hat
+	 * eine Adresse und wird über HTTP geprüft, eines ausserhalb nicht. Symbolische Links werden
+	 * aufgelöst.
 	 */
 	public function test_url_of_maps_directories_within_wordpress(): void {
 		$uploads = wp_upload_dir();
@@ -271,7 +305,13 @@ final class PhotoStorageTest extends TestCase {
 			self::assertSame( content_url( basename( $inside ) ), PhotoStorage::url_of( $inside ) );
 			self::assertSame( content_url( basename( $inside ) ), PhotoStorage::url_of( $link ), 'Link in den Web-Root' );
 			self::assertSame( site_url( '/wp-includes' ), PhotoStorage::url_of( ABSPATH . 'wp-includes' ) );
-			self::assertNull( PhotoStorage::url_of( $outside ) );
+			self::assertNull( PhotoStorage::url_of( $outside ), 'ohne Web-Root (WP-CLI)' );
+
+			// WordPress in einem Unterverzeichnis des Web-Roots: Das Verzeichnis liegt ausserhalb
+			// von WordPress, aber im Web-Root, und hat dort eine Adresse.
+			$_SERVER['DOCUMENT_ROOT'] = get_temp_dir();
+			$home                     = (string) wp_parse_url( home_url(), PHP_URL_SCHEME ) . '://' . (string) wp_parse_url( home_url(), PHP_URL_HOST );
+			self::assertSame( $home . '/' . basename( $outside ), PhotoStorage::url_of( $outside ) );
 		} finally {
 			unlink( $link ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- symbolischer Link aus dem Test.
 			rmdir( $inside ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Verzeichnis aus dem Test.
@@ -294,21 +334,49 @@ final class PhotoStorageTest extends TestCase {
 	public function test_site_health_checks_again_and_reports_the_state( string $server, string $status, string $color ): void {
 		self::assertSame( 10, has_filter( 'site_status_tests', array( PhotoStorage::class, 'site_status_tests' ) ) );
 		self::assertArrayHasKey( 'ttleague_photo_storage', PhotoStorage::site_status_tests( array( 'direct' => array() ) )['direct'] );
-		set_transient(
-			PhotoStorage::CHECK_TRANSIENT,
-			array(
-				'dir'   => PhotoStorage::base_dir(),
-				'state' => PhotoStorage::PROTECTED,
-			)
-		);
+		$this->server = '403';
+		PhotoStorage::exposure();
 		$this->server = $server;
 
 		$result = PhotoStorage::site_status();
 
-		self::assertCount( 1, $this->requests, 'Website-Zustand prüft immer neu' );
+		self::assertSame( 2, $this->checks(), 'Website-Zustand prüft trotz gemerktem Schutz neu' );
 		self::assertSame( $status, $result['status'] );
 		self::assertSame( $color, $result['badge']['color'] );
 		self::assertSame( 'ttleague_photo_storage', $result['test'] );
+	}
+
+	/**
+	 * Adresse des Standardverzeichnisses der Fotos.
+	 */
+	private static function base_url(): string {
+		return wp_upload_dir()['baseurl'] . '/' . PhotoStorage::DIR;
+	}
+
+	/**
+	 * Anzahl Prüfungen: Jede beginnt mit der Testdatei .jpg.
+	 */
+	private function checks(): int {
+		return count( preg_grep( '/\.jpg$/', $this->requests ) );
+	}
+
+	/**
+	 * Endungen der abgerufenen Testdateien in der Reihenfolge der Abrufe.
+	 *
+	 * @return list<string>
+	 */
+	private function extensions(): array {
+		return array_map( static fn( string $url ): string => pathinfo( $url, PATHINFO_EXTENSION ), $this->requests );
+	}
+
+	/**
+	 * Testdateien, die nach einer Prüfung liegen geblieben sind.
+	 *
+	 * @return list<string>
+	 */
+	private function leftovers(): array {
+		$files = glob( PhotoStorage::base_dir() . wp_upload_dir()['subdir'] . '/pruefung-*' );
+		return false === $files ? array() : $files;
 	}
 
 	/**
