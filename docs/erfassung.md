@@ -80,6 +80,7 @@ Basis `/wp-json/ttleague/v1`, Authentifizierung über das WordPress-Cookie mit `
 | 404 | `ttl_not_found` | Begegnung gibt es nicht |
 | 409 | `ttl_conflict` | Status erlaubt die Aktion nicht, `version` ist veraltet, oder die Begegnung hat sich während der Aktion geändert |
 | 422 | `ttl_invalid` | Eingabe ungültig, mit Feldfehlern (`lineup.home.A`, `games.7.home_players`, `games.1.set_points`, `reason`, `file` …) |
+| 503 | `ttl_unavailable` | nur beim Foto: Ablage nicht geschützt oder der Schutz liess sich nicht prüfen (siehe Foto) |
 
 **Gleichzeitige Änderungen:** `GET entry` liefert `version`. Wird sie bei `result`, `confirm`, `objection` oder `decision` mitgeschickt und hat sich die Begegnung inzwischen geändert, antwortet der Server mit 409. So bestätigt niemand ein Resultat, das er nicht gesehen hat. Jede schreibende Aktion sperrt zudem in ihrer Transaktion zuerst die Saison und dann die Begegnung (`SELECT … FOR UPDATE`), liest die Begegnung neu und bricht mit 409 ab, wenn sie sich seit der Prüfung von Rechten und Status geändert hat. Von zwei gleichzeitigen Aktionen gilt so nur die erste; die zweite kann weder eine veraltete Version noch einen inzwischen unzulässigen Statuswechsel durchsetzen, auch ohne mitgeschickte `version`. Die Sperre der Saison reiht alle Schreibvorgänge einer Saison hintereinander, denn Spielberechtigung und Bindungen hängen von Einsätzen in anderen Begegnungen ab. `result` und die Korrektur der TK prüfen die Aufstellung deshalb erst unter dieser Sperre: Erfassen zwei Captains gleichzeitig Begegnungen mit demselben Ersatzspieler, sieht die zweite Prüfung den Einsatz aus der ersten.
 
@@ -131,7 +132,7 @@ Gekürztes Beispiel: Eine Meisterschaftsbegegnung braucht alle 10 Spiele (Cup bi
 - Die TK korrigiert über `decision` mit `action: correct`; fehlende Spielberechtigungen sind dann Hinweise statt Fehler.
 - Antwort 200: `{ "status": "provisional", "home_score": 6, "away_score": 4, "warnings": [ ... ], "version": "..." }`.
 
-**Harte Fehler (422):** Spieler nicht spielberechtigt (anderer Club, an anderes Team gebunden, Stammspieler eines höheren Teams), unvollständige oder widersprüchliche Spiele, Status erlaubt keine Erfassung.
+**Harte Fehler (422):** Spieler nicht spielberechtigt (anderer Club, an anderes Team gebunden, Stammspieler eines höheren Teams), unvollständige oder widersprüchliche Spiele. Erlaubt der Status keine Erfassung (z. B. schon bestätigt), antwortet der Server mit 409 (siehe Tabelle oben).
 
 **Hinweise (`warnings`):** Bleiben gespeichert und erscheinen im TK-Dashboard, z. B. «3. Ersatzeinsatz: Spieler ist ab jetzt an dieses Team gebunden».
 
