@@ -55,6 +55,20 @@ abstract class IntegrationTestCase extends TestCase {
 		return self::$shared;
 	}
 
+	/**
+	 * Zweite, eigene Verbindung zur Testdatenbank, z. B. für eine gleichzeitige Transaktion.
+	 */
+	protected static function another_connection(): PdoDb {
+		self::connection();
+		$pass = getenv( 'TTLEAGUE_TEST_DB_PASS' );
+		return PdoDb::connect(
+			self::env( 'TTLEAGUE_TEST_DB_DSN', 'mysql:host=127.0.0.1;dbname=ttleague_test;charset=utf8mb4' ),
+			self::env( 'TTLEAGUE_TEST_DB_USER', 'ttleague' ),
+			false === $pass ? 'ttleague' : $pass,
+			self::PREFIX
+		);
+	}
+
 	private static function env( string $name, string $fallback ): string {
 		$value = getenv( $name );
 		return false === $value || '' === $value ? $fallback : $value;

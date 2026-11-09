@@ -26,11 +26,14 @@
         <exclude name="WordPress.DB.DirectDatabaseQuery"/>
     </rule>
 
-    <!-- Die Domänenschicht ist reines PHP ohne WordPress; Exceptions dort sind Entwicklermeldungen. -->
+    <!-- Die Domänenschicht ist reines PHP ohne WordPress; Exceptions dort sind Entwicklermeldungen.
+         Meldungen der Erfassung (src/Results, src/Rest) gehen als JSON hinaus, nie als HTML. -->
     <rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
         <exclude-pattern>*/src/Domain/*</exclude-pattern>
         <exclude-pattern>*/src/Infrastructure/*</exclude-pattern>
         <exclude-pattern>*/src/Rating/*</exclude-pattern>
+        <exclude-pattern>*/src/Results/*</exclude-pattern>
+        <exclude-pattern>*/src/Rest/*</exclude-pattern>
     </rule>
 
     <!-- PdoDb ist bewusst eine PDO-Implementierung (Integrationstests, Werkzeuge ausserhalb von WordPress). -->

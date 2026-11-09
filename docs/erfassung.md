@@ -63,9 +63,26 @@ Weitere Regeln:
 
 Tabellen zählen `provisional`, `confirmed`, `disputed`, `final` und `forfeit`. Bei `provisional` und `disputed` wird das Resultat als vorläufig markiert.
 
+Forfait und Zurücksetzen löschen Aufstellung, Spiele und deren Hinweise (`current.warnings` ist danach leer). Das Forfait behält das Foto als Beleg. Zurücksetzen führt zum Ausgangszustand zurück und löst auch das Foto von der Begegnung; der Anhang bleibt in der Mediathek, und der Verlauf behält das Ereignis `photo`.
+
+## Erfassungsseite
+
+Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttleague/result-entry`), Aufruf mit `?begegnung={id}`. Adresse immer über `Results::entry_url( $fixture_id )`. Dort erfasst die Heimseite, die Gastseite bestätigt oder erhebt Einsprache, die TK entscheidet.
+
 ## REST-API
 
 Basis `/wp-json/ttleague/v1`, Authentifizierung über das WordPress-Cookie mit `X-WP-Nonce`. Fehlertexte auf Deutsch. Validierungsfehler: HTTP 422 mit `{ "code": "ttl_invalid", "message": "...", "data": { "status": 422, "errors": [ { "field": "...", "message": "..." } ] } }`.
+
+| HTTP | Code | Bedeutung |
+|---|---|---|
+| 401 | `rest_forbidden` | nicht angemeldet |
+| 403 | `ttl_forbidden` | keine Rolle für diese Aktion (z. B. Gastseite will erfassen, eigene Erfassung bestätigen) |
+| 404 | `ttl_not_found` | Begegnung gibt es nicht |
+| 409 | `ttl_conflict` | Status erlaubt die Aktion nicht, `version` ist veraltet, oder die Begegnung hat sich während der Aktion geändert |
+| 422 | `ttl_invalid` | Eingabe ungültig, mit Feldfehlern (`lineup.home.A`, `games.7.home_players`, `games.1.set_points`, `reason`, `file` …) |
+| 503 | `ttl_unavailable` | nur beim Foto: Ablage nicht geschützt oder der Schutz liess sich nicht prüfen (siehe Foto) |
+
+**Gleichzeitige Änderungen:** `GET entry` liefert `version`. Wird sie bei `result`, `confirm`, `objection` oder `decision` mitgeschickt und hat sich die Begegnung inzwischen geändert, antwortet der Server mit 409. So bestätigt niemand ein Resultat, das er nicht gesehen hat. Jede schreibende Aktion sperrt zudem in ihrer Transaktion zuerst die Saison und dann die Begegnung (`SELECT … FOR UPDATE`), liest die Begegnung neu und bricht mit 409 ab, wenn sie sich seit der Prüfung von Rechten und Status geändert hat. Von zwei gleichzeitigen Aktionen gilt so nur die erste; die zweite kann weder eine veraltete Version noch einen inzwischen unzulässigen Statuswechsel durchsetzen, auch ohne mitgeschickte `version`. Die Sperre der Saison reiht alle Schreibvorgänge einer Saison hintereinander, denn Spielberechtigung und Bindungen hängen von Einsätzen in anderen Begegnungen ab. `result` und die Korrektur der TK prüfen die Aufstellung deshalb erst unter dieser Sperre: Erfassen zwei Captains gleichzeitig Begegnungen mit demselben Ersatzspieler, sieht die zweite Prüfung den Einsatz aus der ersten.
 
 ### `GET fixtures/{id}/entry`
 
@@ -104,14 +121,18 @@ Gekürztes Beispiel: Eine Meisterschaftsbegegnung braucht alle 10 Spiele (Cup bi
 }
 ```
 
-- Ein Spieler pro Slot, jeder Spieler höchstens einmal pro Seite, mindestens zwei Spieler pro Seite.
+- Ein Spieler pro Slot, jeder Spieler höchstens einmal pro Seite, mindestens zwei Spieler pro Seite (Meisterschaft Art. 14.2; die Cup-Mannschaft besteht aus zwei Spielern, Art. 19.1, tritt sie unvollständig an, entscheidet die TK über ein Forfait).
 - Alle Spiele der Spielfolge müssen vorhanden sein (MM 10, Cup 5). Im Cup dürfen Spiele nach dem dritten Sieg fehlen oder als `not_played` kommen.
 - `status` `played` (Sätze nach Gewinnsätzen), `walkover` (mit `winner`), `not_played`. Fehlt ein Spieler, sind seine Einzel `walkover` für die Gegenseite (`LineupValidator`).
-- Doppel: `home_players` und `away_players` aus der Aufstellung der Seite.
-- `set_points` nur, wenn `set_points_enabled`.
-- Antwort 200: `{ "status": "provisional", "home_score": 6, "away_score": 4, "warnings": [ ... ] }`.
+- Doppel: `home_players` und `away_players` aus der Aufstellung der Seite. Pflicht bei einem gespielten Doppel, ausser die Seite hat genau zwei Spieler (dann automatisch).
+- `set_points` sind freiwillig und werden nur gespeichert, wenn `set_points_enabled`. Ein Satz geht auf 11, ab 10:10 mit zwei Punkten Vorsprung; die Sätze müssen das Spielresultat ergeben.
+- `photo_id` wird ignoriert; das Foto verknüpft `POST fixtures/{id}/photo`.
+- Spielberechtigung (Meisterschaft): Stammspieler, Ersatz aus einem tieferen Team (höchstens drei Einsätze, beim dritten wird der Spieler an das Team gebunden), Bindung aus dem Kader. Es zählen nur Einsätze in Begegnungen vor der erfassten (frühere Anspielzeit, bei gleicher Anspielzeit die kleinere ID) und Bindungen ab dem Tag nach dem bindenden Einsatz. Hat die erfasste Begegnung keinen Termin, gilt der Zeitpunkt der Erfassung als Stichtag; Einsätze in Begegnungen ohne Termin zählen nie (wie bei den Bindungen). So ergibt eine nachgetragene oder korrigierte ältere Begegnung dasselbe wie eine Erfassung in der richtigen Reihenfolge. Cup: alle für den Club gemeldeten Spieler, Spieler ausserhalb der gemeldeten Cup-Mannschaft als Hinweis.
+- Bindungen im Kader (`team_roster.kind = bound`, `valid_from` = Tag des dritten Ersatzeinsatzes) folgen allein aus den Einsätzen. Nach jeder Erfassung, Korrektur, jedem Forfait und Zurücksetzen bestimmt der ResultService sie für alle Spieler der bisherigen und der neuen Aufstellung neu; entfällt der bindende Einsatz, entfällt die Bindung.
+- Die TK korrigiert über `decision` mit `action: correct`; fehlende Spielberechtigungen sind dann Hinweise statt Fehler.
+- Antwort 200: `{ "status": "provisional", "home_score": 6, "away_score": 4, "warnings": [ ... ], "version": "..." }`.
 
-**Harte Fehler (422):** Spieler nicht spielberechtigt (anderer Club, an anderes Team gebunden, Stammspieler eines höheren Teams), unvollständige oder widersprüchliche Spiele, Status erlaubt keine Erfassung.
+**Harte Fehler (422):** Spieler nicht spielberechtigt (anderer Club, an anderes Team gebunden, Stammspieler eines höheren Teams), unvollständige oder widersprüchliche Spiele. Erlaubt der Status keine Erfassung (z. B. schon bestätigt), antwortet der Server mit 409 (siehe Tabelle oben).
 
 **Hinweise (`warnings`):** Bleiben gespeichert und erscheinen im TK-Dashboard, z. B. «3. Ersatzeinsatz: Spieler ist ab jetzt an dieses Team gebunden».
 
@@ -122,12 +143,25 @@ Gekürztes Beispiel: Eine Meisterschaftsbegegnung braucht alle 10 Spiele (Cup bi
 | `POST fixtures/{id}/confirm` | `{}` | `ttl_confirm_result` oder `ttl_tk` |
 | `POST fixtures/{id}/objection` | `{ "reason": "…" }` (Pflicht, 10 bis 2000 Zeichen) | `ttl_confirm_result` |
 | `POST fixtures/{id}/decision` | `{ "action": "confirm"\|"finalize"\|"correct"\|"forfeit"\|"reset", "winner": "home"\|"away", "result": { wie POST result }, "comment": "…" }` | `ttl_tk` |
-| `POST fixtures/{id}/photo` | Multipart `file` (JPEG, PNG, HEIC, höchstens 10 MB) → `{ "attachment_id": 5, "url": "…" }` | `ttl_enter_result` |
-| `GET me/fixtures` | `{ "to_enter": [], "to_confirm": [], "upcoming": [] }` für die angemeldete Person | angemeldet |
+| `POST fixtures/{id}/photo` | Multipart `file` (JPEG, PNG, WebP, HEIC, höchstens 10 MB) → `{ "attachment_id": 5, "url": "…" }`. `url` ist die geschützte Adresse (siehe Foto). Scheitert das Verknüpfen, weil sich die Begegnung inzwischen geändert hat, wird der Anhang wieder gelöscht. | Heimseite bis zur Bestätigung, TK immer |
+| `GET fixtures/{id}/photo` | Liefert die Bilddatei (`Cache-Control: private, no-store`). Ohne Parameter das aktuelle Foto; `?attachment={id}` ein früheres Foto derselben Begegnung (z. B. nach dem Zurücksetzen). | aktuelles Foto: Heimseite, Gastseite, TK; frühere Fotos: TK |
+| `GET me/fixtures` | `{ "to_enter": [], "to_confirm": [], "upcoming": [] }` für die angemeldete Person: zu erfassen (Heimseite, Anspielzeit vorbei), zu bestätigen (Gastseite, provisorisch, nicht selbst erfasst), demnächst (21 Tage) | angemeldet |
+
+Antwort von `confirm` und `objection`: `{ "status": "...", "version": "..." }`; von `decision`: `{ "status", "home_score", "away_score", "version" }`, bei `confirm` wie bei `POST confirm`. Die Bestätigung als Entscheid der TK speichert die Bemerkung und gilt immer als Bestätigung durch die TK (`by_tk`), auch wenn das Konto zugleich zur Gastseite gehört.
+
+**Foto:** Ein Foto des Spielberichts zeigt Namen, Lizenznummern und Unterschriften. Der Anhangsstatus «privat» schützt nur den Eintrag in der Mediathek, nicht die Datei. Deshalb:
+
+- Ablage ohne Bildvarianten im Verzeichnis `uploads/ttleague-private/` mit `.htaccess` (sperrt den Zugriff unter Apache) und `index.php`. Unter nginx braucht es eine Regel im Server, z. B. `location ^~ /wp-content/uploads/ttleague-private/ { deny all; }`. Besser ist ein Verzeichnis ausserhalb des Web-Roots in `wp-config.php`: `define( 'TTLEAGUE_PRIVATE_UPLOADS', '/pfad/ausserhalb/des/webroots' );`. Dass es ausserhalb liegt, verantwortet die Verwaltung; das Plugin erkennt ein Verzeichnis innerhalb von WordPress (uploads, `wp-content` oder `ABSPATH`) oder des Web-Roots der Anfrage (`DOCUMENT_ROOT`, z. B. wenn WordPress in einem Unterverzeichnis liegt) und prüft es dann wie das Standardverzeichnis.
+- Ausgeliefert wird nur über `GET fixtures/{id}/photo` mit Rechteprüfung. `GET entry` liefert dafür `current.photo_url`, `Results::photo_url()` baut sie. Die Adresse enthält den REST-Nonce, damit sie auch in `<img>` funktioniert; er gilt nur zusammen mit dem Anmelde-Cookie derselben Person.
+- Zurücksetzen löst das Foto von der Begegnung; der Anhang bleibt erhalten und ist für die TK weiter abrufbar.
+- Wird der Anhang gelöscht (Mediathek, Aufräumen nach einem gescheiterten Upload), löscht das Plugin seine Dateien im Verzeichnis der Fotos selbst. WordPress löscht nur innerhalb von uploads; ohne das blieben Fotos in einem Verzeichnis der Konstante liegen.
+- **Prüfung im Betrieb:** Vor jedem Upload stellt das Plugin `.htaccess` und `index.php` wieder her (fehlen sie oder weichen sie ab und lassen sie sich nicht schreiben, gibt es keinen Upload). Zudem legt es Testdateien mit zufälligem Inhalt ab und ruft sie über HTTP ab, beim Upload und in «Website-Zustand»: eine pro erlaubter Dateiendung der Fotos (jpg, jpeg, jpe, png, webp, heic, heif), im Unterverzeichnis, in das auch der nächste Upload kommt (z. B. `2026/11`). So fällt auch eine Serverregel auf, die nur bestimmte Endungen sperrt; unter nginx gewinnt etwa eine Regel für Bilder mit regulärem Ausdruck gegen eine Sperre ohne `^~`. Uploads gibt es nur, wenn die Prüfung den Schutz bestätigt (jede Testdatei mit 401, 403 oder 404 abgewiesen). Liefert der Webserver eine Testdatei aus (offen) oder lässt sich die Prüfung nicht durchführen (unbekannt, z. B. eigene Website nicht erreichbar, Weiterleitung, Zeitüberschreitung), antworten Uploads mit 503 `ttl_unavailable`. Ein bestätigter Schutz gilt 12 Stunden und nur für dasselbe Verzeichnis, dasselbe Upload-Unterverzeichnis (ein neuer Monat wird neu geprüft) und denselben Web-Root (WP-CLI kennt keinen); jedes andere Ergebnis prüft der nächste Upload neu, damit eine korrigierte Serverregel gleich wirkt. Ein Verzeichnis der Konstante ausserhalb von WordPress und Web-Root hat keine Adresse, die sich über HTTP prüfen liesse (Zustand «ausserhalb»). Uploads sind dann erlaubt; «Website-Zustand» nennt den Fall und verlangt, einmal von Hand zu prüfen, dass der Webserver das Verzeichnis nicht ausliefert, auch nicht über einen Alias. So geht es auch dort, wo die Website sich selbst nicht erreicht (z. B. `wp server`). Das Ergebnis steht unter «Werkzeuge → Website-Zustand» («Fotos der Spielberichte»); der Aufruf dort prüft immer neu, z. B. nach Änderungen am Webserver. Nach der Einrichtung des Servers zusätzlich von Hand prüfen: Die direkte Adresse eines Fotos liefert ohne Anmeldung keine Bilddaten.
+
+**Hinweise zur Zeit:** Erfassung nach Ablauf von `entry_deadline_hours` (48 h) nach Anspielzeit oder mehr als zwei Stunden vor dem Termin ergibt einen Hinweis, keinen Fehler.
 
 ## Protokoll
 
-- `fixture_event`: jedes fachliche Ereignis (`entered`, `edited`, `confirmed`, `disputed`, `decided`, `forfeit`, `reset`) mit Person, Kommentar, Zusatzdaten (z. B. Hinweise) und Zeitpunkt. Wird im Matchreport als Verlauf gezeigt.
+- `fixture_event`: jedes fachliche Ereignis (`entered`, `edited`, `confirmed`, `disputed`, `decided`, `forfeit`, `reset`, `photo`) mit Konto, Person, Kommentar, Zusatzdaten (`score`, `warnings`, `action`, `winner`, `by_tk`) und Zeitpunkt (UTC). `GET entry` liefert ihn als `history`.
 - `audit_log`: technische Nachvollziehbarkeit jeder Änderung an `fixture`, `lineup`, `game` mit Zustand vorher und nachher als JSON.
 
 ## Ereignisse
@@ -140,9 +174,12 @@ Der `ResultService` löst WordPress-Aktionen aus; Benachrichtigungen, Dashboard 
 | `ttleague_result_confirmed` | Fixture-ID, User-ID, `bool $by_tk` |
 | `ttleague_result_disputed` | Fixture-ID, User-ID, Begründung |
 | `ttleague_result_decided` | Fixture-ID, User-ID, Aktion, Kommentar |
+| `ttleague_result_photo` | Fixture-ID, User-ID, Anhang-ID |
 | `ttleague_data_changed` | Bereich (z. B. `fixture`), ID |
 
-Nach jeder Änderung: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten).
+`ttleague_result_confirmed` kommt auch, wenn die TK über `decision` mit `action: confirm` bestätigt (`$by_tk = true`).
+
+Nach jeder Änderung an Resultat oder Status: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten). Beides läuft vor den Aktionen. Ausnahme ist das Foto: Es erscheint nur mit Rechten, nie auf öffentlichen Seiten, und ändert keine Wertung. Die Aktionen kommen erst nach dem Speichern; wirft ein Listener eine Ausnahme, landet sie im Fehlerprotokoll (`ttleague: Fehler in …`), und die Antwort bleibt erfolgreich. So wiederholt niemand eine gespeicherte Aktion.
 
 ## Benachrichtigungen und Fristen
 
