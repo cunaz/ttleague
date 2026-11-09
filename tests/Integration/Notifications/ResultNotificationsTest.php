@@ -177,10 +177,18 @@ final class ResultNotificationsTest extends NotificationTestCase {
 
 		$service->decide( $this->id['f1'], $this->actor['tk'], array( 'action' => 'reset' ) );
 		$service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
-		$service->decide( $this->id['f1'], $this->actor['tk_account'], array( 'action' => 'confirm' ) );
+		$service->decide(
+			$this->id['f1'],
+			$this->actor['tk_account'],
+			array(
+				'action'  => 'confirm',
+				'comment' => 'Matchblatt geprüft.',
+			)
+		);
 		$confirmed = array_values( array_filter( $this->email->sent, static fn( array $s ): bool => 'Resultat bestätigt: Seefeld 1 – Wollishofen 1' === $s['subject'] ) );
 		self::assertSame( array( $this->p( 'captain_h1' ), $this->p( 'chef_home' ), $this->p( 'captain_a1' ), $this->p( 'chef_away' ) ), array_column( $confirmed, 'to' ) );
 		self::assertSame( $this->event_id( $this->id['f1'], 'confirmed' ), $confirmed[0]['ref_id'] );
+		self::assertContains( 'Bemerkung der TK: «Matchblatt geprüft.»', $confirmed[0]['notification']->paragraphs, 'die Bemerkung der TK kommt mit' );
 	}
 
 	public function test_preferences_apply_to_immediate_messages(): void {

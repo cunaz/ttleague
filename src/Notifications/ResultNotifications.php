@@ -66,7 +66,7 @@ final class ResultNotifications implements ResultEvents {
 			return;
 		}
 		$this->notifier->send(
-			$this->messages->result_decided( $ctx, $event['id'], 'confirm', null, null ),
+			$this->messages->result_decided( $ctx, $event['id'], 'confirm', $event['comment'] ?? null, null ),
 			$this->recipients->sides( $ctx ),
 			$user_id,
 			$event['person_id']
