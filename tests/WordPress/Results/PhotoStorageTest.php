@@ -201,6 +201,60 @@ final class PhotoStorageTest extends TestCase {
 	}
 
 	/**
+	 * WordPress löscht Dateien nur innerhalb von uploads; mit TTLEAGUE_PRIVATE_UPLOADS ausserhalb
+	 * davon löscht PhotoStorage die Fotos selbst, aber nichts ausserhalb des Verzeichnisses der
+	 * Fotos, auch nicht über einen symbolischen Link.
+	 */
+	public function test_deleting_the_attachment_removes_its_files_only_in_the_private_directory(): void {
+		self::assertSame( 10, has_action( 'delete_attachment', array( PhotoStorage::class, 'delete_files' ) ) );
+		$dir     = PhotoStorage::base_dir() . '/2026/11';
+		$name    = 'spielbericht-1-' . wp_generate_password( 6, false );
+		$outside = get_temp_dir() . 'ttl-fremd-' . wp_generate_password( 6, false ) . '.jpg';
+		$public  = wp_upload_dir()['basedir'] . '/ttl-oeffentlich-' . wp_generate_password( 6, false ) . '.jpg';
+		wp_mkdir_p( $dir );
+		foreach ( array( "$dir/$name.jpg", "$dir/$name-original.heic", $outside, $public ) as $file ) {
+			file_put_contents( $file, 'Bild' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Datei für den Test.
+		}
+		symlink( $outside, "$dir/$name-link.jpg" );
+		$photo = self::factory()->attachment->create_object(
+			array(
+				'file'           => "$dir/$name.jpg",
+				'post_mime_type' => 'image/jpeg',
+				'post_status'    => 'private',
+			)
+		);
+		wp_update_attachment_metadata(
+			$photo,
+			array(
+				'original_image' => "$name-original.heic",
+				'sizes'          => array( 'thumbnail' => array( 'file' => "$name-link.jpg" ) ),
+			)
+		);
+		$other = self::factory()->attachment->create_object(
+			array(
+				'file'           => $public,
+				'post_mime_type' => 'image/jpeg',
+			)
+		);
+
+		try {
+			PhotoStorage::delete_files( $photo );
+			PhotoStorage::delete_files( $other );
+
+			self::assertFileDoesNotExist( "$dir/$name.jpg" );
+			self::assertFileDoesNotExist( "$dir/$name-original.heic", 'Original vor der Umwandlung' );
+			self::assertFileExists( $outside, 'Ziel eines Links ausserhalb des Verzeichnisses der Fotos' );
+			self::assertFileExists( $public, 'Anhang ausserhalb des Verzeichnisses der Fotos' );
+		} finally {
+			foreach ( array( "$dir/$name-link.jpg", $outside, $public ) as $file ) {
+				if ( is_link( $file ) || is_file( $file ) ) {
+					unlink( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Dateien aus dem Test.
+				}
+			}
+		}
+	}
+
+	/**
 	 * Für TTLEAGUE_PRIVATE_UPLOADS: Ein Verzeichnis innerhalb von WordPress hat eine Adresse und
 	 * wird über HTTP geprüft, eines ausserhalb nicht. Symbolische Links werden aufgelöst.
 	 */
