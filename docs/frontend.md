@@ -11,6 +11,7 @@ Dieses Dokument beschreibt die lesende Darstellung des Plugins: Seiten und Adres
 | Ansichten | `src/Frontend/Views/` | Serverseitiges HTML pro Ansicht, escaped. |
 | Blöcke, Shortcode | `src/Frontend/Blocks.php`, `Shortcode.php`, `blocks/*/block.json`, `assets/js/editor.js` | Dynamische Blöcke mit `render_callback`, Shortcode `[ttleague view="…"]`, Editor ohne Build-Schritt. |
 | Gestaltung | `assets/css/frontend.css` | Mobile first, Tabellen werden unter 600px zu Karten, Farben und Abstände aus den Presets des aktiven Block-Themes. |
+| Kalender-Abos | `src/Calendar/` | iCal-Feeds (RFC 5545) für Mannschaft, Club und Spieler, siehe [Kalender-Abos](#kalender-abos-ical). |
 
 Einstieg ist `TTLeague\Frontend\Frontend::register()`, aufgerufen von `TTLeague\Plugin::boot()`.
 
@@ -119,9 +120,51 @@ Fachliche Festlegungen:
 - Theme: Die Blöcke funktionieren mit jedem Block-Theme und übernehmen dessen Farben, Schriften und Abstände (getestet mit Twenty Twenty-Five). Ein eigenes Child-Theme mit Navigation, Startseite und Kontaktangaben gehört zur jeweiligen Instanz und wird in deren Repository gepflegt. Navigationslinks auf die Seiten des Plugins sind relative Pfade (`/meisterschaft/` …).
 
 
+## Kalender-Abos (iCal)
+
+Spielpläne lassen sich als Kalender abonnieren (Handy, Outlook, Google Kalender). Die Feeds sind öffentlich wie die Seiten und enthalten die ganze Saison inklusive vergangener Spiele.
+
+| Adresse | Inhalt |
+|---|---|
+| `/kalender/team/2026-27/seefeld-1.ics` | Begegnungen der Mannschaft in der Meisterschaft dieser Saison (jede Saison, auch archivierte) |
+| `/kalender/club/seefeld.ics` | Begegnungen aller Teams des Clubs in der aktiven Saison, Meisterschaft und Cup (über `cup_entry.club_id`) |
+| `/kalender/spieler/90001.ics` | Aktive Saison: Begegnungen aller Teams, in denen die Person Stammspieler, gebunden oder eingesetzt ist (Meisterschaft über `team_roster` und `lineup`, Cup über `cup_entry` und `lineup`), dazu ihre Ranglistenturnier-Gruppen mit `start_at` |
+
+Unbekannte Saison, Mannschaft, Club oder Lizenz und jede andere `.ics`-Adresse unter `/kalender/` antworten mit 404 (Text). Grossbuchstaben im Slug werden toleriert. Ein gemeldeter Spieler ohne Team erhält einen leeren, gültigen Kalender.
+
+**Ereignisse**
+
+- `UID` stabil: `fixture-{id}@{host}`, Ranglistenturnier `rlgroup-{id}@{host}` (Host der Website).
+- `DTSTART`/`DTEND` mit `TZID=Europe/Zurich` (Ortszeit aus der Datenbank), der Kalender enthält den `VTIMEZONE`-Block mit den Regeln für Sommer- und Winterzeit. Dauer: Meisterschaft 2½ h, Cup 2 h, Ranglistenturnier 3 h. Eine Anspielzeit 00:00 gilt als unbekannt: Ganztagesereignis (`VALUE=DATE`, frei statt besetzt) mit dem Hinweis «Anspielzeit noch offen». Begegnungen ohne Datum fehlen.
+- `SUMMARY` «Seefeld 1 – Altstetten 1 (Gruppe A)», nach dem Spiel mit Resultat «… 6:4» (Status mit erfasstem Resultat wie in der Tabelle), bei Forfait «… 0:10 Forfait». Verschobene Begegnungen: «Verschoben: …» mit `STATUS:TENTATIVE`; annullierte: «Annulliert: …» mit `STATUS:CANCELLED`. Ranglistenturnier: «Ranglistenturnier: 2. Runde, Kategorie 1, Gruppe 3».
+- `LOCATION` Lokal mit Adresse (Lokal der Begegnung, sonst Heimlokal des Heimteams; im Ranglistenturnier das Lokal der Gruppe, sonst der Platzclub), `GEO` wenn Koordinaten erfasst sind.
+- `URL` und letzte Zeile der `DESCRIPTION`: Link auf den Matchreport bzw. die Seite des Ranglistenturniers. Die Beschreibung nennt ausserdem Konkurrenz und Saison, Resultat mit Status (provisorisch, strittig, Forfait) und das Spiellokal.
+- `DTSTAMP` (UTC) ist der Zeitpunkt, zu dem die Daten berechnet und gecacht wurden; `CATEGORIES` Meisterschaft, Cup oder Ranglistenturnier.
+
+**Kalenderkopf**: `PRODID`, `VERSION:2.0`, `CALSCALE:GREGORIAN`, `METHOD:PUBLISH`, Name als `NAME` und `X-WR-CALNAME` («Seefeld 1 – Spiele 2026/27»), Beschreibung als `DESCRIPTION` und `X-WR-CALDESC`, `X-WR-TIMEZONE:Europe/Zurich`, `REFRESH-INTERVAL;VALUE=DURATION:PT6H` und `X-PUBLISHED-TTL:PT6H`.
+
+**Formalien** (`TTLeague\Calendar\IcsWriter`, reine Klasse ohne WordPress): Zeilenende CRLF, Faltung bei 75 Oktetten nur zwischen ganzen Zeichen (Graphem-Clustern, UTF-8-sicher), Maskierung von Backslash, Semikolon, Komma und Zeilenumbruch in Textwerten, Steuerzeichen werden entfernt.
+
+**Antwort**: `Content-Type: text/calendar; charset=utf-8`, `Content-Disposition: inline; filename="seefeld-1-2026-27.ics"`, `Cache-Control: public, max-age=900`, `X-Robots-Tag: noindex, nofollow`. Das schwache `ETag` entsteht aus Datenversion (`DataVersion::get()`), Feed-Typ und Parametern, Formatversion, Startadresse, Seitenpfaden und Sprache; passt `If-None-Match`, antwortet der Feed mit 304 ohne die Ereignisse zu laden.
+
+**Aufbau**
+
+| Klasse | Aufgabe |
+|---|---|
+| `Calendar` | Registrierung (aus `Plugin::boot()`), Query-Variablen `ttl_ical`, `ttl_ical_season`, `ttl_ical_key`, Rewrite-Regeln, Auslieferung bei `parse_request` (vor Hauptabfrage und Template) |
+| `FeedUrls` | Adressen, `webcal://`-Variante, Rewrite-Regeln als reine Funktion |
+| `Feeds` | Lesemodell: Auflösung der Adresse über die bestehenden Lesemodelle, eine Abfrage pro Feed, gecacht über den Cache des Lesemodells (Schlüssel mit `DataVersion::key()`, Name `ical_team`, `ical_club`, `ical_player`) |
+| `EventFactory` | Titel, Beschreibung, Ort, Status und Dauer der Ereignisse; Kalendername |
+| `IcsWriter`, `IcsEvent` | iCalendar-Text |
+| `ConditionalGet` | ETag und Vergleich mit `If-None-Match` |
+
+Neue oder geänderte Rewrite-Regeln erneuert das Plugin einmalig selbst (Option `ttleague_calendar_routes`); manuell mit `wp rewrite flush --hard`.
+
 ## Tests
 
 - `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
+- `tests/Unit/Calendar/`: Faltung (Grenzen, UTF-8, Graphem-Cluster), Maskierung, `VTIMEZONE` im Abgleich mit der Zeitzonendatenbank, Dauer über die Zeitumstellung, Ganztag, Titel und Status der Ereignisse, Adressen, Rewrite-Regeln, ETag.
+- `tests/Integration/Calendar/`: Feeds für Mannschaft, Club und Spieler gegen das Szenario (Forfait, provisorisch, Cup, Ranglistenturnier, Ersatzeinsatz, annulliert, Anspielzeit offen, unbekannte Adressen).
 - `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping.
 
 ```bash

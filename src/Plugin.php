@@ -36,6 +36,11 @@ final class Plugin {
 			\TTLeague\Content\Content::register();
 		}
 
+		// Kalender-Abos (iCal) für Team, Club und Spieler.
+		if ( class_exists( \TTLeague\Calendar\Calendar::class ) ) {
+			\TTLeague\Calendar\Calendar::register();
+		}
+
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'ttleague', \TTLeague\Cli\Command::class );
 			\WP_CLI::add_command( 'ttleague rating', \TTLeague\Cli\RatingCommand::class );
