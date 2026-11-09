@@ -21,7 +21,8 @@ namespace TTLeague\Results;
  * exposure() über HTTP mit Testdateien in jedem erlaubten Bildformat, im Unterverzeichnis, in
  * dem auch die Fotos landen. Das gilt auch für ein Verzeichnis der Konstante innerhalb von
  * WordPress oder des Web-Roots (DOCUMENT_ROOT). Uploads gibt es nur, wenn die Prüfung den
- * Schutz bestätigt.
+ * Schutz bestätigt oder das Verzeichnis der Konstante ausserhalb von WordPress und Web-Root
+ * liegt (keine Adresse, Verantwortung der Verwaltung).
  *
  * Ausgeliefert wird nur über `GET /wp-json/ttleague/v1/fixtures/{id}/photo` mit Rechteprüfung.
  */
@@ -29,14 +30,22 @@ final class PhotoStorage {
 
 	public const DIR = 'ttleague-private';
 
-	/** Ergebnis der Prüfung über HTTP mit dem geprüften Verzeichnis, 12 Stunden gemerkt. */
+	/** Ergebnis der Prüfung mit ihrem Bereich (Verzeichnis, Upload-Unterverzeichnis, Web-Root), 12 Stunden gemerkt. */
 	public const CHECK_TRANSIENT = 'ttleague_photo_storage_check';
 
+	/** Über HTTP geprüft: Jede Testdatei wird abgewiesen. */
 	public const PROTECTED = 'protected';
-	public const EXPOSED   = 'exposed';
-	public const UNKNOWN   = 'unknown';
 
-	private const STATES = array( self::PROTECTED, self::EXPOSED, self::UNKNOWN );
+	/** Verzeichnis der Konstante ausserhalb von WordPress und Web-Root, ohne Adresse; nicht über HTTP prüfbar. */
+	public const OUTSIDE = 'outside';
+
+	public const EXPOSED = 'exposed';
+	public const UNKNOWN = 'unknown';
+
+	private const STATES = array( self::PROTECTED, self::OUTSIDE, self::EXPOSED, self::UNKNOWN );
+
+	/** Zustände, in denen Uploads erlaubt sind. */
+	private const ACCEPTED = array( self::PROTECTED, self::OUTSIDE );
 
 	/**
 	 * Erlaubte Bildformate für Fotos des Spielberichts. Die Prüfung über HTTP ruft für jede
@@ -83,16 +92,17 @@ final class PhotoStorage {
 		if ( ! self::protect( $base ) ) {
 			throw ResultException::unavailable( __( 'Die Ablage für Fotos lässt sich nicht schützen. Bitte wende dich an die TK.', 'ttleague' ) );
 		}
-		// Nur ein bestätigter Schutz gibt Uploads frei. Alles andere prüft der Upload neu, auch ein
-		// gemerktes «offen»: Die Serverregel kann inzwischen greifen.
+		// Uploads gibt es nur bei bestätigtem Schutz oder mit einem Verzeichnis ausserhalb von
+		// WordPress und Web-Root. Alles andere prüft der Upload neu, auch ein gemerktes «offen»:
+		// Die Serverregel kann inzwischen greifen.
 		$state = self::cached();
-		if ( self::PROTECTED !== $state ) {
+		if ( ! in_array( $state, self::ACCEPTED, true ) ) {
 			$state = self::exposure( true );
 		}
 		if ( self::EXPOSED === $state ) {
 			throw ResultException::unavailable( __( 'Die Ablage für Fotos ist von aussen erreichbar; Fotos sind deshalb gesperrt. Bitte wende dich an die TK.', 'ttleague' ) );
 		}
-		if ( self::PROTECTED !== $state ) {
+		if ( ! in_array( $state, self::ACCEPTED, true ) ) {
 			throw ResultException::unavailable( __( 'Der Schutz der Ablage für Fotos liess sich nicht prüfen; Fotos sind deshalb gesperrt. Bitte wende dich an die TK.', 'ttleague' ) );
 		}
 		$dirs = static function ( array $dirs ) use ( $base ): array {
@@ -177,13 +187,14 @@ final class PhotoStorage {
 	}
 
 	/**
-	 * Ist die Ablage von aussen erreichbar? Legt eine Testdatei mit zufälligem Inhalt ab und ruft
-	 * sie über HTTP ab, wie die Prüfungen von «Website-Zustand». Liefert der Server den Inhalt,
-	 * ist das Verzeichnis offen. Ein Verzeichnis der Konstante ausserhalb von WordPress hat keine
-	 * Adresse und gilt als geschützt (Verantwortung der Verwaltung).
+	 * Ist die Ablage von aussen erreichbar? Legt Testdateien mit zufälligem Inhalt ab und ruft
+	 * sie über HTTP ab (probe()), wie die Prüfungen von «Website-Zustand». Liefert der Server
+	 * einen Inhalt, ist das Verzeichnis offen. Ein Verzeichnis der Konstante ausserhalb von WordPress und
+	 * Web-Root hat keine Adresse: Dass es nicht ausgeliefert wird (auch nicht über einen Alias),
+	 * verantwortet die Verwaltung (self::OUTSIDE).
 	 *
 	 * @param bool $fresh Gemerktes Ergebnis ignorieren.
-	 * @return string self::PROTECTED, self::EXPOSED oder self::UNKNOWN (z. B. kein Zugriff auf die eigene Website).
+	 * @return string self::PROTECTED, self::OUTSIDE, self::EXPOSED oder self::UNKNOWN (z. B. kein Zugriff auf die eigene Website).
 	 */
 	public static function exposure( bool $fresh = false ): string {
 		$cached = $fresh ? null : self::cached();
@@ -196,7 +207,7 @@ final class PhotoStorage {
 		if ( self::protect( $base ) ) {
 			// Ein Verzeichnis der Konstante ausserhalb von WordPress und Web-Root hat keine Adresse.
 			$url    = self::configured() ? self::url_of( $base ) : untrailingslashit( wp_upload_dir( null, false )['baseurl'] ) . '/' . self::DIR;
-			$result = null === $url ? self::PROTECTED : self::probe( $base, $url );
+			$result = null === $url ? self::OUTSIDE : self::probe( $base, $url );
 		}
 		set_transient(
 			self::CHECK_TRANSIENT,
@@ -224,20 +235,35 @@ final class PhotoStorage {
 	}
 
 	/**
+	 * Test für «Website-Zustand»: prüft immer neu.
+	 *
 	 * @return array<string,mixed>
 	 */
 	public static function site_status(): array {
-		$state  = self::exposure( true );
+		return self::report( self::exposure( true ) );
+	}
+
+	/**
+	 * Ergebnis für «Website-Zustand» zu einem Zustand der Ablage.
+	 *
+	 * @param string $state self::PROTECTED, self::OUTSIDE, self::EXPOSED oder self::UNKNOWN.
+	 * @return array<string,mixed>
+	 */
+	public static function report( string $state ): array {
 		$status = match ( $state ) {
-			self::PROTECTED => 'good',
-			self::EXPOSED   => 'critical',
-			default         => 'recommended',
+			self::PROTECTED, self::OUTSIDE => 'good',
+			self::EXPOSED                  => 'critical',
+			default                        => 'recommended',
 		};
 		$label = match ( $state ) {
 			self::PROTECTED => __( 'Die Fotos der Spielberichte sind vor direktem Zugriff geschützt', 'ttleague' ),
+			self::OUTSIDE   => __( 'Die Fotos der Spielberichte liegen ausserhalb von WordPress und Web-Root', 'ttleague' ),
 			self::EXPOSED   => __( 'Die Fotos der Spielberichte wären direkt erreichbar; Uploads sind gesperrt', 'ttleague' ),
 			default         => __( 'Der Schutz der Fotos der Spielberichte liess sich nicht prüfen; Uploads sind gesperrt', 'ttleague' ),
 		};
+		$text = self::OUTSIDE === $state
+			? __( 'Die Fotos liegen im Verzeichnis aus der Konstante TTLEAGUE_PRIVATE_UPLOADS. Es liegt ausserhalb von WordPress und des Web-Roots und hat deshalb keine Adresse, die das Plugin über HTTP prüfen könnte. Prüfe einmal von Hand, dass der Webserver es nicht ausliefert, auch nicht über einen Alias. Ausgeliefert werden die Fotos nur über die REST-API mit Rechteprüfung.', 'ttleague' )
+			: __( 'Fotos liegen im Verzeichnis uploads/ttleague-private und werden nur über die REST-API mit Rechteprüfung ausgeliefert. Uploads gibt es nur, wenn Testdateien in jedem erlaubten Bildformat in diesem Verzeichnis über HTTP nicht abrufbar sind. Unter nginx braucht es dafür eine Regel im Server, z. B. «location ^~ /wp-content/uploads/ttleague-private/ { deny all; }». Ohne Prüfung über HTTP geht es mit einem Verzeichnis ausserhalb des Web-Roots in der Konstante TTLEAGUE_PRIVATE_UPLOADS.', 'ttleague' );
 		return array(
 			'label'       => $label,
 			'status'      => $status,
@@ -245,7 +271,7 @@ final class PhotoStorage {
 				'label' => __( 'Sicherheit', 'ttleague' ),
 				'color' => 'critical' === $status ? 'red' : 'blue',
 			),
-			'description' => '<p>' . esc_html__( 'Fotos liegen im Verzeichnis uploads/ttleague-private und werden nur über die REST-API mit Rechteprüfung ausgeliefert. Uploads gibt es nur, wenn Testdateien in jedem erlaubten Bildformat in diesem Verzeichnis über HTTP nicht abrufbar sind. Unter nginx braucht es dafür eine Regel im Server, z. B. «location ^~ /wp-content/uploads/ttleague-private/ { deny all; }». Ohne Prüfung über HTTP geht es mit einem Verzeichnis ausserhalb des Web-Roots in der Konstante TTLEAGUE_PRIVATE_UPLOADS.', 'ttleague' ) . '</p>',
+			'description' => '<p>' . esc_html( $text ) . '</p>',
 			'actions'     => '',
 			'test'        => 'ttleague_photo_storage',
 		);
@@ -253,7 +279,8 @@ final class PhotoStorage {
 
 	/**
 	 * Gemerktes Ergebnis der Prüfung, nur für denselben Bereich: dasselbe Verzeichnis (Konstante
-	 * gesetzt oder entfernt) und derselbe Web-Root (WP-CLI kennt keinen).
+	 * gesetzt oder entfernt), dasselbe Upload-Unterverzeichnis (neuer Monat) und derselbe Web-Root
+	 * (WP-CLI kennt keinen).
 	 */
 	private static function cached(): ?string {
 		$cached = get_transient( self::CHECK_TRANSIENT );
@@ -264,10 +291,10 @@ final class PhotoStorage {
 	}
 
 	/**
-	 * Bereich eines Ergebnisses: Verzeichnis der Fotos und Web-Root.
+	 * Bereich eines Ergebnisses: Verzeichnis der Fotos, Upload-Unterverzeichnis und Web-Root.
 	 */
 	private static function scope(): string {
-		return self::base_dir() . "\n" . self::document_root();
+		return implode( "\n", array( self::base_dir(), (string) wp_upload_dir( null, false )['subdir'], self::document_root() ) );
 	}
 
 	/**
