@@ -19,7 +19,7 @@ Dieses Dokument ist der Vertrag für Phase 2: Konten, Anmeldung, Rechte, Status�
 5. Rückfall: Anmeldung mit Passwort über `wp-login.php` bleibt möglich (Passwort setzen über «Passwort vergessen»). Passkeys und Zwei-Faktor für die TK über ein etabliertes Plugin.
 6. Konten mit erweiterten Rechten (Verwaltung `manage_options`, Redaktion `edit_posts`, TK `ttl_tk`) melden sich standardmässig nicht per Link an, sondern mit Passwort (und gegebenenfalls zweitem Faktor): Wer ihr Postfach liest, bekäme sonst diese Rechte. Ist die Person mit einem solchen Konto verknüpft, erhält sie auf die Anfrage statt des Links eine E-Mail mit dem Hinweis auf die Passwort-Anmeldung. Wird ein Link für ein solches Konto eingelöst (etwa eine ältere Einladung), bricht die Anmeldung mit demselben Hinweis auf `/anmelden/` ab. Der Filter `ttleague_magic_link_allowed` (`bool $allowed`, `int $user_id`) entscheidet pro Konto und kann die Anmeldung per Link auch für Konten mit erweiterten Rechten erlauben; wer das tut, nimmt dieses Risiko in Kauf.
 7. Auf `/anmelden/` und `/mein-bereich/` gelten `noindex`, keine Zwischenspeicherung und `Referrer-Policy: same-origin`, damit das Token in der Adresse nicht an fremde Seiten gelangt.
-8. Konten ohne redaktionelle Rechte (`edit_posts`) und ohne `ttl_tk` sehen keine Werkzeugleiste und werden aus dem Backend nach `/mein-bereich/` umgeleitet (`admin-ajax.php` und `admin-post.php` bleiben erreichbar).
+8. Konten ohne erweiterte Rechte (`manage_options`, `edit_posts`, `ttl_tk`, dieselbe Grenze wie in Punkt 6) sehen keine Werkzeugleiste und werden aus dem Backend nach `/mein-bereich/` umgeleitet (`admin-ajax.php` und `admin-post.php` bleiben erreichbar).
 9. Block `ttleague/account-link` für die Kopfzeile: Symbol mit «Anmelden» für Gäste, «Mein Bereich» für Angemeldete.
 
 **Zeiten:** Tokens, Protokolle und Zeitstempel (`created_at`, `entered_at`, `sent_at`) sind UTC. Spieltermine (`fixture.scheduled_at`) sind Ortszeit der Website. Fristen rechnen deshalb in der Zeitzone der Website (`wp_timezone()`).
@@ -219,3 +219,24 @@ Nach jeder Änderung an Resultat oder Status: `DataVersion::bump()` und eine ent
 | Forfait-Vorschlag | TK | 16 Tage nach Anspielzeit ohne Resultat |
 
 Jede Benachrichtigung wird pro Person, Ereignis, Bezug und Kanal genau einmal versendet (`notification_log`). Personen wählen pro Ereignistyp E-Mail und Push (`notification_pref`); ohne Eintrag gilt E-Mail an.
+
+## Tests
+
+| Ebene | Ordner | Inhalt |
+|---|---|---|
+| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, ohne WordPress |
+| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks` und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
+| WordPress | `tests/WordPress/` | mit echtem WordPress (wp-phpunit, `composer test:wp`, siehe README), siehe unten |
+
+Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
+
+- `AccountService::ensure_user()` mit echten Konten: Ein bestehendes Konto mit erweiterten Rechten (Rollen `administrator`, `editor`, `contributor`, `ttl_tk` sowie Abonnenten mit `manage_options`, `edit_posts` oder zusätzlicher Rolle `ttl_tk`) und das Konto einer anderen Person werden nicht verknüpft; ein freies Abonnenten-Konto wird verknüpft, sonst wird ein Konto angelegt.
+- Anmeldung per Link: Anfrage (Link oder Passwort-Hinweis, neutrale Antwort, Rate-Limit), Einlösen mit Konto und 60 Tagen «angemeldet bleiben», abgelaufene und verbrauchte Tokens, Herkunftsprüfung über Origin und Referer, Nonce, Weiterleitung nur auf eigene Seiten, Einwilligung und Profil.
+- Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison).
+- REST-API über den REST-Server von WordPress: 401, 403, 404, 422 mit Feldfehlern, 409 bei veralteter `version`, Erfassen und Bestätigen mit Verlauf und Ereignissen, `me/fixtures`, Rechte und fehlende Datei beim Foto.
+- Ereignisse: Ein Listener, der eine Ausnahme wirft, lässt die gespeicherte Erfassung erfolgreich; Cache-Version und Neuberechnung sind vorher erledigt, der Fehler steht im Fehlerprotokoll.
+- Ablage der Fotos mit einem gespielten Webserver (`pre_http_request`): Testdateien aller Bildformate im Upload-Unterverzeichnis; ausgeliefert (offen, Uploads gesperrt, auch wenn nur `.webp` ausgeliefert wird), 401/403/404 (geschützt), Weiterleitung, andere Seite, Serverfehler und keine Verbindung (unbekannt, gesperrt); nach «offen» hebt nur ein bestätigter Schutz die Sperre auf; gemerktes Ergebnis nur für dasselbe Verzeichnis, denselben Monat und denselben Web-Root; Ablage ohne Bildvarianten; Löschen der Dateien mit dem Anhang, nur im Verzeichnis der Fotos; Schutzdateien wiederhergestellt; Adresse eines Verzeichnisses für `TTLEAGUE_PRIVATE_UPLOADS` (auch über symbolische Links und den Web-Root); «Website-Zustand» mit einem Bericht je Zustand (auch «ausserhalb» für ein Verzeichnis der Konstante ohne Adresse).
+- Blöcke `ttleague/login`, `ttleague/my-area` und `ttleague/account-link` für Gäste und Angemeldete; Umleitung aus dem Backend und Werkzeugleiste.
+- Schema über `dbDelta()` (vollständig, InnoDB, ohne Änderungen bei einem erneuten Lauf) und die Rolle der TK.
+
+Weiterhin von Hand: Speichern eines Fotos (`POST fixtures/{id}/photo` verlangt eine echte Upload-Datei, `is_uploaded_file()`), die Sperre der Ablage durch den echten Webserver der Produktion (Checkliste der Inbetriebnahme), Anmeldung mit echten Cookies und `X-WP-Nonce` im Browser, Versand über einen echten Mailserver.

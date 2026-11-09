@@ -17,8 +17,9 @@ cd "$ROOT" || exit 2
 # --- Repository-spezifisch -------------------------------------------------------
 # Inhalte dieser Pfade werden nicht geprüft (Rohdaten, Lockfiles, diese Prüfung selbst).
 SKIP_CONTENT='^(composer\.lock|package-lock\.json|LICENSE|bin/check-sensitive\.sh|\.gitignore)$'
-# Erlaubte E-Mail-Domänen bzw. -Adressen.
-ALLOWED_EMAIL='(users\.noreply\.github\.com|@example\.(org|com|net)|noreply@anthropic\.com)$'
+# Erlaubte E-Mail-Domänen bzw. -Adressen. example.invalid: reservierte Domäne (RFC 2606), nie
+# zustellbar; für erfundene Personen in Tests, deren Konten Mails auslösen.
+ALLOWED_EMAIL='(users\.noreply\.github\.com|@example\.(org|com|net|invalid)|noreply@anthropic\.com)$'
 
 # --- Verbotene Pfade -----------------------------------------------------------
 FORBIDDEN_PATHS='(^|/)(\.claude|\.specstory|\.cursor|\.continue|\.codeium|\.windsurf|\.cline|\.roo|memory-bank|\.gemini|\.codex|\.junie|\.copilot|\.tabnine|scratchpad|\.scratch)(/|$)|(^|/)CLAUDE\.local\.md$|(^|/)\.aider|\.jsonl$|(^|/)\.env(\.[^/]*)?$|(^|/)(auth\.json|\.npmrc|\.netrc|\.htpasswd|wp-config\.php|wp-config-local\.php)$|\.(pem|key|p12|pfx|kdbx|sql|sqlite3?|db|dump|bak|bundle|log)$|(^|/)(id_rsa|id_ecdsa|id_ed25519)'

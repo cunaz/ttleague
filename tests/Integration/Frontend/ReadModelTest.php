@@ -40,6 +40,13 @@ final class ReadModelTest extends IntegrationTestCase {
 		self::assertSame( 3, $this->model->seasons->rules( $all[0] )->substitute_max );
 	}
 
+	public function test_disputed_result_also_shows_the_provisional_footnote(): void {
+		$this->db->update( 'fixture', array( 'status' => 'disputed' ), array( 'status' => 'provisional' ) );
+		$group = $this->model->championship->group_by_slug( $this->ids['season_new'], 'a' );
+		self::assertNotNull( $group );
+		self::assertTrue( $group['has_provisional'], 'strittige Resultate sind ebenfalls vorläufig' );
+	}
+
 	public function test_group_standings_are_calculated_from_fixtures(): void {
 		$group = $this->model->championship->group_by_slug( $this->ids['season_new'], 'a' );
 		self::assertNotNull( $group );

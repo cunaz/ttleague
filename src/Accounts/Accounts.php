@@ -42,8 +42,8 @@ final class Accounts {
 	}
 
 	/**
-	 * Konten ohne redaktionelle Rechte und ohne TK-Rolle landen in «Mein Bereich» statt im Backend.
-	 * admin-ajax.php und admin-post.php bleiben erreichbar.
+	 * Konten ohne erweiterte Rechte (Verwaltung, Redaktion, TK) landen in «Mein Bereich» statt im
+	 * Backend. admin-ajax.php und admin-post.php bleiben erreichbar.
 	 */
 	public static function keep_out_of_admin(): void {
 		if ( wp_doing_ajax() || ! is_user_logged_in() || self::uses_backend() ) {
@@ -57,8 +57,12 @@ final class Accounts {
 		exit;
 	}
 
+	/**
+	 * Dieselbe Grenze wie beim Anmeldelink (AccountService::is_elevated): Wer sich wegen
+	 * erweiterter Rechte nur mit Passwort anmeldet, behält auch das Backend.
+	 */
 	private static function uses_backend(): bool {
-		return current_user_can( 'edit_posts' ) || current_user_can( \TTLeague\Access\Capabilities::TK );
+		return AccountService::is_elevated( get_current_user_id() );
 	}
 
 	public static function purge_tokens(): void {
