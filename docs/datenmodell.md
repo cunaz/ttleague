@@ -48,7 +48,7 @@ Dieses Dokument beschreibt, wie die Daten in den Tabellen `wp_ttl_*` abgelegt we
 
 - `name` wie «Seefeld 1», `number` = Mannschaftsnummer, `competition_id` = MM-Gruppe.
 - `home_venue_id` und `default_start_time` aus der Lokalzuordnung des Clubs.
-- `team_roster.kind`: `stamm` (gemeldete Stammspieler) oder `bound` (durch Ersatzeinsätze gebunden).
+- `team_roster.kind`: `stamm` (gemeldete Stammspieler) oder `bound` (durch Ersatzeinsätze gebunden, `valid_from` = Tag des bindenden Einsatzes; folgt aus den Einsätzen und wird nach jeder Erfassung neu bestimmt, siehe erfassung.md).
 
 ## Begegnungen (`fixture`)
 

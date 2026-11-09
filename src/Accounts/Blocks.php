@@ -83,7 +83,7 @@ final class Blocks {
 		} elseif ( 'konto' === $error ) {
 			$out .= self::notice( __( 'Für diese Person kann kein Konto angelegt werden. Bitte wende dich an deinen TK-Chef.', 'ttleague' ), 'warning' );
 		} elseif ( 'passwort' === $error ) {
-			$out .= self::notice( __( 'Dieses Konto meldet sich mit Passwort an.', 'ttleague' ), 'warning' );
+			$out .= self::notice( __( 'Konten mit erweiterten Rechten (Verwaltung, Redaktion, TK) melden sich mit Passwort an.', 'ttleague' ), 'warning' );
 		}
 		return $out . self::request_form( $redirect );
 	}

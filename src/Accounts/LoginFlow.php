@@ -182,17 +182,19 @@ final class LoginFlow {
 	}
 
 	/**
-	 * Darf sich dieses Konto per Link anmelden? Administratorkonten nicht: Sie melden sich mit
-	 * Passwort (und gegebenenfalls zweitem Faktor) an.
+	 * Darf sich dieses Konto per Link anmelden? Konten mit erweiterten Rechten (Verwaltung,
+	 * Redaktion, TK) nicht: Wer ihr Postfach liest, bekäme sonst diese Rechte. Sie melden sich
+	 * mit Passwort (und gegebenenfalls zweitem Faktor) an.
 	 */
 	public static function link_allowed( int $user_id ): bool {
 		/**
 		 * Anmeldung per Link für ein Konto erlauben oder sperren.
 		 *
-		 * @param bool $allowed Standard: alle ausser Administratoren.
+		 * @param bool $allowed Standard: nur Konten ohne erweiterte Rechte (keine Verwaltung,
+		 *                      Redaktion oder TK), siehe AccountService::is_elevated().
 		 * @param int  $user_id Konto.
 		 */
-		return (bool) apply_filters( 'ttleague_magic_link_allowed', ! user_can( $user_id, 'manage_options' ), $user_id );
+		return (bool) apply_filters( 'ttleague_magic_link_allowed', ! AccountService::is_elevated( $user_id ), $user_id );
 	}
 
 	/**
@@ -268,7 +270,7 @@ final class LoginFlow {
 	}
 
 	/**
-	 * Hinweis an Administratoren, die einen Link angefordert haben.
+	 * Hinweis an Konten mit erweiterten Rechten, die einen Link angefordert haben.
 	 *
 	 * @param array<string,string|null> $person Person.
 	 */
@@ -277,9 +279,9 @@ final class LoginFlow {
 		$first = AccountService::salutation( $person );
 		$url   = wp_login_url();
 		/* translators: 1: Vorname, 2: Name der Seite, 3: Adresse der Passwort-Anmeldung */
-		$text = sprintf( __( "Hallo %1\$s\n\nDu hast einen Anmeldelink für %2\$s angefordert. Für Administratorkonten ist die Anmeldung per Link aus Sicherheitsgründen abgeschaltet. Bitte melde dich mit deinem Passwort an:\n%3\$s", 'ttleague' ), $first, $site, $url );
+		$text = sprintf( __( "Hallo %1\$s\n\nDu hast einen Anmeldelink für %2\$s angefordert. Für Konten mit erweiterten Rechten (Verwaltung, Redaktion, TK) ist die Anmeldung per Link aus Sicherheitsgründen abgeschaltet. Bitte melde dich mit deinem Passwort an:\n%3\$s", 'ttleague' ), $first, $site, $url );
 		$html = '<p>' . esc_html( sprintf( /* translators: %s: Vorname */ __( 'Hallo %s', 'ttleague' ), $first ) ) . '</p>'
-			. '<p>' . esc_html( sprintf( /* translators: %s: Name der Seite */ __( 'Du hast einen Anmeldelink für %s angefordert. Für Administratorkonten ist die Anmeldung per Link aus Sicherheitsgründen abgeschaltet. Bitte melde dich mit deinem Passwort an.', 'ttleague' ), $site ) ) . '</p>'
+			. '<p>' . esc_html( sprintf( /* translators: %s: Name der Seite */ __( 'Du hast einen Anmeldelink für %s angefordert. Für Konten mit erweiterten Rechten (Verwaltung, Redaktion, TK) ist die Anmeldung per Link aus Sicherheitsgründen abgeschaltet. Bitte melde dich mit deinem Passwort an.', 'ttleague' ), $site ) ) . '</p>'
 			. Mailer::button( $url, __( 'Mit Passwort anmelden', 'ttleague' ) );
 		Services::mailer()->send(
 			new Message(
