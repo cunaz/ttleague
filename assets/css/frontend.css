@@ -1048,6 +1048,92 @@
 	color: var(--ttl-accent);
 }
 
+/* Kalender abonnieren (Team-, Club- und Spielerseite) */
+
+.ttl-subscribe {
+	padding: 0.9rem 1rem 1rem;
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	background: var(--ttl-soft);
+}
+
+.ttl .ttl-subscribe .ttl-section__title {
+	margin-block-end: 0.4rem;
+}
+
+.ttl-subscribe__text {
+	max-width: 42rem;
+}
+
+.ttl-subscribe__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.ttl .ttl-subscribe__webcal {
+	gap: 0.5rem;
+	color: var(--ttl-surface);
+}
+
+.ttl-subscribe__icon {
+	flex: none;
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.ttl-subscribe__copy {
+	display: grid;
+	gap: 0.3rem;
+}
+
+.ttl-subscribe__label {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+}
+
+.ttl-subscribe__hint {
+	margin: 0;
+}
+
+.ttl-subscribe__field {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.ttl-subscribe__url {
+	flex: 1 1 16rem;
+	min-width: 0;
+	min-height: var(--ttl-touch);
+	padding: 0.4rem 0.6rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.9rem;
+	color: var(--ttl-ink);
+	background: var(--ttl-surface);
+	border: 1px solid color-mix(in srgb, var(--ttl-ink) 45%, transparent);
+	border-radius: 0.4rem;
+}
+
+.ttl .ttl-subscribe__url:focus-visible {
+	outline: 3px solid var(--ttl-highlight);
+	outline-offset: 2px;
+}
+
+.ttl-subscribe__button {
+	flex: 0 0 auto;
+}
+
+.ttl-subscribe__button[hidden] {
+	display: none;
+}
+
+.ttl-subscribe__status:not(:empty) {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+	color: var(--ttl-win);
+}
+
 /* Nicht gefunden */
 
 .ttl-not-found .ttl-inline-list a {
@@ -1489,7 +1575,8 @@
 	.ttl-season-switch,
 	.ttl-filter,
 	.ttl-tabs,
-	.ttl-form {
+	.ttl-form,
+	.ttl-subscribe {
 		display: none;
 	}
 
