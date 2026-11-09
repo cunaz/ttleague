@@ -28,8 +28,8 @@ final class EligibilityLoader {
 	public function __construct( private readonly Db $db ) {}
 
 	/**
-	 * @param string|null $before Anspielzeit der Begegnung (Ortszeit); ohne Termin zählen alle
-	 *                            übrigen Einsätze der Saison.
+	 * @param string|null $before Stichtag (Ortszeit): Anspielzeit der Begegnung, ohne Termin der
+	 *                            Zeitpunkt der Erfassung. Null zählt alle übrigen Einsätze.
 	 * @return array{checker:EligibilityChecker,players:array<int,array{player_id:int,first_name:string,last_name:string,license_no:int,classification:int|null,stamm_team_id:int|null}>}
 	 */
 	public function for_club( int $season_id, int $club_id, SeasonRules $rules, int $exclude_fixture_id, ?string $before = null ): array {
@@ -77,12 +77,6 @@ final class EligibilityLoader {
 			$checker->add_player( $id, $club_id, $stamm_team );
 		}
 
-		foreach ( $bound as [ $player_id, $team_id ] ) {
-			if ( isset( $players[ $player_id ], $teams[ $team_id ] ) ) {
-				$checker->bind( $player_id, $team_id );
-			}
-		}
-
 		$earlier = null === $before ? '' : ' AND f.scheduled_at IS NOT NULL AND ( f.scheduled_at < %s OR ( f.scheduled_at = %s AND f.id < %d ) )';
 		$args    = null === $before
 			? array( $season_id, $club_id, $exclude_fixture_id )
@@ -101,6 +95,14 @@ final class EligibilityLoader {
 			}
 		}
 
+		// Bindungen aus dem Kader zuletzt: bind() hebt die Zahl nur auf das Maximum an, wenn die
+		// gezählten Einsätze es nicht schon erreichen (sonst würden sie doppelt gezählt).
+		foreach ( $bound as [ $player_id, $team_id ] ) {
+			if ( isset( $players[ $player_id ], $teams[ $team_id ] ) ) {
+				$checker->bind( $player_id, $team_id );
+			}
+		}
+
 		return array(
 			'checker' => $checker,
 			'players' => $players,
@@ -109,9 +111,10 @@ final class EligibilityLoader {
 
 	/**
 	 * Bindung eines Spielers aus seinen Einsätzen der Saison (Art. 12.5): das Team, in dem er
-	 * zuerst die Höchstzahl der Ersatzeinsätze erreicht, ab dem Tag dieses Einsatzes.
+	 * zuerst die Höchstzahl der Ersatzeinsätze erreicht, ab dem Tag dieses Einsatzes. Einsätze in
+	 * Begegnungen ohne Termin zählen nicht (wie in for_club()), sonst hätte die Bindung kein Datum.
 	 *
-	 * @return array{team_id:int,valid_from:string|null}|null
+	 * @return array{team_id:int,valid_from:string}|null
 	 */
 	public function binding( int $season_id, int $player_id, SeasonRules $rules ): ?array {
 		$club = $this->db->get_var(
@@ -137,7 +140,7 @@ final class EligibilityLoader {
 			"SELECT t.id AS team_id, f.scheduled_at FROM {$this->db->table( 'lineup' )} l
 			JOIN {$this->db->table( 'fixture' )} f ON f.id = l.fixture_id
 			JOIN {$this->db->table( 'team' )} t ON t.id = CASE WHEN l.side = 'home' THEN f.home_team_id ELSE f.away_team_id END
-			WHERE l.player_id = %d AND t.season_id = %d AND t.club_id = %d
+			WHERE l.player_id = %d AND t.season_id = %d AND t.club_id = %d AND f.scheduled_at IS NOT NULL
 			ORDER BY f.scheduled_at, f.id",
 			array( $player_id, $season_id, $club_id )
 		) as $row ) {
@@ -146,7 +149,7 @@ final class EligibilityLoader {
 			if ( null !== $team ) {
 				return array(
 					'team_id'    => (int) $team,
-					'valid_from' => null === $row['scheduled_at'] ? null : substr( (string) $row['scheduled_at'], 0, 10 ),
+					'valid_from' => substr( (string) $row['scheduled_at'], 0, 10 ),
 				);
 			}
 		}

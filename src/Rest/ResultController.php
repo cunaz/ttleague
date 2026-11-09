@@ -183,8 +183,11 @@ final class ResultController {
 				try {
 					$service->attach_photo( $fixture_id, $actor, $attachment_id );
 				} catch ( \Throwable $e ) {
-					// Kein verwaister Anhang, wenn sich die Begegnung inzwischen geändert hat.
-					wp_delete_attachment( $attachment_id, true );
+					// Kein verwaister Anhang, wenn sich die Begegnung inzwischen geändert hat. Wirft erst
+					// ein Listener nach dem Speichern, ist das Foto schon verknüpft und bleibt.
+					if ( (int) $service->context( $fixture_id )->photo_id !== $attachment_id ) {
+						wp_delete_attachment( $attachment_id, true );
+					}
 					throw $e;
 				}
 				return array(
