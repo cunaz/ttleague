@@ -18,8 +18,10 @@ final class Capabilities {
 	public const CONFIRM       = 'ttl_confirm_result';
 	public const MANAGE_CLUB   = 'ttl_manage_club';
 	public const INVITE_PERSON = 'ttl_invite_person';
+	public const RESCHEDULE    = 'ttl_reschedule_fixture';
+	public const ENTER_RL      = 'ttl_enter_rl_group';
 
-	private const META = array( self::ENTER_RESULT, self::CONFIRM, self::MANAGE_CLUB, self::INVITE_PERSON );
+	private const META = array( self::ENTER_RESULT, self::CONFIRM, self::MANAGE_CLUB, self::INVITE_PERSON, self::RESCHEDULE, self::ENTER_RL );
 
 	private static ?AccessPolicy $policy = null;
 
@@ -70,6 +72,8 @@ final class Capabilities {
 			self::CONFIRM       => $policy->can_confirm_result( $person, $id ),
 			self::MANAGE_CLUB   => $policy->can_manage_club( $person, $id ),
 			self::INVITE_PERSON => $policy->can_invite( $person, $id ),
+			self::RESCHEDULE    => $policy->can_reschedule( $person, $id ),
+			self::ENTER_RL      => $policy->can_enter_rl_group( $person, $id ),
 			default             => false,
 		};
 		return $allowed ? array( 'read' ) : array( 'do_not_allow' );

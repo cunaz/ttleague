@@ -30,14 +30,46 @@ final class DashboardPage {
 		if ( ! current_user_can( Capabilities::TK ) ) {
 			wp_die( esc_html__( 'Dazu fehlt dir die Berechtigung.', 'ttleague' ), '', array( 'response' => 403 ) );
 		}
-		echo self::html( Tk::dashboard()->overview(), Flash::take( Tk::FLASH, get_current_user_id() ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Alle Teile werden beim Aufbau escaped.
+		echo self::html( Tk::dashboard()->overview(), Flash::take( Tk::FLASH, get_current_user_id() ), self::module_sections() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Alle Teile werden beim Aufbau escaped.
+	}
+
+	/**
+	 * Listen der Module (Verschiebungen, Meldungen, Cup-Fristen …). Ungültige Einträge fallen weg.
+	 *
+	 * @return list<array{id:string,title:string,count:int,html:string}>
+	 */
+	public static function module_sections(): array {
+		/**
+		 * Weitere Listen der Übersicht. «html» ist fertiges, escaptes HTML des Moduls.
+		 *
+		 * @param list<array{id:string,title:string,count:int,html:string}> $sections Listen.
+		 */
+		$sections = apply_filters( 'ttleague_tk_overview_sections', array() );
+		$valid    = array();
+		foreach ( is_array( $sections ) ? $sections : array() as $section ) {
+			if ( ! is_array( $section ) || ! is_string( $section['id'] ?? null ) || ! is_string( $section['title'] ?? null ) || ! is_string( $section['html'] ?? null ) ) {
+				continue;
+			}
+			$id = sanitize_html_class( $section['id'] );
+			if ( '' === $id || '' === $section['title'] ) {
+				continue;
+			}
+			$valid[] = array(
+				'id'    => $id,
+				'title' => $section['title'],
+				'count' => max( 0, (int) ( $section['count'] ?? 0 ) ),
+				'html'  => $section['html'],
+			);
+		}
+		return $valid;
 	}
 
 	/**
 	 * @param array<string,mixed>                                         $overview Dashboard::overview().
 	 * @param array{type:string,message:string,details:list<string>}|null $flash    Rückmeldung der letzten Aktion.
+	 * @param list<array{id:string,title:string,count:int,html:string}>   $extra    Listen der Module (module_sections()).
 	 */
-	public static function html( array $overview, ?array $flash ): string {
+	public static function html( array $overview, ?array $flash, array $extra = array() ): string {
 		$out = '<div class="wrap ttl-tk"><h1>' . esc_html__( 'Spielbetrieb: Übersicht', 'ttleague' ) . '</h1>' . self::notice( $flash );
 
 		$season = $overview['season'];
@@ -96,6 +128,9 @@ final class DashboardPage {
 		foreach ( $sections as $key => $section ) {
 			$links[] = '<li><a href="#' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . count( $overview[ $key ] ) . ')</span></a></li>';
 		}
+		foreach ( $extra as $section ) {
+			$links[] = '<li><a href="#' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . $section['count'] . ')</span></a></li>';
+		}
 		$out .= '<ul class="subsubsub ttl-tk-nav">' . implode( ' | ', $links ) . '</ul><div class="clear"></div>';
 
 		foreach ( $sections as $key => $section ) {
@@ -103,6 +138,9 @@ final class DashboardPage {
 			$out .= '<h2 id="' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . count( $rows ) . ')</span></h2>'
 				. '<p class="description">' . esc_html( $section['intro'] ) . '</p>';
 			$out .= array() === $rows ? '<p><em>' . esc_html( $section['empty'] ) . '</em></p>' : self::table( $rows, $key, $rules );
+		}
+		foreach ( $extra as $section ) {
+			$out .= '<h2 id="' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . $section['count'] . ')</span></h2>' . $section['html'];
 		}
 		return $out . '</div>';
 	}

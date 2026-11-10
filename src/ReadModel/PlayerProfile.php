@@ -127,7 +127,7 @@ final class PlayerProfile {
 			FROM {$this->db->table( 'player_season' )} ps
 			JOIN {$this->db->table( 'season' )} s ON s.id = ps.season_id
 			JOIN {$this->db->table( 'club' )} c ON c.id = ps.club_id
-			WHERE ps.player_id = %d
+			WHERE ps.player_id = %d AND s.status <> 'planned'
 			ORDER BY s.start_date DESC",
 			array( $player_id )
 		) as $row ) {

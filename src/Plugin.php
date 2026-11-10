@@ -13,6 +13,22 @@ use TTLeague\Infrastructure\Database\Installer;
 
 final class Plugin {
 
+	/**
+	 * Module des Saisonbetriebs (docs/saisonbetrieb.md). Jedes meldet in register() seine Hooks,
+	 * Backend-Seiten, Abschnitte in «Mein Bereich» und Benachrichtigungstypen an.
+	 *
+	 * @var list<class-string>
+	 */
+	public const MODULES = array(
+		'TTLeague\\Registration\\Registration',
+		'TTLeague\\Season\\SeasonAdmin',
+		'TTLeague\\Postponement\\Postponements',
+		'TTLeague\\RankingTournament\\RankingTournament',
+		'TTLeague\\Cup\\Cup',
+		'TTLeague\\Classification\\Classification',
+		'TTLeague\\Events\\Events',
+	);
+
 	private static bool $booted = false;
 
 	public static function boot(): void {
@@ -43,6 +59,13 @@ final class Plugin {
 		// Backend der TK: Menü «Spielbetrieb» mit Übersicht sowie Konten und Einladungen.
 		\TTLeague\Tk\Tk::register();
 
+		// Saisonbetrieb: Meldung, Saison aufsetzen, Verschiebung, Ranglistenturnier, Cup, Klassierung, Anlässe.
+		foreach ( self::MODULES as $module ) {
+			if ( class_exists( $module ) ) {
+				$module::register();
+			}
+		}
+
 		// Redaktionelle Inhalte (Dokumente).
 		if ( class_exists( \TTLeague\Content\Content::class ) ) {
 			\TTLeague\Content\Content::register();
@@ -63,6 +86,7 @@ final class Plugin {
 			\WP_CLI::add_command( 'ttleague rating', \TTLeague\Cli\RatingCommand::class );
 			\WP_CLI::add_command( 'ttleague account', \TTLeague\Cli\AccountCommand::class );
 			\WP_CLI::add_command( 'ttleague notifications', \TTLeague\Cli\NotificationCommand::class );
+			\WP_CLI::add_command( 'ttleague export', \TTLeague\Cli\ExportCommand::class );
 		}
 	}
 }
