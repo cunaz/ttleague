@@ -1134,6 +1134,33 @@
 	color: var(--ttl-win);
 }
 
+/* Kontaktdaten (nur für angemeldete Funktionärinnen und Funktionäre) */
+
+.ttl-contact {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 0.5rem;
+	font-size: var(--ttl-small);
+}
+
+.ttl-contact__link {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--ttl-touch);
+	overflow-wrap: anywhere;
+}
+
+.ttl-contacts__sides {
+	display: grid;
+	gap: 0 var(--ttl-gap);
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.ttl .ttl-contacts__side .ttl-subtitle {
+	margin-block-start: 0.25rem;
+}
+
 /* Nicht gefunden */
 
 .ttl-not-found .ttl-inline-list a {
@@ -1371,7 +1398,8 @@
 
 @media (min-width: 600px) {
 
-	.ttl-lineups {
+	.ttl-lineups,
+	.ttl-contacts__sides {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 

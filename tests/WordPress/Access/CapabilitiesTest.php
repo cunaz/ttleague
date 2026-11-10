@@ -103,6 +103,41 @@ final class CapabilitiesTest extends TestCase {
 		}
 	}
 
+	public function test_officials_and_the_tk_view_contacts(): void {
+		self::assertTrue( user_can( $this->member( 'captain_h1' ), Capabilities::VIEW_CONTACTS ), 'Captain' );
+		self::assertTrue( user_can( $this->member( 'chef_home' ), Capabilities::VIEW_CONTACTS ), 'TK-Chef' );
+		self::assertFalse( user_can( $this->member( 'nobody' ), Capabilities::VIEW_CONTACTS ), 'Person ohne Funktion' );
+		self::assertFalse( user_can( $this->member( 'person_h1' ), Capabilities::VIEW_CONTACTS ), 'Cup-Spieler ohne Funktion' );
+		self::assertFalse( user_can( $this->account( 'subscriber', 'ohne.person@example.invalid' ), Capabilities::VIEW_CONTACTS ), 'Konto ohne Person' );
+		self::assertFalse( user_can( $this->account( 'editor', 'redaktion@example.invalid' ), Capabilities::VIEW_CONTACTS ), 'Redaktion ohne Person' );
+
+		$tk = $this->account( 'ttl_tk', 'tk@example.invalid' );
+		self::assertTrue( user_can( $tk, Capabilities::VIEW_CONTACTS ) );
+		self::assertTrue( user_can( $this->account( 'administrator', 'verwaltung@example.invalid' ), Capabilities::VIEW_CONTACTS ) );
+		self::assertSame( array( Capabilities::TK ), map_meta_cap( Capabilities::VIEW_CONTACTS, $tk ) );
+		self::assertSame( array( 'do_not_allow' ), map_meta_cap( Capabilities::VIEW_CONTACTS, 0 ), 'abgemeldet' );
+
+		wp_set_current_user( 0 );
+		self::assertFalse( current_user_can( Capabilities::VIEW_CONTACTS ) );
+	}
+
+	public function test_contacts_need_a_function_in_the_active_season(): void {
+		$home = $this->member( 'captain_h1' );
+		self::assertTrue( user_can( $home, Capabilities::VIEW_CONTACTS ) );
+
+		// Hanna Heim bleibt Captain der Vorsaison; in der aktiven Saison verliert sie die Funktion.
+		$this->db->delete(
+			'club_role',
+			array(
+				'season_id' => $this->id( 'season' ),
+				'person_id' => $this->id( 'captain_h1' ),
+			)
+		);
+		Capabilities::policy()->reset();
+
+		self::assertFalse( user_can( $home, Capabilities::VIEW_CONTACTS ) );
+	}
+
 	public function test_logged_out_visitors_and_missing_ids_get_nothing(): void {
 		wp_set_current_user( 0 );
 		self::assertFalse( current_user_can( Capabilities::ENTER_RESULT, $this->id( 'f1' ) ) );

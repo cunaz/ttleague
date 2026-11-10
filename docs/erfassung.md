@@ -40,6 +40,7 @@ Alle fachlichen Rechte sind Meta-Capabilities, die `map_meta_cap` aus den Daten 
 | `ttl_confirm_result` | Fixture-ID | wie oben für die Gastseite |
 | `ttl_manage_club` | Club-ID | TK-Chef des Clubs |
 | `ttl_invite_person` | Person-ID | TK-Chef des Clubs, für den die Person in der aktiven Saison gemeldet ist oder eine Funktion hat |
+| `ttl_view_contacts` | – | Personen mit Funktion in der aktiven Saison (Captain oder TK-Chef in `club_role`, auch ohne Team) |
 
 Ausserhalb der aktiven Saison gibt es nur `ttl_tk`. Ob eine Aktion im aktuellen Status erlaubt ist, entscheidet der `ResultService`, nicht die Capability.
 
@@ -47,6 +48,16 @@ Weitere Regeln:
 
 - Spielt ein Club gegen sich selbst (Clubduell), hat der TK-Chef dieses Clubs beide Rechte. Bestätigen darf trotzdem nie, wer das Resultat erfasst oder zuletzt geändert hat; ausgenommen ist die TK. Das prüft der `ResultService`.
 - E-Mail-Adressen ändern TK-Chefs nur für Personen ihres Clubs, deren Konto keine erweiterten Rechte hat (`ttl_tk`, `edit_posts`, `manage_options`). Sonst könnten sie über einen Anmeldelink fremde Konten übernehmen. Bei jeder Änderung erhält die bisherige Adresse eine Mitteilung.
+
+### Kontaktdaten
+
+Wer `ttl_view_contacts` hat, sieht E-Mail und Telefon der Captains und TK-Chefs der aktiven Saison. Spielerinnen und Spieler einer Cup-Mannschaft ohne Funktion haben das Recht nicht.
+
+- **Wo:** Clubseite (Liste der Funktionen), Mannschaftsseite (Captain), Matchreport und Erfassungsseite (Abschnitt «Kontakt» mit Captains des Teams und TK-Chefs des Clubs, für beide Seiten; im Cup nur die TK-Chefs). Auf der Erfassungsseite nur für Personen mit Rolle für die Begegnung.
+- **Was:** E-Mail als `mailto:`-Link. Telefon als `tel:`-Link, aber nur mit `person.phone_visible` («Mein Bereich»). Fehlt die E-Mail oder ist sie ungültig, erscheint kein Link. Inaktive Personen haben keine Kontaktdaten.
+- **Nur aktive Saison:** Seiten früherer Saisons zeigen keine Kontaktdaten, auch nicht für die TK.
+- **Kein Cache:** `TTLeague\Accounts\Contacts` liest die Daten bei jeder Anfrage aus der Datenbank, an den Lesemodellen vorbei. Die Lesemodelle enthalten nur die `person_id` der Funktion, nie E-Mail oder Telefon. `TTLeague\Frontend\Views\ContactBox` prüft das Recht und baut die Links.
+- **Gäste:** Für Gäste und Angemeldete ohne Recht bleibt die Ausgabe gleich wie bisher, inklusive Fussnote «Kontaktdaten sehen angemeldete Funktionärinnen und Funktionäre». So bleibt sie zwischenspeicherbar.
 
 ## Status einer Begegnung
 
@@ -89,6 +100,8 @@ Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttlea
 **Meine Spiele:** Abschnitt in «Mein Bereich» über `ttleague_my_area_sections`, serverseitig aus `ResultService::my_fixtures()`: zu erfassen, zu bestätigen, demnächst, jeweils mit Link auf die Erfassungsseite. Nur für Personen mit Funktion in der aktiven Saison.
 
 **Matchreport:** Angemeldete Personen mit `ttl_enter_result` oder `ttl_confirm_result` (Fixture-ID) oder `ttl_tk` sehen einen Knopf «Resultat erfassen», «Resultat ändern», «Resultat bestätigen» bzw. «Entscheid der TK». Für Gäste bleibt die Ausgabe gleich, damit sie zwischengespeichert werden kann.
+
+**Kontakt:** Mit `ttl_view_contacts` steht vor dem Verlauf der Abschnitt «Kontakt» mit Captains und TK-Chefs beider Seiten (siehe [Kontaktdaten](#kontaktdaten)). Derselbe Abschnitt steht am Ende des Matchreports.
 
 **Technik:** Unveränderliches (Spielfolge, Kandidaten, Texte, Adressen, Nonce) kommt über `wp_interactivity_config`, der Zustand über `wp_interactivity_state`. Das Ansichtsmodell, an das die Direktiven gebunden sind, rechnet `EntryForm::view()` in PHP für den Startzustand und `buildView()` im Skriptmodul `@ttleague/entry-view` (`assets/js/entry-view.js`, reine Funktionen ohne Abhängigkeiten, auch Prüfung und Daten für die API) im Browser; beide müssen übereinstimmen. `EntryViewParityTest` vergleicht sie mit Node, falls vorhanden, und schickt die im Skript gebauten Daten an den `ResultService`. Stile in `assets/css/entry.css`, geladen nur auf der Erfassungsseite und in «Mein Bereich». `current.warnings` gehört zur letzten Erfassung; nach einem Zurücksetzen oder Forfait (keine Spiele) zeigt die Seite sie nicht an.
 
@@ -356,15 +369,16 @@ Regeln (`TTLeague\Accounts\ClubAccounts`):
 
 | Ebene | Ordner | Inhalt |
 |---|---|---|
-| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, ohne WordPress |
-| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks` und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
+| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, Links der Kontaktdaten (`ContactBox`), ohne WordPress |
+| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks`, `Contacts` (Kontaktdaten je Club und Begegnung) und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
 | WordPress | `tests/WordPress/` | mit echtem WordPress (wp-phpunit, `composer test:wp`, siehe README), siehe unten |
 
 Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
 
 - `AccountService::ensure_user()` mit echten Konten: Ein bestehendes Konto mit erweiterten Rechten (Rollen `administrator`, `editor`, `contributor`, `ttl_tk` sowie Abonnenten mit `manage_options`, `edit_posts` oder zusätzlicher Rolle `ttl_tk`) und das Konto einer anderen Person werden nicht verknüpft; ein freies Abonnenten-Konto wird verknüpft, sonst wird ein Konto angelegt.
 - Anmeldung per Link: Anfrage (Link oder Passwort-Hinweis, neutrale Antwort, Rate-Limit), Einlösen mit Konto und 60 Tagen «angemeldet bleiben», abgelaufene und verbrauchte Tokens, Herkunftsprüfung über Origin und Referer, Nonce, Weiterleitung nur auf eigene Seiten, Einwilligung und Profil.
-- Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison).
+- Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison), auch `ttl_view_contacts`.
+- Kontaktdaten (`ContactViewsTest`): Clubseite, Mannschaftsseite, Matchreport und Erfassungsseite mit und ohne Recht; Telefon nur mit Freigabe, keine Links ohne E-Mail, keine Kontaktdaten in früheren Saisons. Die Ausgabe für Gäste ist vor und nach dem Aufruf eines Funktionärs identisch, auch wenn dieser den Cache füllt; Object-Cache und Transients des Plugins enthalten weder Adresse noch Nummer.
 - REST-API über den REST-Server von WordPress: 401, 403, 404, 422 mit Feldfehlern, 409 bei veralteter `version`, Erfassen und Bestätigen mit Verlauf und Ereignissen, `me/fixtures`, Rechte und fehlende Datei beim Foto.
 - Ereignisse: Ein Listener, der eine Ausnahme wirft, lässt die gespeicherte Erfassung erfolgreich; Cache-Version und Neuberechnung sind vorher erledigt, der Fehler steht im Fehlerprotokoll.
 - Ablage der Fotos mit einem gespielten Webserver (`pre_http_request`): Testdateien aller Bildformate im Upload-Unterverzeichnis; ausgeliefert (offen, Uploads gesperrt, auch wenn nur `.webp` ausgeliefert wird), 401/403/404 (geschützt), Weiterleitung, andere Seite, Serverfehler und keine Verbindung (unbekannt, gesperrt); nach «offen» hebt nur ein bestätigter Schutz die Sperre auf; gemerktes Ergebnis nur für dasselbe Verzeichnis, denselben Monat und denselben Web-Root; Ablage ohne Bildvarianten; Löschen der Dateien mit dem Anhang, nur im Verzeichnis der Fotos; Schutzdateien wiederhergestellt; Adresse eines Verzeichnisses für `TTLEAGUE_PRIVATE_UPLOADS` (auch über symbolische Links und den Web-Root); «Website-Zustand» mit einem Bericht je Zustand (auch «ausserhalb» für ein Verzeichnis der Konstante ohne Adresse).

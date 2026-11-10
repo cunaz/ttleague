@@ -26,7 +26,7 @@ final class EntryMarkup {
 	 * @param array<string,mixed> $entry  Antwort von ResultService::entry().
 	 * @param array<string,mixed> $data   Daten aus EntryForm::data().
 	 * @param array<string,mixed> $state  Startzustand (form, view, message, photo …).
-	 * @param array<string,mixed> $page   report (Adresse des Matchreports), login, decisions (erlaubte Entscheide der TK).
+	 * @param array<string,mixed> $page   report (Adresse des Matchreports), login, decisions (erlaubte Entscheide der TK), contacts (fertiges HTML des Abschnitts «Kontakt» oder leer).
 	 * @param \DateTimeZone       $timezone Zeitzone der Website (für Zeitstempel in UTC).
 	 */
 	public function __construct(
@@ -59,7 +59,8 @@ final class EntryMarkup {
 		if ( $can['enter'] || in_array( 'correct', (array) $this->page['decisions'], true ) ) {
 			$out .= $this->form();
 		}
-		return $out . $this->history() . '</div>';
+		// Abschnitt «Kontakt» (ContactBox): bereits escaptes HTML, leer ohne Recht.
+		return $out . (string) ( $this->page['contacts'] ?? '' ) . $this->history() . '</div>';
 	}
 
 	/**

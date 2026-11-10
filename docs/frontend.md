@@ -97,7 +97,7 @@ Editor: `assets/js/editor.js` registriert alle Blöcke (auch `ttleague/documents
 | `Championship` | pro Saison: Gruppen mit berechneter Tabelle, Teams, Begegnungen mit Satzsummen; `standings()` als reine Funktion |
 | `MatchReports` | Kopf, Lokal, Aufstellungen mit Klassierung und Ersatz, Spiele in Spielfolge (Slots aus `GameOrder`), Summen |
 | `Teams` | Stammspieler und gebundene Spieler, Captains, Heimlokal, Einsatzmatrix (`Teams::matrix()` als reine Funktion) |
-| `Clubs` | Clubliste einer Saison, Club-Detail mit Teams, Lokalen (Anspielzeiten der Heimteams), Funktionen, Spielern |
+| `Clubs` | Clubliste einer Saison, Club-Detail mit Teams, Lokalen (Anspielzeiten der Heimteams), Funktionen (Name und `person_id`, keine Kontaktdaten), Spielern |
 | `Players` | Spielerliste einer Saison mit Wertungszahl, Suche (Name mit und ohne Umlaut-Ausschreibung, Lizenznummer), Lookup per Lizenz |
 | `PlayerProfile` | Klassierung pro Saison, Wertungszahl, Verlauf, alle Spiele aus Spielersicht; `balance()` und `classification_analysis()` als reine Funktionen |
 | `RankingTournament` | Runden → Kategorien → Gruppen mit Rangliste, Partien, Aufgebot; Gesamtrangliste mit `FinalQualification` |
@@ -115,6 +115,8 @@ Fachliche Festlegungen:
 ## Caching
 
 `WpCache` speichert Ergebnisse im Object-Cache (Gruppe `ttleague`) und, ohne persistenten Object-Cache, zusätzlich als Transient (24 Stunden). Der Schlüssel enthält `DataVersion::key()`; jeder Schreibvorgang, der `DataVersion::bump()` aufruft, macht alle abgeleiteten Daten ungültig. Gecacht werden u. a. Meisterschaft pro Saison, Matchreports, Teamdetails, Clubdetails, Spielerlisten, Spielerprofile, RL und Cup pro Saison. Ungecacht kostet das Laden aller Daten einer Saison (Meisterschaft, RL, Cup, Clubs, Spieler) rund 0,6 s; gecacht liefert WordPress die Seiten in unter 0,1 s.
+
+Persönliches steht nie im Cache. Kontaktdaten der Captains und TK-Chefs lädt `TTLeague\Accounts\Contacts` bei jeder Anfrage direkt aus der Datenbank, und nur für angemeldete Personen mit `ttl_view_contacts` (`ContactBox`). Für Gäste bleibt die Ausgabe von Clubseite, Mannschaftsseite und Matchreport unverändert. Details in `docs/erfassung.md`, Abschnitt «Kontaktdaten».
 
 ## Gestaltung
 

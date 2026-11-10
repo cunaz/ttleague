@@ -34,7 +34,8 @@ final class MatchReportView extends View {
 			return Html::notice( __( 'Dieser Block zeigt die Begegnung aus der Adresse (z. B. /begegnung/123/). Für eine feste Begegnung die Nummer in den Block-Einstellungen angeben.', 'ttleague' ) );
 		}
 
-		return $this->header( $report ) . $this->lineups( $report ) . $this->games( $report );
+		// Kontakt der beiden Seiten nur für angemeldete Funktionärinnen und Funktionäre (sonst leer).
+		return $this->header( $report ) . $this->lineups( $report ) . $this->games( $report ) . ContactBox::fixture_section( (int) $report['id'] );
 	}
 
 	/**

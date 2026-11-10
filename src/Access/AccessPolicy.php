@@ -13,7 +13,8 @@ use TTLeague\Infrastructure\Database\Db;
 
 /**
  * Entscheidet ohne WordPress-Abhängigkeit, ob eine Person für eine Begegnung erfassen oder
- * bestätigen darf und ob sie einen Club verwalten bzw. Personen einladen darf.
+ * bestätigen darf, ob sie einen Club verwalten bzw. Personen einladen darf und ob sie die
+ * Kontaktdaten der Funktionärinnen und Funktionäre sieht.
  * Grundlage: club_role (Captain, TK-Chef) und cup_entry (Spieler einer Cup-Mannschaft)
  * der Saison der Begegnung, die aktiv sein muss. Die TK-Berechtigung prüft die WordPress-Schicht.
  */
@@ -27,6 +28,9 @@ final class AccessPolicy {
 
 	/** @var array<string,array{captain_teams:list<int>,tk_chef_clubs:list<int>,cup_entries:list<int>}> */
 	private array $roles = array();
+
+	/** @var array<string,bool> */
+	private array $officials = array();
 
 	public function __construct( private readonly Db $db ) {}
 
@@ -92,6 +96,25 @@ final class AccessPolicy {
 			)
 		);
 		return array() !== array_intersect( $own, $clubs );
+	}
+
+	/**
+	 * Kontaktdaten der Captains und TK-Chefs sieht, wer in der aktiven Saison selbst eine
+	 * Funktion hat (Zeile in club_role als Captain oder TK-Chef, auch ohne Team).
+	 */
+	public function can_view_contacts( int $person_id ): bool {
+		$season = $this->active_season_id();
+		if ( null === $season || $person_id <= 0 ) {
+			return false;
+		}
+		$key = $person_id . '|' . $season;
+		if ( ! isset( $this->officials[ $key ] ) ) {
+			$this->officials[ $key ] = null !== $this->db->get_var(
+				"SELECT id FROM {$this->db->table( 'club_role' )} WHERE season_id = %d AND person_id = %d AND role IN ('captain', 'tk_chef') LIMIT 1",
+				array( $season, $person_id )
+			);
+		}
+		return $this->officials[ $key ];
 	}
 
 	/**
@@ -183,8 +206,9 @@ final class AccessPolicy {
 	 * Zwischenspeicher leeren (nach Änderungen an Rollen oder Begegnungen in derselben Anfrage).
 	 */
 	public function reset(): void {
-		$this->fixtures = array();
-		$this->roles    = array();
+		$this->fixtures  = array();
+		$this->roles     = array();
+		$this->officials = array();
 	}
 
 	private function represents( int $person_id, int $fixture_id, string $side ): bool {
