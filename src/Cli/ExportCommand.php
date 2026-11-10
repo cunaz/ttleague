@@ -24,7 +24,7 @@ final class ExportCommand {
 	 * [--file=<pfad>]
 	 * : In diese Datei schreiben statt auf die Standardausgabe.
 	 *
-	 * [--<filter>=<wert>]
+	 * [--<field>=<value>]
 	 * : Filter der Liste, z. B. --club=12.
 	 *
 	 * ## EXAMPLES
