@@ -8,9 +8,18 @@ Der TK-Chef meldet in «Mein Bereich → Mein Club», was der Club der TK heute 
 2. Der TK-Chef pflegt die Meldung. Jede Änderung wird sofort gespeichert und geprüft; Verstösse stehen am Feld.
 3. Der TK-Chef reicht ein: `club_season.status = submitted`. Das geht nur ohne offene Verstösse. Danach kann er nichts mehr ändern, bis die TK die Meldung zurückgibt.
 4. Die TK prüft im Backend («Spielbetrieb → Meldungen»): freigeben (`reviewed`) oder mit Bemerkung zurückgeben (`open`). Der TK-Chef erhält `registration_decided`.
-5. Nach Ablauf des Meldefensters ändert nur noch die TK. Sieben und zwei Tage vorher geht `registration_reminder` an TK-Chefs, deren Meldung noch `open` ist.
+5. Nach Ablauf des Meldefensters ändert an der Meldung der geplanten Saison nur noch die TK. Sieben und zwei Tage vorher geht `registration_reminder` an TK-Chefs, deren Meldung noch `open` ist.
 
-**Nachmeldungen** in der aktiven Saison: Spieler bis `season.late_registration_until` (Art. 27.3, Standard 31. Januar), Captains, Lokaldaten und Hallensperren jederzeit. Mannschaften und Stammspieler ändert in der aktiven Saison nur die TK.
+Die Schritte 1 bis 5 und der Status in `club_season` betreffen die Meldung für die **geplante** Saison. Die Freigabe der Saison verlangt, dass alle Meldungen `reviewed` sind ([saison.md](saison.md)).
+
+**Nachmeldungen in der aktiven Saison** sind davon unabhängig: Sie hängen weder am Meldefenster noch am Status in `club_season`.
+
+| Was | Wer | Bis wann | Wirkung |
+|---|---|---|---|
+| Spieler nachmelden (Vorjahresspieler oder neu) | TK-Chef | `season.late_registration_until` (Art. 27.3, Standard 31. Januar), danach nur die TK | `player_season` mit Status `provisional` bzw. `player_request`; spielberechtigt nach Freigabe durch die TK |
+| Captain ändern | TK-Chef | jederzeit | gilt sofort |
+| Lokaldaten und Hallensperren | TK-Chef | jederzeit | gilt sofort; die TK sieht die Änderung in der Übersicht |
+| Mannschaften und Stammspieler | nur die TK | – | – |
 
 ## Was gemeldet wird
 

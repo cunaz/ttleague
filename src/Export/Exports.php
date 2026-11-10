@@ -44,7 +44,7 @@ final class Exports {
 		$exports = apply_filters( 'ttleague_exports', array() );
 		$valid   = array();
 		foreach ( is_array( $exports ) ? $exports : array() as $name => $export ) {
-			if ( ! is_string( $name ) || 1 !== preg_match( '/^[a-z0-9][a-z0-9-]{0,39}$/', $name ) || ! is_array( $export ) ) {
+			if ( ! is_string( $name ) || 1 !== preg_match( '/^[a-z0-9][a-z0-9-]{0,39}$/D', $name ) || ! is_array( $export ) ) {
 				continue;
 			}
 			if ( ! is_string( $export['title'] ?? null ) || ! is_array( $export['header'] ?? null ) || ! is_callable( $export['rows'] ?? null ) ) {

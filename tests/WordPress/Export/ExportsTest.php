@@ -25,7 +25,8 @@ final class ExportsTest extends TestCase {
 
 	public function tear_down(): void {
 		remove_filter( 'ttleague_exports', array( $this, 'exports' ) );
-		$_GET = array();
+		$_GET     = array();
+		$_REQUEST = array();
 		parent::tear_down();
 	}
 
@@ -38,7 +39,7 @@ final class ExportsTest extends TestCase {
 			'title'  => 'Spielerliste',
 			'header' => array( 'Lizenz', 'Name' ),
 			'rows'   => function ( array $args ): array {
-				$this->seen = $args;
+				$this->seen = $args + array( '_abgerufen' => '1' );
 				return array( array( 1201, 'Muster Hans' ) );
 			},
 		);
@@ -78,7 +79,14 @@ final class ExportsTest extends TestCase {
 
 		self::assertSame( 'ttleague-spieler-' . wp_date( 'Y-m-d' ) . '.csv', $file['filename'] );
 		self::assertStringContainsString( '1201;Muster Hans', $file['csv'] );
-		self::assertSame( array( 'club' => '12' ), $this->seen, 'Filter ohne action, list und Nonce' );
+		self::assertSame(
+			array(
+				'club'       => '12',
+				'_abgerufen' => '1',
+			),
+			$this->seen,
+			'Filter ohne action, list und Nonce'
+		);
 	}
 
 	public function test_download_needs_the_tk_capability(): void {
@@ -95,11 +103,18 @@ final class ExportsTest extends TestCase {
 
 	public function test_download_needs_the_nonce_of_this_list(): void {
 		wp_set_current_user( $this->account( 'ttl_tk', 'tk@example.invalid' ) );
+		// Gültige Liste, aber die Nonce einer anderen: Ohne die Prüfung käme die Datei.
 		$this->request( Exports::url( 'spieler' ) );
-		$_GET['list'] = 'andere';
+		$wrong                = wp_create_nonce( Exports::ACTION . '_andere' );
+		$_GET['_wpnonce']     = $wrong;
+		$_REQUEST['_wpnonce'] = $wrong;
 
 		$this->expectException( \WPDieException::class );
-		Exports::requested();
+		try {
+			Exports::requested();
+		} finally {
+			self::assertSame( array(), $this->seen, 'Liste nicht abgerufen' );
+		}
 	}
 
 	public function test_unknown_list_is_not_found(): void {

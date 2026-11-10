@@ -32,6 +32,13 @@ final class CsvTest extends TestCase {
 		self::assertSame( "\xEF\xBB\xBFBemerkung\r\n'=SUMME(A1:A9)\r\n'+41 44 000 00 00\r\n'@import\r\n'-nicht gemeldet\r\n", $csv );
 	}
 
+	public function test_tab_and_carriage_return_are_defused_and_the_header_too(): void {
+		$csv = Csv::render( array( '=Kopf' ), array( array( "\t=1+1" ), array( "\r=1+1" ), array( '+41440000000' ) ) );
+
+		// Wagenrücklauf: erst das Hochkomma, dann die Anführungszeichen. Numerischer Text bleibt.
+		self::assertSame( "\xEF\xBB\xBF'=Kopf\r\n'\t=1+1\r\n\"'\r=1+1\"\r\n+41440000000\r\n", $csv );
+	}
+
 	public function test_numbers_stay_numbers_also_negative_ones(): void {
 		$csv = Csv::render( array( 'Diff', 'Wert', 'Text' ), array( array( -3, 1512.5, '-12.5' ) ) );
 

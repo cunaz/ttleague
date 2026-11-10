@@ -100,4 +100,31 @@ final class PlannedSeasonTest extends IntegrationTestCase {
 		self::assertNotContains( $this->planned, array_column( $profile['seasons'], 'season_id' ) );
 		self::assertContains( $this->ids['season_new'], array_column( $profile['seasons'], 'season_id' ) );
 	}
+
+	public function test_player_profile_does_not_show_games_of_the_planned_season(): void {
+		$other = (int) $this->db->get_var(
+			"SELECT ps.player_id FROM {$this->db->table( 'player_season' )} ps WHERE ps.season_id = %d AND ps.player_id <> %d ORDER BY ps.id LIMIT 1",
+			array( $this->ids['season_new'], $this->player )
+		);
+		$game  = $this->db->insert(
+			'game',
+			array(
+				'fixture_id'   => $this->planned_fixture,
+				'sequence'     => 1,
+				'type'         => 'single',
+				'a1_player_id' => $this->player,
+				'b1_player_id' => $other,
+				'sets_a'       => 3,
+				'sets_b'       => 0,
+				'status'       => 'played',
+				'played_at'    => '2027-09-14 20:00:00',
+			)
+		);
+
+		$games = $this->model->profiles->get( $this->player )['games'];
+
+		self::assertNotSame( array(), $games, 'Spiele der aktiven Saison bleiben' );
+		self::assertNotContains( $game, array_column( $games, 'id' ) );
+		self::assertNotContains( $this->planned, array_column( $games, 'season_id' ) );
+	}
 }

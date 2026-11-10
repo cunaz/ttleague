@@ -35,7 +35,7 @@ Eine Saison ist `planned`, `active` oder `archived`. Es gibt höchstens eine akt
 - Ein Modul, das Daten der geplanten Saison auf der Website zeigt (Meldung in «Mein Club»), prüft das Recht selbst und verwendet keine öffentliche Ansicht.
 - **Funktionen in der geplanten Saison:** Beim Anlegen trägt der Assistent die TK-Chefs der aktiven Saison in die geplante vor (`club_role`). `ttl_manage_club` gilt für TK-Chefs der aktiven **oder** der geplanten Saison. Captains der geplanten Saison haben bis zur Freigabe keine Rechte an Begegnungen.
 - **Die Freigabe** macht die geplante Saison aktiv und archiviert die bisher aktive, in einer Transaktion (siehe [saison.md](saison.md)).
-- Erfassung, Fristen und Benachrichtigungen aus Phase 2 arbeiten weiter nur auf der aktiven Saison.
+- Erfassung, Fristen und Benachrichtigungen aus Phase 2 arbeiten weiter nur auf der aktiven Saison. Begegnungen der geplanten Saison sind ein Entwurf: Die Erfassung nimmt für sie kein Resultat an, auch nicht von der TK.
 
 ## Rechte
 

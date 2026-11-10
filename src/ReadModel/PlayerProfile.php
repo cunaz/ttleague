@@ -234,7 +234,8 @@ final class PlayerProfile {
 		}
 
 		$season_names = array();
-		foreach ( $this->db->get_results( "SELECT id, slug, name FROM {$this->db->table( 'season' )}" ) as $row ) {
+		// Geplante Saisons sind nicht öffentlich; ihre Spiele (falls je erfasst) fehlen im Profil.
+		foreach ( $this->db->get_results( "SELECT id, slug, name FROM {$this->db->table( 'season' )} WHERE status <> 'planned'" ) as $row ) {
 			$season_names[ (int) $row['id'] ] = $row;
 		}
 
@@ -242,7 +243,7 @@ final class PlayerProfile {
 		foreach ( $rows as $row ) {
 			$is_rl     = null !== $row['rl_group_id'];
 			$season_id = (int) ( $is_rl ? $row['r_season_id'] : $row['f_season_id'] );
-			if ( 0 === $season_id ) {
+			if ( 0 === $season_id || ! isset( $season_names[ $season_id ] ) ) {
 				continue;
 			}
 			$on_a    = in_array( $player_id, array( Sql::int_or_null( $row['a1_player_id'] ), Sql::int_or_null( $row['a2_player_id'] ) ), true );

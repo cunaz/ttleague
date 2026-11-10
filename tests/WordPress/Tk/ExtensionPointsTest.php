@@ -132,6 +132,16 @@ final class ExtensionPointsTest extends TestCase {
 						'id'    => 'ttl-ohne-inhalt',
 						'title' => 'Ohne Inhalt',
 					),
+					array(
+						'id'    => 'ttl-verschiebungen',
+						'title' => 'Anker doppelt',
+						'html'  => '<p>doppelt</p>',
+					),
+					array(
+						'id'    => DashboardPage::SECTION_IDS['disputed'],
+						'title' => 'Anker einer festen Liste',
+						'html'  => '<p>fest</p>',
+					),
 				)
 			)
 		);
@@ -143,6 +153,34 @@ final class ExtensionPointsTest extends TestCase {
 		self::assertStringContainsString( '<a href="#ttl-verschiebungen">Verschiebungen <span class="count">(2)</span></a>', $html );
 		self::assertStringContainsString( '<h2 id="ttl-verschiebungen">Verschiebungen <span class="count">(2)</span></h2><p class="ttl-test">Zwei Anträge</p>', $html );
 		self::assertStringNotContainsString( 'Ohne Anker', $html );
+		self::assertStringNotContainsString( 'Anker doppelt', $html );
+		self::assertStringNotContainsString( 'Anker einer festen Liste', $html );
+		self::assertSame( 1, substr_count( $html, 'id="' . DashboardPage::SECTION_IDS['disputed'] . '"' ) );
+	}
+
+	public function test_module_sections_stay_visible_without_an_active_season(): void {
+		( new Seeder( $this->db ) )->season( '2027-28', 'planned' );
+		add_filter(
+			'ttleague_tk_overview_sections',
+			static fn( array $sections ): array => array_merge(
+				$sections,
+				array(
+					array(
+						'id'    => 'ttl-meldungen',
+						'title' => 'Meldungen zu prüfen',
+						'count' => 3,
+						'html'  => '<p class="ttl-test">Drei Meldungen</p>',
+					),
+				)
+			)
+		);
+
+		$html = DashboardPage::html( Tk::dashboard()->overview(), null, DashboardPage::module_sections() );
+
+		self::assertStringContainsString( 'Es gibt keine aktive Saison.', $html );
+		self::assertStringContainsString( '<a href="#ttl-meldungen">Meldungen zu prüfen <span class="count">(3)</span></a>', $html );
+		self::assertStringContainsString( '<h2 id="ttl-meldungen">Meldungen zu prüfen <span class="count">(3)</span></h2><p class="ttl-test">Drei Meldungen</p>', $html );
+		self::assertStringNotContainsString( '<ul class="subsubsub ttl-tk-nav">', DashboardPage::html( Tk::dashboard()->overview(), null ), 'ohne Listen keine leere Sprungleiste' );
 	}
 
 	public function test_modules_add_notification_types_but_cannot_replace_core_types(): void {
@@ -155,6 +193,7 @@ final class ExtensionPointsTest extends TestCase {
 				'Zu Lang Und Falsch'       => 'Ungültiger Schlüssel',
 				str_repeat( 'x', 33 )      => 'Passt nicht in die Spalte',
 				'rl_callup'                => '',
+				"rl_reminder\n"            => 'Zeilenumbruch am Ende',
 			)
 		);
 
@@ -185,7 +224,7 @@ final class ExtensionPointsTest extends TestCase {
 	public function test_reserved_types_fit_the_preference_column(): void {
 		$reflection = new \ReflectionClass( EventTypes::class );
 		foreach ( $reflection->getConstants() as $type ) {
-			self::assertMatchesRegularExpression( '/^[a-z][a-z0-9_]{0,31}$/', $type );
+			self::assertMatchesRegularExpression( '/^[a-z][a-z0-9_]{0,31}$/D', $type );
 		}
 	}
 

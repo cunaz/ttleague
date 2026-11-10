@@ -13,6 +13,10 @@ Eine Seite schlägt einen neuen Termin vor, die andere stimmt zu, bei grossen Ve
 | `requested` | zustimmen, Bewilligung nötig | `accepted` | Gegenseite |
 | `accepted` | bewilligen | `approved` | TK |
 | `accepted` | ablehnen (Bemerkung Pflicht) | `rejected` | TK |
+| `requested` | an Stelle der Gegenseite gutheissen | `approved` | TK |
+| `requested` | an Stelle der Gegenseite ablehnen (Bemerkung Pflicht) | `rejected` | TK |
+
+Entscheidet die TK über einen Antrag im Status `requested`, schliesst ihr Entscheid die Bewilligung ein: Der Antrag wird direkt `approved` oder `rejected`, nie `accepted`. Das darf die TK jederzeit; die Übersicht führt unbeantwortete Anträge nach sieben Tagen auf (siehe «Reagiert niemand»).
 
 - **Bewilligung nötig** ist sie, wenn der neue Termin mehr als `postponement_approval_days` (14) Tage nach dem bisherigen liegt. Vorverschieben und kürzeres Nachverschieben gelten mit der Zustimmung; die TK wird informiert.
 - Stellt die TK den Antrag selbst, gilt er sofort als `approved`.
@@ -28,7 +32,14 @@ Eine Seite schlägt einen neuen Termin vor, die andere stimmt zu, bei grossen Ve
 
 ## Terminvorschlag
 
-Für Begegnungen ohne `scheduled_at` (Cup-Runden): `postponement.kind = propose`. Das Heimteam schlägt vor, der Gegner stimmt zu. Eine Bewilligung braucht es nicht, solange der Termin vor der Frist der Runde liegt (`cup_tie.deadline`); danach wie oben. Der Status der Begegnung bleibt `scheduled`.
+Für Begegnungen ohne `scheduled_at` (Cup-Runden): `postponement.kind = propose`. Das Heimteam schlägt vor, der Gegner stimmt zu. Der Status der Begegnung bleibt `scheduled`.
+
+Weil es keinen bisherigen Termin gibt, entfällt der Vergleich mit `postponement_approval_days`. Massgebend ist die Frist der Runde (`cup_tie.deadline`):
+
+- Termin spätestens am Tag der Frist, oder keine Frist gesetzt: Die Zustimmung des Gegners genügt (`approved`).
+- Termin nach der Frist: Die Zustimmung führt zu `accepted`, die TK bewilligt oder lehnt ab.
+
+Hat die Cup-Begegnung schon einen Termin, gilt für eine weitere Änderung der normale Ablauf (`kind = postpone`) mit beiden Regeln: Bewilligung nötig, wenn der neue Termin mehr als `postponement_approval_days` Tage nach dem bisherigen **oder** nach der Frist der Runde liegt.
 
 ## Reagiert niemand
 
@@ -62,6 +73,6 @@ Unter `/wp-json/ttleague/v1`, Cookie mit `X-WP-Nonce`, Fehler wie in `docs/erfas
 
 ## Tests
 
-- Regel: Grenze bei genau 14 Tagen, Vorverschieben, Antrag der TK.
-- Dienst gegen MariaDB: alle Übergänge, zweiter offener Antrag abgelehnt, Clubduell, Wirkung auf Termin und Status, Erinnerung vor dem Spiel für den neuen Termin, Terminvorschlag ohne bisherigen Termin.
+- Regel: Grenze bei genau 14 Tagen, Vorverschieben, Antrag der TK, Terminvorschlag am Tag der Frist und am Tag danach, ohne Frist.
+- Dienst gegen MariaDB: alle Übergänge (auch der Entscheid der TK an Stelle der Gegenseite), zweiter offener Antrag abgelehnt, Clubduell, Wirkung auf Termin und Status, Erinnerung vor dem Spiel für den neuen Termin, Terminvorschlag ohne bisherigen Termin.
 - WordPress: REST mit 401, 403, 409 und 422; Rechte beider Seiten.

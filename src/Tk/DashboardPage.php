@@ -26,6 +26,20 @@ use TTLeague\Results\Results;
  */
 final class DashboardPage {
 
+	/**
+	 * Anker der festen Listen. Listen der Module dürfen sie nicht verwenden.
+	 *
+	 * @var array<string,string>
+	 */
+	public const SECTION_IDS = array(
+		'disputed'         => 'ttl-einsprachen',
+		'confirmation_due' => 'ttl-bestaetigung',
+		'missing'          => 'ttl-fehlend',
+		'forfeit'          => 'ttl-forfait',
+		'warnings'         => 'ttl-hinweise',
+		'decisions'        => 'ttl-entscheide',
+	);
+
 	public static function render(): void {
 		if ( ! current_user_can( Capabilities::TK ) ) {
 			wp_die( esc_html__( 'Dazu fehlt dir die Berechtigung.', 'ttleague' ), '', array( 'response' => 403 ) );
@@ -34,7 +48,8 @@ final class DashboardPage {
 	}
 
 	/**
-	 * Listen der Module (Verschiebungen, Meldungen, Cup-Fristen …). Ungültige Einträge fallen weg.
+	 * Listen der Module (Verschiebungen, Meldungen, Cup-Fristen …). Ungültige Einträge fallen weg,
+	 * ebenso Anker, die schon vergeben sind: die der festen Listen und der erste Eintrag gewinnt.
 	 *
 	 * @return list<array{id:string,title:string,count:int,html:string}>
 	 */
@@ -51,17 +66,17 @@ final class DashboardPage {
 				continue;
 			}
 			$id = sanitize_html_class( $section['id'] );
-			if ( '' === $id || '' === $section['title'] ) {
+			if ( '' === $id || '' === $section['title'] || isset( $valid[ $id ] ) || in_array( $id, self::SECTION_IDS, true ) ) {
 				continue;
 			}
-			$valid[] = array(
+			$valid[ $id ] = array(
 				'id'    => $id,
 				'title' => $section['title'],
 				'count' => max( 0, (int) ( $section['count'] ?? 0 ) ),
 				'html'  => $section['html'],
 			);
 		}
-		return $valid;
+		return array_values( $valid );
 	}
 
 	/**
@@ -74,48 +89,51 @@ final class DashboardPage {
 
 		$season = $overview['season'];
 		if ( null === $season ) {
-			return $out . '<p>' . esc_html__( 'Es gibt keine aktive Saison.', 'ttleague' ) . '</p></div>';
+			// Ohne aktive Saison (vor der ersten Freigabe, nach dem Abschluss) bleiben die Listen der
+			// Module sichtbar, z. B. die Meldungen zur geplanten Saison.
+			return $out . '<p>' . esc_html__( 'Es gibt keine aktive Saison.', 'ttleague' ) . '</p>'
+				. self::nav( array_map( array( self::class, 'link' ), $extra ) ) . self::module_html( $extra ) . '</div>';
 		}
 		/** @var SeasonRules $rules */
 		$rules = $season['rules'];
 
 		$sections = array(
 			'disputed'         => array(
-				'id'    => 'ttl-einsprachen',
+				'id'    => self::SECTION_IDS['disputed'],
 				'title' => __( 'Einsprachen', 'ttleague' ),
 				'intro' => __( 'Die Gastseite hat Einsprache erhoben. «Abschliessen» übernimmt das erfasste Resultat; Korrekturen auf der Erfassungsseite. Alter seit der Einsprache.', 'ttleague' ),
 				'empty' => __( 'Keine offenen Einsprachen.', 'ttleague' ),
 			),
 			'confirmation_due' => array(
-				'id'    => 'ttl-bestaetigung',
+				'id'    => self::SECTION_IDS['confirmation_due'],
 				'title' => __( 'Bestätigung durch die TK fällig', 'ttleague' ),
 				/* translators: %d: Tage */
 				'intro' => sprintf( _n( 'Provisorische Resultate, die seit mehr als %d Tag nicht bestätigt sind. Alter seit der Erfassung.', 'Provisorische Resultate, die seit mehr als %d Tagen nicht bestätigt sind. Alter seit der Erfassung.', $rules->objection_days, 'ttleague' ), $rules->objection_days ),
 				'empty' => __( 'Keine Bestätigungen fällig.', 'ttleague' ),
 			),
 			'missing'          => array(
-				'id'    => 'ttl-fehlend',
+				'id'    => self::SECTION_IDS['missing'],
 				'title' => __( 'Fehlende Resultate', 'ttleague' ),
 				/* translators: 1: Stunden, 2: Tage */
 				'intro' => sprintf( __( 'Mehr als %1$d Stunden nach der Anspielzeit noch kein Resultat (ab %2$d Tagen unter Forfait-Vorschläge). Alter seit der Anspielzeit.', 'ttleague' ), $rules->entry_deadline_hours, $rules->forfeit_after_days ),
 				'empty' => __( 'Keine fehlenden Resultate.', 'ttleague' ),
 			),
 			'forfeit'          => array(
-				'id'    => 'ttl-forfait',
+				'id'    => self::SECTION_IDS['forfeit'],
 				'title' => __( 'Forfait-Vorschläge', 'ttleague' ),
 				/* translators: %d: Tage */
 				'intro' => sprintf( __( '%d Tage nach der Anspielzeit noch kein Resultat. Alter seit der Anspielzeit.', 'ttleague' ), $rules->forfeit_after_days ),
 				'empty' => __( 'Keine Forfait-Vorschläge.', 'ttleague' ),
 			),
 			'warnings'         => array(
-				'id'    => 'ttl-hinweise',
+				'id'    => self::SECTION_IDS['warnings'],
 				'title' => __( 'Hinweise', 'ttleague' ),
 				/* translators: %d: Tage */
 				'intro' => sprintf( __( 'Hinweise aus Erfassungen und Entscheiden der letzten %d Tage, z. B. Ersatzeinsätze, Bindungen und Korrekturen der TK.', 'ttleague' ), Dashboard::WARNING_DAYS ),
 				'empty' => __( 'Keine Hinweise.', 'ttleague' ),
 			),
 			'decisions'        => array(
-				'id'    => 'ttl-entscheide',
+				'id'    => self::SECTION_IDS['decisions'],
 				'title' => __( 'Letzte Entscheide', 'ttleague' ),
 				'intro' => __( 'Bestätigungen, Abschlüsse, Korrekturen, Forfaits und Rücksetzungen der TK in dieser Saison.', 'ttleague' ),
 				'empty' => __( 'Noch keine Entscheide.', 'ttleague' ),
@@ -126,12 +144,9 @@ final class DashboardPage {
 		$out  .= '<p>' . esc_html( sprintf( __( 'Offene Punkte der Saison %s.', 'ttleague' ), $season['name'] ) ) . '</p>';
 		$links = array();
 		foreach ( $sections as $key => $section ) {
-			$links[] = '<li><a href="#' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . count( $overview[ $key ] ) . ')</span></a></li>';
+			$links[] = self::link( $section + array( 'count' => count( $overview[ $key ] ) ) );
 		}
-		foreach ( $extra as $section ) {
-			$links[] = '<li><a href="#' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . $section['count'] . ')</span></a></li>';
-		}
-		$out .= '<ul class="subsubsub ttl-tk-nav">' . implode( ' | ', $links ) . '</ul><div class="clear"></div>';
+		$out .= self::nav( array_merge( $links, array_map( array( self::class, 'link' ), $extra ) ) );
 
 		foreach ( $sections as $key => $section ) {
 			$rows = $overview[ $key ];
@@ -139,10 +154,38 @@ final class DashboardPage {
 				. '<p class="description">' . esc_html( $section['intro'] ) . '</p>';
 			$out .= array() === $rows ? '<p><em>' . esc_html( $section['empty'] ) . '</em></p>' : self::table( $rows, $key, $rules );
 		}
+		return $out . self::module_html( $extra ) . '</div>';
+	}
+
+	/**
+	 * Eintrag der Sprungleiste.
+	 *
+	 * @param array{id:string,title:string,count:int} $section Liste.
+	 */
+	private static function link( array $section ): string {
+		return '<li><a href="#' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . (int) $section['count'] . ')</span></a></li>';
+	}
+
+	/**
+	 * Sprungleiste; leer ohne Einträge.
+	 *
+	 * @param list<string> $links Einträge aus link().
+	 */
+	private static function nav( array $links ): string {
+		return array() === $links ? '' : '<ul class="subsubsub ttl-tk-nav">' . implode( ' | ', $links ) . '</ul><div class="clear"></div>';
+	}
+
+	/**
+	 * Listen der Module: Titel mit Anzahl, darunter das HTML des Moduls.
+	 *
+	 * @param list<array{id:string,title:string,count:int,html:string}> $extra Listen aus module_sections().
+	 */
+	private static function module_html( array $extra ): string {
+		$out = '';
 		foreach ( $extra as $section ) {
 			$out .= '<h2 id="' . esc_attr( $section['id'] ) . '">' . esc_html( $section['title'] ) . ' <span class="count">(' . $section['count'] . ')</span></h2>' . $section['html'];
 		}
-		return $out . '</div>';
+		return $out;
 	}
 
 	/**

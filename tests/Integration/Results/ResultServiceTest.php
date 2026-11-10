@@ -1121,4 +1121,25 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertSame( '555', $this->db->get_var( "SELECT photo_attachment_id FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
 		self::expect_error( fn() => $this->service->attach_photo( $this->id['f1'], $this->actor['captain_a1'], 556 ), 403 );
 	}
+
+	public function test_draft_fixtures_of_a_planned_season_take_no_result_not_even_from_the_tk(): void {
+		$this->db->update( 'season', array( 'status' => 'planned' ), array( 'slug' => '2026-27' ) );
+
+		$error = self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['tk'] ), 409 );
+		self::assertSame( 'Die Saison dieser Begegnung ist noch nicht freigegeben.', $error->getMessage() );
+		self::expect_error(
+			fn() => $this->service->decide(
+				$this->id['f1'],
+				$this->actor['tk'],
+				array(
+					'action'  => 'forfeit',
+					'winner'  => 'home',
+					'comment' => 'Nicht angetreten.',
+				)
+			),
+			409
+		);
+		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
+		self::assertSame( '0', (string) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'game' )}" ) );
+	}
 }

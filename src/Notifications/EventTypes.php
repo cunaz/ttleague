@@ -49,7 +49,7 @@ final class EventTypes {
 		 */
 		$extra = function_exists( 'apply_filters' ) ? apply_filters( 'ttleague_notification_types', array() ) : array();
 		foreach ( is_array( $extra ) ? $extra : array() as $type => $label ) {
-			if ( is_string( $type ) && 1 === preg_match( '/^[a-z][a-z0-9_]{0,31}$/', $type ) && is_string( $label ) && '' !== $label && ! isset( $labels[ $type ] ) ) {
+			if ( is_string( $type ) && 1 === preg_match( '/^[a-z][a-z0-9_]{0,31}$/D', $type ) && is_string( $label ) && '' !== $label && ! isset( $labels[ $type ] ) ) {
 				$labels[ $type ] = $label;
 			}
 		}
