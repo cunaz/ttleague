@@ -1134,6 +1134,35 @@
 	color: var(--ttl-win);
 }
 
+/* Knopf «Teilen» (Matchreport, Leseansicht der Erfassungsseite); ohne JavaScript verborgen */
+
+.ttl-share {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.75rem;
+	margin-block: 0.75rem;
+}
+
+.ttl-share[hidden] {
+	display: none;
+}
+
+.ttl .ttl-share__button {
+	gap: 0.5rem;
+}
+
+.ttl-share__icon {
+	flex: none;
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.ttl-share__status:not(:empty) {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+}
+
 /* Kontaktdaten (nur für angemeldete Funktionärinnen und Funktionäre) */
 
 .ttl-contact {
@@ -1616,7 +1645,8 @@
 	.ttl-filter,
 	.ttl-tabs,
 	.ttl-form,
-	.ttl-subscribe {
+	.ttl-subscribe,
+	.ttl-share {
 		display: none;
 	}
 

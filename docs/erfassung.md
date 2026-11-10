@@ -94,7 +94,7 @@ Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttlea
 - Absenden: `POST result` mit `version`, im Korrekturmodus der TK `POST decision` mit `action: correct`. Pflichtangaben prüft schon der Browser. Feldfehler (422) erscheinen am Feld und in einer Übersicht mit Sprungmarken, 409 mit «Seite neu laden», abgelaufene Anmeldung mit Link zur Anmeldung. Nach jedem Erfolg lädt die Seite neu (Meldung über `sessionStorage`); Status, Hinweise und Verlauf kommen dann vom Server.
 - Entwurf im `localStorage` (pro Begegnung und Konto), gelöscht nach dem Speichern. Beruht er auf dem aktuellen Stand (`version`), wird er wiederhergestellt, sonst angeboten. Ein Entwurf hat Vorrang vor der vorgeschlagenen Aufstellung; «Entwurf verwerfen» führt zum Vorschlag zurück.
 
-**Gastseite:** das erfasste Resultat zum Lesen (Aufstellung, Spiele, Hinweise, Foto) und der Verlauf aus `history`. «Resultat bestätigen» (`POST confirm` mit `version`) und «Einsprache erheben» (Begründung 10 bis 2000 Zeichen, `POST objection`), je nach `can.confirm` und `can.object`.
+**Gastseite:** das erfasste Resultat zum Lesen (Aufstellung, Spiele, Hinweise, Foto, Knopf «Teilen» mit der Adresse des Matchreports, siehe `docs/frontend.md`) und der Verlauf aus `history`. «Resultat bestätigen» (`POST confirm` mit `version`) und «Einsprache erheben» (Begründung 10 bis 2000 Zeichen, `POST objection`), je nach `can.confirm` und `can.object`.
 
 **TK:** Bei `can.decide` ein Bereich «Entscheid der TK» mit den im Status erlaubten Entscheiden (`FixtureWorkflow`, «abschliessen» nur mit Resultat), Forfait mit Sieger und Bemerkung (`POST decision`). «Korrigieren» öffnet das Formular im Korrekturmodus.
 

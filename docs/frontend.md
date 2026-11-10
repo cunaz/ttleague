@@ -124,6 +124,16 @@ Persönliches steht nie im Cache. Kontaktdaten der Captains und TK-Chefs lädt `
 - Verlaufsgrafik: gestrecktes Inline-SVG mit nicht skalierenden Linien, Beschriftungen als HTML (auf dem Handy lesbar), `role="img"` mit Titel und Beschreibung, Hover-Bänder mit nativer Beschriftung pro Spieltag, Tabelle als Alternative. Das SVG läuft durch `wp_kses`.
 - Theme: Die Blöcke funktionieren mit jedem Block-Theme und übernehmen dessen Farben, Schriften und Abstände (getestet mit Twenty Twenty-Five). Ein eigenes Child-Theme mit Navigation, Startseite und Kontaktangaben gehört zur jeweiligen Instanz und wird in deren Repository gepflegt. Navigationslinks auf die Seiten des Plugins sind relative Pfade (`/meisterschaft/` …).
 
+## Teilen-Knopf
+
+Der Matchreport zeigt einen Knopf «Teilen», sobald ein Resultat vorliegt (auch bei einem Forfait). Derselbe Knopf steht auf der Erfassungsseite in der Leseansicht «Erfasstes Resultat».
+
+- Geteilt werden ein Titel wie «Seefeld 1 – Wollishofen 1 6:4» und die Adresse des Matchreports, auch von der Erfassungsseite aus.
+- Mit der Web Share API (`navigator.share`) öffnet der Knopf den Teilen-Dialog des Geräts. Ohne sie heisst er «Link kopieren» und legt die Adresse in die Zwischenablage. Scheitert das Teilen, kopiert er ebenfalls; ein Abbruch durch die Person gilt nicht als Fehler.
+- Rückmeldung («Link kopiert.» oder der Hinweis auf die Adresszeile) über eine Live-Region (`role="status"`).
+- Ohne JavaScript, und ohne Web Share API und Zwischenablage, bleibt der Knopf verborgen (`hidden`).
+- Der Knopf ist für alle Besucher gleich; die Ausgabe für Gäste bleibt zwischenspeicherbar.
+- `TTLeague\Frontend\Views\ShareButton` baut die Auszeichnung, `assets/js/share.js` (ohne Abhängigkeiten, verzögert im Fuss der Seite) wird nur eingereiht, wo der Knopf erscheint. Touch-Ziel mindestens 44px, sichtbarer Fokus, im Druck ausgeblendet.
 
 ## Kalender-Abos (iCal)
 
@@ -198,11 +208,13 @@ Grundlage einer installierbaren Web-App. Registrierung aus `Plugin::boot()` übe
 
 ## Tests
 
-- `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
+- `tests/Unit/Frontend/`: Formate (Datum «Di, 8.9.2026», Punkte «5,5», Status), Adressbau und Rewrite-Regeln, Slugs, Shortcode-Namen, Verlaufsgrafik, Knopf «Teilen» (Auszeichnung und Maskierung in `ShareButtonTest`; Verhalten von `share.js` in `ShareScriptTest` mit Node und einem nachgebildeten Dokument: teilen, kopieren, Abbruch, Rückfall, verborgen ohne beides), Links der Kontaktdaten. WordPress-Funktionen sind in `Stubs/WordPress.php` minimal nachgebildet.
 - `tests/Unit/Calendar/`: Faltung (Grenzen, UTF-8, Graphem-Cluster), Maskierung, `VTIMEZONE` im Abgleich mit der Zeitzonendatenbank, Dauer über die Zeitumstellung, Ganztag, Titel und Status der Ereignisse, Adressen, Rewrite-Regeln, ETag.
 - `tests/Integration/Calendar/`: Feeds für Mannschaft, Club und Spieler gegen das Szenario (Forfait, provisorisch, Cup, Ranglistenturnier, Ersatzeinsatz, annulliert, Anspielzeit offen, unbekannte Adressen) und der Abschnitt «Kalender abonnieren» auf den Seiten.
 - `tests/Unit/Pwa/`: Manifest (Namen, Kurzname, Unterordner, Farben aus der Palette, mitgelieferte Icons mit Abmessungen, Website-Icon, Rewrite-Regeln) und Service Worker (Konfiguration, Cache-Namen pro Website, Version, ausgeschlossene Pfade, Strategien der Vorlage). Registrierung, Offline-Rückfall und Ausschlüsse im Browser lassen sich mit Playwright gegen eine Instanz prüfen (`context.setOffline(true)`).
-- `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping.
+- `tests/Integration/Frontend/`: `Seeder` legt zwei erfundene Saisons an (vier Clubs, sechzehn Spieler, Forfait, provisorisches Resultat, kampflose Spiele, Cup mit Spiel nach der Entscheidung, RL-Runde mit Aufgebot, Wertungsverlauf). `ReadModelTest` prüft Tabelle, Spielerstatistik, Einsatzmatrix, RL und Cup; `ResolverTest` 404, 301 und 302; `ViewsTest` rendert alle Ansichten und prüft Inhalte und Escaping, auch den Knopf «Teilen» nur mit Resultat.
+- `tests/WordPress/Frontend/`: `ShareButtonTest` (Skript verzögert im Fuss registriert und nur mit dem Knopf eingereiht, gleiche Ausgabe für Gäste und Angemeldete) und `ContactViewsTest` (Kontaktdaten, siehe `docs/erfassung.md`).
+- Im Browser nicht automatisiert geprüft: der Teilen-Dialog des Geräts und das Kopieren in die Zwischenablage.
 
 ```bash
 vendor/bin/phpunit

@@ -325,6 +325,22 @@ final class EntryPageTest extends IntegrationTestCase {
 		self::assertTrue( $result['state']['view']['formHidden'] );
 	}
 
+	public function test_reading_view_offers_sharing_the_match_report(): void {
+		self::assertStringNotContainsString( 'ttl-share', $this->build( 'home' )['html'], 'ohne Resultat kein Knopf' );
+
+		$this->service->submit( $this->id['fixture'], $this->payload(), $this->actor['home'] );
+		$html = $this->build( 'away' )['html'];
+
+		self::assertSame( 1, substr_count( $html, 'data-ttl-share ' ) );
+		self::assertStringContainsString( 'data-ttl-share-title="Seefeld &lt;2&gt; &amp; Co – Wollishofen 1 6:4"', $html );
+		self::assertStringContainsString( 'data-ttl-share-url="https://liga.example/begegnung/1/"', $html, 'Adresse des Matchreports, nicht der Erfassungsseite' );
+		self::assertMatchesRegularExpression( '#<section class="ttl-section ttl-entry__result"[^>]*>.*<div class="ttl-share"[^>]* hidden>.*</section>#s', $html, 'in der Leseansicht' );
+
+		// Die Heimseite sieht das Formular; die Leseansicht samt Knopf ist verborgen.
+		$home = $this->build( 'home' )['html'];
+		self::assertMatchesRegularExpression( '#<section class="ttl-section ttl-entry__result"[^>]*data-wp-bind--hidden="!state.view.formHidden" hidden>#', $home );
+	}
+
 	public function test_tk_gets_the_decisions_of_the_status(): void {
 		$scheduled = $this->build( 'tk' );
 		self::assertSame( array( 'correct', 'forfeit' ), $scheduled['config']['decisions'] );

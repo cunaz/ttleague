@@ -11,6 +11,7 @@ namespace TTLeague\Results;
 
 use TTLeague\Domain\Match\FixtureWorkflow as Flow;
 use TTLeague\Frontend\Support\Format;
+use TTLeague\Frontend\Views\ShareButton;
 
 /**
  * Rendert die Seite für eine Person mit Rolle. Dynamische Teile tragen Direktiven der
@@ -245,6 +246,13 @@ final class EntryMarkup {
 		$photo = $this->state['photo']['url'];
 		if ( null !== $photo && '' !== $photo ) {
 			$body .= '<p><a href="' . esc_url( (string) $photo ) . '">' . esc_html__( 'Foto des Spielberichts ansehen', 'ttleague' ) . '</a></p>';
+		}
+		// «Teilen» mit der Adresse des öffentlichen Matchreports (nur in dieser Leseansicht).
+		if ( null !== $fixture['home_score'] && null !== $fixture['away_score'] ) {
+			$body .= ShareButton::render(
+				ShareButton::title( (string) $fixture['home']['name'], (string) $fixture['away']['name'], (int) $fixture['home_score'], (int) $fixture['away_score'] ),
+				(string) $this->page['report']
+			);
 		}
 		return '<section class="ttl-section ttl-entry__result" aria-labelledby="ttl-e-result-title"' . $this->hide_unless( 'view.formHidden' ) . '>'
 			. '<h3 id="ttl-e-result-title" class="ttl-section__title">' . esc_html__( 'Erfasstes Resultat', 'ttleague' ) . '</h3>' . $body . '</section>';

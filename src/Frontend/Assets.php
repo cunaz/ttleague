@@ -1,6 +1,6 @@
 <?php
 /**
- * Stylesheet der Darstellung und Editor-Skript der Blöcke.
+ * Stylesheet der Darstellung, Editor-Skript der Blöcke und Skript des Knopfs «Teilen».
  *
  * @package TTLeague
  */
@@ -16,8 +16,11 @@ final class Assets {
 	public const STYLE  = 'ttleague-frontend';
 	public const EDITOR = 'ttleague-editor';
 
+	/** Skript des Knopfs «Teilen»; eingereiht nur, wo der Knopf erscheint (ShareButton). */
+	public const SHARE = 'ttleague-share';
+
 	/**
-	 * Registriert Stil und Editor-Skript (init, vor den Blöcken).
+	 * Registriert Stil, Editor-Skript und das Skript des Knopfs «Teilen» (init, vor den Blöcken).
 	 */
 	public static function register(): void {
 		wp_register_style( self::STYLE, TTLEAGUE_URL . 'assets/css/frontend.css', array(), self::version( 'assets/css/frontend.css' ) );
@@ -27,6 +30,16 @@ final class Assets {
 			array( 'wp-blocks', 'wp-element', 'wp-server-side-render', 'wp-block-editor', 'wp-components', 'wp-i18n' ),
 			self::version( 'assets/js/editor.js' ),
 			true
+		);
+		wp_register_script(
+			self::SHARE,
+			TTLEAGUE_URL . 'assets/js/share.js',
+			array(),
+			self::version( 'assets/js/share.js' ),
+			array(
+				'in_footer' => true,
+				'strategy'  => 'defer',
+			)
 		);
 	}
 
