@@ -11,6 +11,7 @@ namespace TTLeague\Tk;
 
 use TTLeague\Access\Capabilities;
 use TTLeague\Accounts\Services;
+use TTLeague\Export\Exports;
 
 final class Tk {
 
@@ -19,6 +20,9 @@ final class Tk {
 
 	/** Seite «Konten und Einladungen». */
 	public const ACCOUNTS_PAGE = 'ttleague-tk-konten';
+
+	/** Platz von «Konten und Einladungen» im Menü; Seiten der Module mit kleinerer Zahl stehen davor. */
+	public const ACCOUNTS_POSITION = 90;
 
 	public const DECIDE           = 'ttleague_tk_decide';
 	public const EMAIL            = 'ttleague_tk_email';
@@ -39,6 +43,51 @@ final class Tk {
 		add_action( 'admin_post_' . self::INVITE, array( Actions::class, 'invite' ) );
 		add_action( 'admin_post_' . self::INVITE_OFFICIALS, array( Actions::class, 'invite_officials' ) );
 		add_filter( 'login_redirect', array( self::class, 'login_redirect' ), 10, 3 );
+		Exports::register();
+	}
+
+	/**
+	 * Seiten der Module unter «Spielbetrieb», nach Position und Titel sortiert. Ungültige
+	 * Einträge und Slugs der eigenen Seiten fallen weg.
+	 *
+	 * @return list<array{slug:string,title:string,render:callable,position:int}>
+	 */
+	public static function pages(): array {
+		/**
+		 * Seiten unter «Spielbetrieb». Alle verlangen ttl_tk.
+		 *
+		 * @param list<array{slug:string,title:string,render:callable,position?:int}> $pages Seiten.
+		 */
+		$pages = apply_filters( 'ttleague_tk_pages', array() );
+		$valid = array();
+		foreach ( is_array( $pages ) ? $pages : array() as $page ) {
+			if ( ! is_array( $page ) || ! is_string( $page['slug'] ?? null ) || ! is_string( $page['title'] ?? null ) || ! is_callable( $page['render'] ?? null ) ) {
+				continue;
+			}
+			$slug = sanitize_key( $page['slug'] );
+			if ( '' === $slug || '' === $page['title'] || isset( $valid[ $slug ] ) || in_array( $slug, array( self::OVERVIEW_PAGE, self::ACCOUNTS_PAGE ), true ) ) {
+				continue;
+			}
+			$valid[ $slug ] = array(
+				'slug'     => $slug,
+				'title'    => $page['title'],
+				'render'   => $page['render'],
+				'position' => (int) ( $page['position'] ?? 50 ),
+			);
+		}
+		$valid = array_values( $valid );
+		usort( $valid, static fn( array $a, array $b ): int => array( $a['position'], $a['title'] ) <=> array( $b['position'], $b['title'] ) );
+		return $valid;
+	}
+
+	/**
+	 * Adresse einer Seite unter «Spielbetrieb».
+	 *
+	 * @param string               $slug Slug der Seite.
+	 * @param array<string,string> $args Weitere Parameter.
+	 */
+	public static function page_url( string $slug, array $args = array() ): string {
+		return add_query_arg( array_map( 'rawurlencode', $args ), admin_url( 'admin.php?page=' . $slug ) );
 	}
 
 	/**
@@ -86,7 +135,17 @@ final class Tk {
 		self::$hooks   = array();
 		self::$hooks[] = (string) add_menu_page( $title, $title, Capabilities::TK, self::OVERVIEW_PAGE, array( DashboardPage::class, 'render' ), 'dashicons-clipboard', 26 );
 		self::$hooks[] = (string) add_submenu_page( self::OVERVIEW_PAGE, __( 'Übersicht', 'ttleague' ), __( 'Übersicht', 'ttleague' ), Capabilities::TK, self::OVERVIEW_PAGE, array( DashboardPage::class, 'render' ) );
-		self::$hooks[] = (string) add_submenu_page( self::OVERVIEW_PAGE, __( 'Konten und Einladungen', 'ttleague' ), __( 'Konten und Einladungen', 'ttleague' ), Capabilities::TK, self::ACCOUNTS_PAGE, array( AccountsPage::class, 'render' ) );
+		$pages         = self::pages();
+		$pages[]       = array(
+			'slug'     => self::ACCOUNTS_PAGE,
+			'title'    => __( 'Konten und Einladungen', 'ttleague' ),
+			'render'   => array( AccountsPage::class, 'render' ),
+			'position' => self::ACCOUNTS_POSITION,
+		);
+		usort( $pages, static fn( array $a, array $b ): int => $a['position'] <=> $b['position'] );
+		foreach ( $pages as $page ) {
+			self::$hooks[] = (string) add_submenu_page( self::OVERVIEW_PAGE, $page['title'], $page['title'], Capabilities::TK, $page['slug'], $page['render'] );
+		}
 	}
 
 	public static function overview_url( string $anchor = '' ): string {

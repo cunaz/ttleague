@@ -1121,4 +1121,60 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertSame( '555', $this->db->get_var( "SELECT photo_attachment_id FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
 		self::expect_error( fn() => $this->service->attach_photo( $this->id['f1'], $this->actor['captain_a1'], 556 ), 403 );
 	}
+
+	public function test_draft_fixtures_of_a_planned_season_take_no_result_not_even_from_the_tk(): void {
+		$this->db->update( 'season', array( 'status' => 'planned' ), array( 'slug' => '2026-27' ) );
+
+		$error = self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['tk'] ), 409 );
+		self::assertSame( 'Die Saison dieser Begegnung ist noch nicht freigegeben.', $error->getMessage() );
+		self::expect_error(
+			fn() => $this->service->decide(
+				$this->id['f1'],
+				$this->actor['tk'],
+				array(
+					'action'  => 'forfeit',
+					'winner'  => 'home',
+					'comment' => 'Nicht angetreten.',
+				)
+			),
+			409
+		);
+		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
+		self::assertSame( '0', (string) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'game' )}" ) );
+	}
+
+	public function test_archived_season_is_closed_for_clubs_but_the_tk_may_still_correct(): void {
+		$this->db->update( 'season', array( 'status' => 'archived' ), array( 'slug' => '2026-27' ) );
+
+		self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] ), 403 );
+		self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['chef_home'] ), 403 );
+		self::assertSame( 'provisional', $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['tk'] )['status'] );
+	}
+
+	public function test_tk_corrects_an_existing_result_of_an_archived_season_with_a_log_entry(): void {
+		$this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		$this->db->update( 'season', array( 'status' => 'archived' ), array( 'slug' => '2026-27' ) );
+
+		$corrected                          = $this->six_four();
+		$corrected['games'][6]['sets_home'] = 1;
+		$corrected['games'][6]['sets_away'] = 3;
+		$result                             = $this->service->decide(
+			$this->id['f1'],
+			$this->actor['tk'],
+			array(
+				'action'  => 'correct',
+				'result'  => $corrected,
+				'comment' => 'Doppel nach Saisonende korrigiert.',
+			)
+		);
+
+		self::assertSame( array( 'final', 5, 5 ), array( $result['status'], $result['home_score'], $result['away_score'] ) );
+		$log = $this->db->get_row(
+			"SELECT user_id, note FROM {$this->db->table( 'audit_log' )} WHERE entity = 'fixture' AND entity_id = %d AND action = 'decision_correct'",
+			array( $this->id['f1'] )
+		);
+		self::assertNotNull( $log );
+		self::assertSame( '103', (string) $log['user_id'] );
+		self::assertSame( 'Doppel nach Saisonende korrigiert.', $log['note'] );
+	}
 }
