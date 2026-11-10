@@ -1150,4 +1150,31 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['chef_home'] ), 403 );
 		self::assertSame( 'provisional', $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['tk'] )['status'] );
 	}
+
+	public function test_tk_corrects_an_existing_result_of_an_archived_season_with_a_log_entry(): void {
+		$this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] );
+		$this->db->update( 'season', array( 'status' => 'archived' ), array( 'slug' => '2026-27' ) );
+
+		$corrected                          = $this->six_four();
+		$corrected['games'][6]['sets_home'] = 1;
+		$corrected['games'][6]['sets_away'] = 3;
+		$result                             = $this->service->decide(
+			$this->id['f1'],
+			$this->actor['tk'],
+			array(
+				'action'  => 'correct',
+				'result'  => $corrected,
+				'comment' => 'Doppel nach Saisonende korrigiert.',
+			)
+		);
+
+		self::assertSame( array( 'final', 5, 5 ), array( $result['status'], $result['home_score'], $result['away_score'] ) );
+		$log = $this->db->get_row(
+			"SELECT user_id, note FROM {$this->db->table( 'audit_log' )} WHERE entity = 'fixture' AND entity_id = %d AND action = 'decision_correct'",
+			array( $this->id['f1'] )
+		);
+		self::assertNotNull( $log );
+		self::assertSame( '103', (string) $log['user_id'] );
+		self::assertSame( 'Doppel nach Saisonende korrigiert.', $log['note'] );
+	}
 }
