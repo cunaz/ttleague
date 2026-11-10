@@ -87,11 +87,12 @@ Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttlea
 **Formular (Heimseite, TK):**
 
 - Aufstellung: pro Slot eine Auswahl aus `candidates`, gruppiert nach Stammspieler, gebunden, Ersatz und nicht spielberechtigt. Nicht berechtigte Spieler sind sichtbar, aber gesperrt (Kurzgrund in der Option, volle Begründung in der aufklappbaren Liste); im Korrekturmodus der TK sind sie wählbar, weil die API dort nur Hinweise gibt. «fehlt (nicht angetreten)» sendet den Slot als `null`; ein leerer Slot ist ein Fehler.
+- Vorschlag: Ist noch nichts erfasst, beginnt die Aufstellung mit `suggestion`, der Aufstellung aus dem letzten Spiel jedes Teams (siehe `GET entry`). Unter dem Namen der Mannschaft steht «Aufstellung aus dem letzten Spiel vorgeschlagen, bitte prüfen», solange die Seite dem Vorschlag genau entspricht. Spiele werden nie vorgeschlagen. Der Vorschlag ist kein Entwurf: Er ist der Ausgangszustand des Formulars und wird nicht gespeichert.
 - Spiele in Spielfolge (Cup fünf): Schnellknöpfe 3:0 bis 0:3 (nochmals tippen hebt die Wahl auf), Schalter «kampflos» mit Siegerseite, Doppelpaarung pro Seite (bei genau zwei Spielern automatisch, dann nicht gesendet), Satzpunkte nur bei `set_points_enabled` (freiwillig, nur vollständig gesendet).
 - Fehlt ein Spieler, schlägt das Formular «kampflos» für die andere Seite vor (fehlen beide: «nicht gespielt»), solange das Spiel nicht ausdrücklich erfasst ist. Widerspricht ein erfasstes Spiel der Aufstellung, erscheint ein Hinweis mit «Übernehmen». Im Cup mit `first_to_three` sind die Spiele nach dem dritten Sieg freiwillig; nicht erfasste werden nicht gesendet.
 - Laufendes Gesamtresultat (`aria-live`) in der Fusszeile mit «Speichern», Bemerkung, Foto des Spielberichts (`capture="environment"`, Upload über `POST photo` gleich nach der Auswahl).
 - Absenden: `POST result` mit `version`, im Korrekturmodus der TK `POST decision` mit `action: correct`. Pflichtangaben prüft schon der Browser. Feldfehler (422) erscheinen am Feld und in einer Übersicht mit Sprungmarken, 409 mit «Seite neu laden», abgelaufene Anmeldung mit Link zur Anmeldung. Nach jedem Erfolg lädt die Seite neu (Meldung über `sessionStorage`); Status, Hinweise und Verlauf kommen dann vom Server.
-- Entwurf im `localStorage` (pro Begegnung und Konto), gelöscht nach dem Speichern. Beruht er auf dem aktuellen Stand (`version`), wird er wiederhergestellt, sonst angeboten.
+- Entwurf im `localStorage` (pro Begegnung und Konto), gelöscht nach dem Speichern. Beruht er auf dem aktuellen Stand (`version`), wird er wiederhergestellt, sonst angeboten. Ein Entwurf hat Vorrang vor der vorgeschlagenen Aufstellung; «Entwurf verwerfen» führt zum Vorschlag zurück.
 
 **Gastseite:** das erfasste Resultat zum Lesen (Aufstellung, Spiele, Hinweise, Foto) und der Verlauf aus `history`. «Resultat bestätigen» (`POST confirm` mit `version`) und «Einsprache erheben» (Begründung 10 bis 2000 Zeichen, `POST objection`), je nach `can.confirm` und `can.object`.
 
@@ -103,7 +104,7 @@ Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttlea
 
 **Kontakt:** Mit `ttl_view_contacts` steht vor dem Verlauf der Abschnitt «Kontakt» mit Captains und TK-Chefs beider Seiten (siehe [Kontaktdaten](#kontaktdaten)). Derselbe Abschnitt steht am Ende des Matchreports.
 
-**Technik:** Unveränderliches (Spielfolge, Kandidaten, Texte, Adressen, Nonce) kommt über `wp_interactivity_config`, der Zustand über `wp_interactivity_state`. Das Ansichtsmodell, an das die Direktiven gebunden sind, rechnet `EntryForm::view()` in PHP für den Startzustand und `buildView()` im Skriptmodul `@ttleague/entry-view` (`assets/js/entry-view.js`, reine Funktionen ohne Abhängigkeiten, auch Prüfung und Daten für die API) im Browser; beide müssen übereinstimmen. `EntryViewParityTest` vergleicht sie mit Node, falls vorhanden, und schickt die im Skript gebauten Daten an den `ResultService`. Stile in `assets/css/entry.css`, geladen nur auf der Erfassungsseite und in «Mein Bereich». `current.warnings` gehört zur letzten Erfassung; nach einem Zurücksetzen oder Forfait (keine Spiele) zeigt die Seite sie nicht an.
+**Technik:** Unveränderliches (Spielfolge, Kandidaten, vorgeschlagene Aufstellung, Texte, Adressen, Nonce) kommt über `wp_interactivity_config`, der Zustand über `wp_interactivity_state`. Das Ansichtsmodell, an das die Direktiven gebunden sind, rechnet `EntryForm::view()` in PHP für den Startzustand und `buildView()` im Skriptmodul `@ttleague/entry-view` (`assets/js/entry-view.js`, reine Funktionen ohne Abhängigkeiten, auch Prüfung und Daten für die API) im Browser; beide müssen übereinstimmen. `EntryViewParityTest` vergleicht sie mit Node, falls vorhanden, und schickt die im Skript gebauten Daten an den `ResultService`. Stile in `assets/css/entry.css`, geladen nur auf der Erfassungsseite und in «Mein Bereich». `current.warnings` gehört zur letzten Erfassung; nach einem Zurücksetzen oder Forfait (keine Spiele) zeigt die Seite sie nicht an.
 
 ## REST-API
 
@@ -133,12 +134,21 @@ Liefert alles für das Formular. Das Beispiel ist gekürzt: `order` enthält die
   "rules": { "sets_to_win": 3, "set_points_enabled": false, "cup_mode": "first_to_three", "slots": { "home": ["A","B","C"], "away": ["X","Y","Z"] } },
   "order": [ { "sequence": 1, "type": "single", "home": "A", "away": "X" } ],
   "candidates": { "home": [ { "player_id": 7, "name": "Hans Muster", "classification": 6, "label": "C6", "eligible": true, "reason": "stamm", "message": "Stammspieler.", "substitute_appearances": 0, "remaining": null } ], "away": [] },
+  "suggestion": { "home": { "A": 7 }, "away": {} },
   "current": { "lineup": { "home": { "A": 7 }, "away": {} }, "games": [], "entered_by": null, "entered_at": null, "warnings": [] },
   "history": [ { "type": "entered", "by": "Hans Muster", "at": "2026-11-10T21:30:00Z", "comment": null } ]
 }
 ```
 
 `candidates` enthält alle Spieler des Clubs mit Spielberechtigung für dieses Team (`EligibilityChecker`), sortiert nach Stammspielern, dann Klassierung.
+
+`suggestion` ist die vorgeschlagene Aufstellung für ein leeres Formular, pro Seite Slot => Spieler-ID:
+
+- Quelle ist die letzte erfasste Begegnung desselben Teams in derselben Saison und Konkurrenz: für die Heimseite das letzte Spiel des Heimteams, für die Gastseite das letzte Spiel des Gastteams. «Letzte» heisst späteste Anspielzeit (bei gleicher die grössere ID, Begegnungen ohne Termin zuletzt), nicht zuletzt erfasst. Es zählen nur andere Begegnungen mit Resultat und Aufstellung; ein Forfait hat keine Aufstellung und wird übersprungen.
+- Die Slots werden der Reihe nach umgelegt, auch wenn das Team im letzten Spiel auf der anderen Seite stand: X, Y, Z werden A, B, C und umgekehrt (Cup: A, B und Y, Z).
+- Übernommen werden nur Spieler, die für diese Begegnung wählbar sind (unter `candidates` mit `eligible: true`). Sonst fehlt der Slot. Ein Spieler, der auf beiden Seiten stünde (Clubduell), fehlt auf beiden.
+- Leer (`{}`), sobald etwas erfasst ist (Aufstellung, Spiele, auch ein Forfait), und für Personen, die nicht erfassen dürfen (`can.enter`).
+- Gilt für Meisterschaft und Cup. Im Cup ist das «Team» die Cup-Mannschaft (`cup_entry`); die erste Runde hat deshalb keinen Vorschlag.
 
 ### `POST fixtures/{id}/result`
 
@@ -369,8 +379,8 @@ Regeln (`TTLeague\Accounts\ClubAccounts`):
 
 | Ebene | Ordner | Inhalt |
 |---|---|---|
-| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, Links der Kontaktdaten (`ContactBox`), ohne WordPress |
-| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks`, `Contacts` (Kontaktdaten je Club und Begegnung) und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
+| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, Links der Kontaktdaten (`ContactBox`), Formular (`EntryFormTest`) und Gleichheit von PHP und Skript (`EntryViewParityTest`, auch mit vorgeschlagener Aufstellung), ohne WordPress |
+| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks`, `Contacts` (Kontaktdaten je Club und Begegnung), vorgeschlagene Aufstellung (`LineupSuggestionTest`: Seitenwechsel, späteste Anspielzeit, Forfait, gesperrte Spieler, Clubduell, Cup) und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
 | WordPress | `tests/WordPress/` | mit echtem WordPress (wp-phpunit, `composer test:wp`, siehe README), siehe unten |
 
 Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:

@@ -233,6 +233,76 @@ final class EntryPageTest extends IntegrationTestCase {
 		self::assertSame( $state['form'], $config['initialForm'] );
 	}
 
+	public function test_form_starts_with_the_lineup_of_the_last_match_and_says_so(): void {
+		$hint  = 'Aufstellung aus dem letzten Spiel vorgeschlagen, bitte prüfen.';
+		$plain = $this->build( 'home' )['html'];
+		self::assertSame( 2, substr_count( $plain, '<p class="ttl-entry__suggested" data-wp-bind--hidden="!state.view.lineup.' ), 'pro Seite ein Hinweis' );
+		self::assertSame( 2, substr_count( $plain, ' hidden>' . $hint . '</p>' ), 'ohne Vorschlag verborgen' );
+
+		// Frühere Begegnung derselben Teams: Heim mit h6, h5, h4, Gast nur mit zwei Spielern.
+		$fixture = $this->db->get_row( "SELECT competition_id, home_team_id, away_team_id FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['fixture'] ) );
+		$s       = new Seeder( $this->db );
+		$earlier = $s->fixture(
+			(int) $fixture['competition_id'],
+			array(
+				'home_team_id' => (int) $fixture['home_team_id'],
+				'away_team_id' => (int) $fixture['away_team_id'],
+				'scheduled_at' => '2026-10-27 20:00:00',
+			)
+		);
+		$s->team_match(
+			$earlier,
+			'2026-10-27 20:00:00',
+			array(
+				'A' => $this->id['h6'],
+				'B' => $this->id['h5'],
+				'C' => $this->id['h4'],
+			),
+			array(
+				'X' => $this->id['a2'],
+				'Z' => $this->id['a1'],
+			),
+			array( '3:1', 'wo:h', '3:2', '1:3', '3:1', 'wo:h', '3:2', 'wo:h', '1:3', 'wo:h' )
+		);
+
+		$result = $this->build( 'home' );
+		$html   = $result['html'];
+		self::assertSame( 2, substr_count( $html, '>' . $hint . '</p>' ) );
+		self::assertSame( 0, substr_count( $html, ' hidden>' . $hint . '</p>' ), 'für beide Seiten sichtbar' );
+		self::assertMatchesRegularExpression( '#<fieldset id="ttl-e-lineup-home"[^>]*><legend[^>]*>.*?</legend><p class="ttl-entry__suggested"#s', $html, 'gleich nach dem Namen der Mannschaft' );
+		self::assertStringContainsString( '<option value="' . $this->id['h6'] . '" selected>', $html );
+		self::assertSame(
+			array(
+				'A' => (string) $this->id['h6'],
+				'B' => (string) $this->id['h5'],
+				'C' => (string) $this->id['h4'],
+			),
+			$result['state']['form']['lineup']['home']
+		);
+		self::assertSame(
+			array(
+				'X' => (string) $this->id['a2'],
+				'Y' => '',
+				'Z' => (string) $this->id['a1'],
+			),
+			$result['state']['form']['lineup']['away']
+		);
+		self::assertSame( $result['state']['form'], $result['config']['initialForm'], 'Ausgangszustand, mit dem das Skript Entwürfe vergleicht' );
+		self::assertSame( $result['state']['form']['lineup']['home'], $result['config']['suggestion']['home'] );
+		self::assertSame( '0 von 10 erfasst', $result['state']['view']['progress'], 'Spiele bleiben offen' );
+
+		// Die Gastseite sieht kein Formular und erhält keinen Vorschlag.
+		$away = $this->build( 'away' );
+		self::assertStringNotContainsString( 'ttl-entry__suggested', $away['html'] );
+		self::assertSame( '', $away['state']['form']['lineup']['home']['A'] );
+
+		// Mit erfasstem Resultat zeigt das Formular dieses, ohne Hinweis.
+		$this->service->submit( $this->id['fixture'], $this->payload(), $this->actor['home'] );
+		$saved = $this->build( 'home' );
+		self::assertSame( (string) $this->id['h4'], $saved['state']['form']['lineup']['home']['A'] );
+		self::assertSame( 2, substr_count( $saved['html'], ' hidden>' . $hint . '</p>' ) );
+	}
+
 	public function test_away_side_confirms_or_objects_after_entry(): void {
 		$this->service->submit( $this->id['fixture'], $this->payload(), $this->actor['home'] );
 		$this->service->attach_photo( $this->id['fixture'], $this->actor['home'], 77 );

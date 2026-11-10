@@ -423,6 +423,9 @@ final class EntryMarkup {
 			$team = $this->data['teams'][ $side ];
 			$out .= '<fieldset id="ttl-e-lineup-' . $side . '" class="ttl-entry__side" tabindex="-1">'
 				. '<legend class="ttl-entry__side-title">' . esc_html( $team ) . ' <span class="ttl-muted">' . esc_html( 'home' === $side ? __( '(Heim)', 'ttleague' ) : __( '(Gast)', 'ttleague' ) ) . '</span></legend>';
+			// Sichtbar, solange die Seite dem Vorschlag aus dem letzten Spiel entspricht (view.lineup.{side}.sug).
+			$out .= '<p class="ttl-entry__suggested"' . $this->hide_unless( 'view.lineup.' . $side . '.sug' ) . '>'
+				. esc_html__( 'Aufstellung aus dem letzten Spiel vorgeschlagen, bitte prüfen.', 'ttleague' ) . '</p>';
 			foreach ( $this->data['slots'][ $side ] as $slot ) {
 				$out .= $this->slot( $side, (string) $slot );
 			}

@@ -94,7 +94,17 @@ final class ResultService {
 		}
 		$sides  = $this->rosters( $ctx );
 		$lineup = $this->repo->lineup( $fixture_id );
+		$games  = $this->repo->games( $fixture_id );
 		$events = $this->repo->events( $fixture_id );
+		$enter  = Flow::allows( Flow::ENTER, $ctx->status, $roles );
+
+		$candidates = array(
+			'home' => EligibilityLoader::candidates( $sides['home']->players, static fn( int $id ) => $sides['home']->check( $id ) ),
+			'away' => EligibilityLoader::candidates( $sides['away']->players, static fn( int $id ) => $sides['away']->check( $id ) ),
+		);
+		// Vorschlag nur für ein leeres Formular: Ein erfasstes Resultat (auch ein Forfait) hat Vorrang.
+		$blank      = ! $ctx->has_result() && array() === $lineup['home'] && array() === $lineup['away'] && array() === $games;
+		$suggestion = $enter && $blank ? $this->suggestion( $ctx, $candidates ) : self::no_suggestion();
 
 		// Hinweise der letzten Erfassung; Forfait und Zurücksetzen verwerfen sie mit dem Resultat.
 		$warnings = array();
@@ -109,7 +119,7 @@ final class ResultService {
 		return array(
 			'fixture'    => $this->fixture_payload( $ctx ),
 			'can'        => array(
-				'enter'   => Flow::allows( Flow::ENTER, $ctx->status, $roles ),
+				'enter'   => $enter,
 				'confirm' => Flow::allows( Flow::CONFIRM, $ctx->status, $roles ) && ( $actor->is_tk || $ctx->entered_by !== $actor->user_id ),
 				'object'  => Flow::allows( Flow::OBJECT, $ctx->status, $roles ),
 				'decide'  => in_array( Flow::ROLE_TK, $roles, true ),
@@ -128,9 +138,10 @@ final class ResultService {
 				),
 			),
 			'order'      => $ctx->order(),
-			'candidates' => array(
-				'home' => EligibilityLoader::candidates( $sides['home']->players, static fn( int $id ) => $sides['home']->check( $id ) ),
-				'away' => EligibilityLoader::candidates( $sides['away']->players, static fn( int $id ) => $sides['away']->check( $id ) ),
+			'candidates' => $candidates,
+			'suggestion' => array(
+				'home' => (object) $suggestion['home'],
+				'away' => (object) $suggestion['away'],
 			),
 			'current'    => array(
 				'lineup'       => array(
@@ -138,7 +149,7 @@ final class ResultService {
 					'away' => (object) $lineup['away'],
 				),
 				'substitutes'  => $lineup['substitutes'],
-				'games'        => $this->repo->games( $fixture_id ),
+				'games'        => $games,
 				'entered_by'   => $this->name_for_user( $ctx->entered_by, $events, array( 'entered', 'edited' ) ),
 				'entered_at'   => self::iso( $ctx->entered_at ),
 				'confirmed_by' => $this->name_for_user( $ctx->confirmed_by, $events, array( 'confirmed', 'decided', 'forfeit' ) ),
@@ -148,6 +159,48 @@ final class ResultService {
 			),
 			'history'    => $this->history( $events ),
 			'version'    => $ctx->version(),
+		);
+	}
+
+	/**
+	 * Vorschlag für die Aufstellung eines leeren Formulars: pro Seite die Aufstellung aus der
+	 * letzten erfassten Begegnung des Teams (ResultRepository::last_lineup). Übernommen werden
+	 * nur Spieler, die für diese Begegnung wählbar sind (unter den Kandidaten und spielberechtigt);
+	 * sonst bleibt der Slot leer. Stünde ein Spieler auf beiden Seiten (Clubduell mit einem
+	 * Ersatzeinsatz), bleibt er auf beiden weg. Der Vorschlag wird nicht gespeichert.
+	 *
+	 * @param array{home:list<array<string,mixed>>,away:list<array<string,mixed>>} $candidates Kandidaten beider Seiten.
+	 * @return array{home:array<string,int>,away:array<string,int>}
+	 */
+	private function suggestion( FixtureContext $ctx, array $candidates ): array {
+		$suggestion = self::no_suggestion();
+		foreach ( array( 'home', 'away' ) as $side ) {
+			$eligible = array();
+			foreach ( $candidates[ $side ] as $candidate ) {
+				if ( $candidate['eligible'] ) {
+					$eligible[ (int) $candidate['player_id'] ] = true;
+				}
+			}
+			foreach ( $this->repo->last_lineup( $ctx, $side ) as $slot => $player_id ) {
+				if ( isset( $eligible[ $player_id ] ) ) {
+					$suggestion[ $side ][ $slot ] = $player_id;
+				}
+			}
+		}
+		$both = array_intersect( $suggestion['home'], $suggestion['away'] );
+		foreach ( array( 'home', 'away' ) as $side ) {
+			$suggestion[ $side ] = array_diff( $suggestion[ $side ], $both );
+		}
+		return $suggestion;
+	}
+
+	/**
+	 * @return array{home:array<string,int>,away:array<string,int>}
+	 */
+	private static function no_suggestion(): array {
+		return array(
+			'home' => array(),
+			'away' => array(),
 		);
 	}
 
