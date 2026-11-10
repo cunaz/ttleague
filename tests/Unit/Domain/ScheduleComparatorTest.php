@@ -109,6 +109,21 @@ final class ScheduleComparatorTest extends ScheduleTestCase {
 		);
 	}
 
+	public function test_pairing_twice_in_the_plan_itself_is_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'Paarung mehrfach im Plan: Seefeld 1 gegen Altstetten 1, Halbserie 1.' );
+		( new ScheduleComparator() )->compare(
+			array( $this->match( 'Seefeld 1', 'Altstetten 1', '2026-09-08 19:30' ), $this->match( 'Seefeld 1', 'Altstetten 1', '2026-09-15 19:30' ) ),
+			array()
+		);
+	}
+
+	public function test_entries_that_are_no_fixtures_are_rejected(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'Begegnungen im Plan müssen PlannedFixture sein.' );
+		( new ScheduleComparator() )->compare( array( array( 'home_team' => 'Seefeld 1' ) ), array() );
+	}
+
 	public function test_draft_against_a_plan_with_moved_fixtures(): void {
 		$draft  = ( new ScheduleGenerator() )->generate(
 			new ScheduleInput(
