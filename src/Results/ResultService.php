@@ -281,6 +281,7 @@ final class ResultService {
 		if ( ! $actor->is_tk ) {
 			throw ResultException::forbidden( __( 'Nur die TK kann über ein Resultat entscheiden.', 'ttleague' ) );
 		}
+		$this->require_released( $ctx );
 		$action = is_string( $payload['action'] ?? null ) ? $payload['action'] : '';
 		if ( ! isset( self::DECISIONS[ $action ] ) ) {
 			throw ResultException::invalid( array( ResultInput::error( 'action', __( 'Unbekannte Entscheidung.', 'ttleague' ) ) ) );
@@ -475,11 +476,23 @@ final class ResultService {
 	}
 
 	/**
+	 * Begegnungen der geplanten Saison sind ein Entwurf des Spielplans: Bis zur Freigabe der
+	 * Saison nimmt die Erfassung kein Resultat an, auch nicht von der TK. Archivierte Saisons
+	 * bleiben für Korrekturen der TK offen; Captains und TK-Chefs haben dort keine Rolle mehr.
+	 */
+	private function require_released( FixtureContext $ctx ): void {
+		if ( 'planned' === $ctx->season_status ) {
+			throw ResultException::conflict( __( 'Die Saison dieser Begegnung ist noch nicht freigegeben.', 'ttleague' ) );
+		}
+	}
+
+	/**
 	 * Rolle und Status prüfen.
 	 *
 	 * @return list<string> Rollen.
 	 */
 	private function authorize( FixtureContext $ctx, Actor $actor, string $action ): array {
+		$this->require_released( $ctx );
 		$roles = $this->roles( $ctx, $actor );
 		if ( ! Flow::role_may( $action, $roles ) ) {
 			throw ResultException::forbidden(

@@ -43,6 +43,10 @@ final class SeasonRules {
 	 * @param int                 $match_reminder_days      Erinnerung an beide Seiten so viele Tage vor dem Spiel.
 	 * @param int                 $result_reminder_hours    Erinnerung an die Heimseite, wenn so viele Stunden nach Anspielzeit kein Resultat vorliegt.
 	 * @param list<int>           $confirm_reminder_days    Erinnerungen an die Gastseite so viele Tage nach der Erfassung (danach die TK nach objection_days).
+	 * @param int                 $schedule_tables_per_match Tische pro Begegnung für die Kapazitätsprüfung des Spielplans.
+	 * @param int                 $classification_min_games Unter so vielen gewerteten Spielen schlägt das System keine neue Klassierung vor.
+	 * @param int                 $rl_group_size            Übliche Grösse einer RL-Gruppe.
+	 * @param int                 $rl_group_size_max        Ausnahmsweise erlaubte Grösse einer RL-Gruppe.
 	 */
 	public function __construct(
 		public readonly int $substitute_max = 3,
@@ -69,6 +73,10 @@ final class SeasonRules {
 		public readonly int $match_reminder_days = 2,
 		public readonly int $result_reminder_hours = 24,
 		public readonly array $confirm_reminder_days = array( 3, 6 ),
+		public readonly int $schedule_tables_per_match = 2,
+		public readonly int $classification_min_games = 10,
+		public readonly int $rl_group_size = 6,
+		public readonly int $rl_group_size_max = 7,
 	) {
 		if ( $this->substitute_max < 0 ) {
 			throw new \InvalidArgumentException( 'substitute_max darf nicht negativ sein.' );
@@ -92,6 +100,16 @@ final class SeasonRules {
 			if ( ! is_int( $days ) || $days < 1 || $days >= $this->objection_days ) {
 				throw new \InvalidArgumentException( 'confirm_reminder_days: nur ganze Tage ab 1 und vor objection_days.' );
 			}
+		}
+		if ( $this->schedule_tables_per_match < 1 ) {
+			throw new \InvalidArgumentException( 'schedule_tables_per_match muss mindestens 1 sein.' );
+		}
+		if ( $this->classification_min_games < 0 ) {
+			throw new \InvalidArgumentException( 'classification_min_games darf nicht negativ sein.' );
+		}
+		// Eine Gruppe «jeder gegen jeden» braucht mindestens drei Personen; die Ausnahmegrösse liegt nie unter der üblichen.
+		if ( $this->rl_group_size < 3 || $this->rl_group_size_max < $this->rl_group_size ) {
+			throw new \InvalidArgumentException( 'rl_group_size muss mindestens 3 sein und rl_group_size_max mindestens so gross wie rl_group_size.' );
 		}
 	}
 
@@ -137,6 +155,10 @@ final class SeasonRules {
 			match_reminder_days: (int) $merged['match_reminder_days'],
 			result_reminder_hours: (int) $merged['result_reminder_hours'],
 			confirm_reminder_days: $confirm,
+			schedule_tables_per_match: (int) $merged['schedule_tables_per_match'],
+			classification_min_games: (int) $merged['classification_min_games'],
+			rl_group_size: (int) $merged['rl_group_size'],
+			rl_group_size_max: (int) $merged['rl_group_size_max'],
 		);
 	}
 
@@ -155,11 +177,12 @@ final class SeasonRules {
 	}
 
 	/**
-	 * Punkte für einen Rang in einer RL-Gruppe der angegebenen Grösse.
+	 * Punkte für einen Rang in einer RL-Gruppe der angegebenen Grösse. Den Zusatzpunkt gibt es
+	 * in Gruppen über der üblichen Grösse (rl_group_size, Standard 6: also in 7er-Gruppen).
 	 */
 	public function rl_points_for_rank( int $rank, int $group_size ): int {
 		$points = $this->rl_round_points[ $rank - 1 ] ?? 0;
-		if ( $group_size >= 7 ) {
+		if ( $group_size > $this->rl_group_size ) {
 			$points += $this->rl_seven_player_bonus;
 		}
 		return $points;
