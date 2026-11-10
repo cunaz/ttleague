@@ -1142,4 +1142,12 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertSame( 'scheduled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $this->id['f1'] ) ) );
 		self::assertSame( '0', (string) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'game' )}" ) );
 	}
+
+	public function test_archived_season_is_closed_for_clubs_but_the_tk_may_still_correct(): void {
+		$this->db->update( 'season', array( 'status' => 'archived' ), array( 'slug' => '2026-27' ) );
+
+		self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] ), 403 );
+		self::expect_error( fn() => $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['chef_home'] ), 403 );
+		self::assertSame( 'provisional', $this->service->submit( $this->id['f1'], $this->six_four(), $this->actor['tk'] )['status'] );
+	}
 }

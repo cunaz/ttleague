@@ -477,7 +477,8 @@ final class ResultService {
 
 	/**
 	 * Begegnungen der geplanten Saison sind ein Entwurf des Spielplans: Bis zur Freigabe der
-	 * Saison nimmt die Erfassung kein Resultat an, auch nicht von der TK.
+	 * Saison nimmt die Erfassung kein Resultat an, auch nicht von der TK. Archivierte Saisons
+	 * bleiben für Korrekturen der TK offen; Captains und TK-Chefs haben dort keine Rolle mehr.
 	 */
 	private function require_released( FixtureContext $ctx ): void {
 		if ( 'planned' === $ctx->season_status ) {

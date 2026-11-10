@@ -26,13 +26,14 @@ Entscheidet die TK über einen Antrag im Status `requested`, schliesst ihr Entsc
 
 ## Wirkung von `approved`
 
-- `fixture.scheduled_at` erhält den neuen Termin, der Status wird `postponed`. Der bisherige Termin bleibt in `postponement.old_date`.
+- `fixture.scheduled_at` erhält den neuen Termin. Der bisherige Termin bleibt in `postponement.old_date`.
+- Status der Begegnung: Bei einer Verschiebung (`kind = postpone`) wird er `postponed`, und die Ansichten zeigen «verschoben». Bei einem Terminvorschlag (`kind = propose`) bleibt er `scheduled`, weil es der erste Termin ist; `old_date` ist dann leer und nichts erscheint als verschoben.
 - Erinnerungen und Fristen aus `docs/erfassung.md` rechnen ab dem neuen Termin; die Erinnerung vor dem Spiel geht für den neuen Termin erneut hinaus. Kalender-Abos zeigen ihn sofort.
 - Eintrag im Verlauf der Begegnung (`fixture_event`, Typ `postponed`) und im `audit_log`.
 
 ## Terminvorschlag
 
-Für Begegnungen ohne `scheduled_at` (Cup-Runden): `postponement.kind = propose`. Das Heimteam schlägt vor, der Gegner stimmt zu. Der Status der Begegnung bleibt `scheduled`.
+Für Begegnungen ohne `scheduled_at` (Cup-Runden): `postponement.kind = propose`. Das Heimteam schlägt vor, der Gegner stimmt zu. Der Status der Begegnung bleibt `scheduled` (siehe «Wirkung von `approved`»).
 
 Weil es keinen bisherigen Termin gibt, entfällt der Vergleich mit `postponement_approval_days`. Massgebend ist die Frist der Runde (`cup_tie.deadline`):
 
@@ -74,5 +75,5 @@ Unter `/wp-json/ttleague/v1`, Cookie mit `X-WP-Nonce`, Fehler wie in `docs/erfas
 ## Tests
 
 - Regel: Grenze bei genau 14 Tagen, Vorverschieben, Antrag der TK, Terminvorschlag am Tag der Frist und am Tag danach, ohne Frist.
-- Dienst gegen MariaDB: alle Übergänge (auch der Entscheid der TK an Stelle der Gegenseite), zweiter offener Antrag abgelehnt, Clubduell, Wirkung auf Termin und Status, Erinnerung vor dem Spiel für den neuen Termin, Terminvorschlag ohne bisherigen Termin.
+- Dienst gegen MariaDB: alle Übergänge (auch der Entscheid der TK an Stelle der Gegenseite), Status der Begegnung nach Verschiebung und nach Terminvorschlag, zweiter offener Antrag abgelehnt, Clubduell, Wirkung auf Termin und Status, Erinnerung vor dem Spiel für den neuen Termin, Terminvorschlag ohne bisherigen Termin.
 - WordPress: REST mit 401, 403, 409 und 422; Rechte beider Seiten.

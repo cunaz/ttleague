@@ -29,7 +29,7 @@ Eine Saison ist `planned`, `active` oder `archived`. Es gibt höchstens eine akt
 |---|---|---|
 | `planned` | Die TK setzt die Saison auf, die Clubs melden. | Nur für TK und TK-Chefs. Öffentliche Ansichten, Kalender-Abos und die Saisonwahl kennen sie nicht. |
 | `active` | Laufender Spielbetrieb. | Öffentlich. |
-| `archived` | Abgeschlossen. | Öffentlich, nur lesend. |
+| `archived` | Abgeschlossen. | Öffentlich. Captains und TK-Chefs können nichts mehr ändern; die TK kann ein Resultat weiterhin korrigieren (wie in `docs/erfassung.md`, mit Eintrag im Protokoll). |
 
 - `ReadModel\Seasons` liefert nur aktive und archivierte Saisons. Auch Matchreport, «nächste Spiele» über alle Saisons und das Spielerprofil lassen Daten der geplanten Saison weg. Die Schreibseite liest über `Season\SeasonRepository` (`active()`, `planned()`, `by_id()`, `rules()`), ohne Cache; ungültige Regeln sind dort ein Fehler und werden nicht durch Standardwerte ersetzt.
 - Ein Modul, das Daten der geplanten Saison auf der Website zeigt (Meldung in «Mein Club»), prüft das Recht selbst und verwendet keine öffentliche Ansicht.
