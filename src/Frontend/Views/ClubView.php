@@ -112,8 +112,8 @@ final class ClubView extends View {
 	/**
 	 * TK-Chef und Captains; für Gäste nur Namen, mit Recht auch E-Mail und freigegebenes Telefon.
 	 *
-	 * @param list<array<string,mixed>>                                      $roles    Funktionen.
-	 * @param array<int,array<string,mixed>>                                 $teams    Teams der Saison.
+	 * @param list<array<string,mixed>>                                  $roles    Funktionen.
+	 * @param array<int,array<string,mixed>>                             $teams    Teams der Saison.
 	 * @param array<int,array{email:string|null,phone:string|null}>|null $contacts Kontaktdaten nach Person, null ohne Recht.
 	 */
 	private function roles( array $roles, array $teams, ?array $contacts = null ): string {

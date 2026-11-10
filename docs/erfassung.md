@@ -29,6 +29,34 @@ Dieses Dokument ist der Vertrag für Phase 2: Konten, Anmeldung, Rechte, Status�
 - Beim ersten Login muss die Person den Datenschutzhinweis bestätigen (`person.consent_at`). Bis dahin zeigt `/mein-bereich/` nur die Einwilligung.
 - `/mein-bereich/` (Block `ttleague/my-area`) zeigt Profil (Name, E-Mail, Telefon mit Sichtbarkeit), Funktionen in der aktiven Saison, Benachrichtigungseinstellungen und weitere Abschnitte, die Module über die Aktion `ttleague_my_area_sections` (Parameter: `MyAreaContext`) einhängen, z. B. «Meine Spiele» oder «Mein Club».
 
+## Datenschutz-Werkzeuge
+
+Code in `TTLeague\Accounts\PersonalData` (ohne WordPress) und `TTLeague\Accounts\Privacy` (Anbindung an WordPress).
+
+**Export und Löschung über WordPress** («Werkzeuge → Personenbezogene Daten exportieren» und «… löschen»): Das Plugin registriert sich über `wp_privacy_personal_data_exporters` und `wp_privacy_personal_data_erasers` unter dem Schlüssel `ttleague`. Die Person wird über die E-Mail-Adresse der Anfrage gefunden: `person.email` (Gross-/Kleinschreibung egal) oder das WordPress-Konto mit dieser Adresse, das mit einer Person verknüpft ist.
+
+| Gruppe im Export | Inhalt |
+|---|---|
+| Profil | Vorname, Nachname, E-Mail, Telefon, Sichtbarkeit des Telefons, Einwilligung (Zeitpunkt in UTC), Status |
+| Funktionen | je Saison: Funktion (Captain, TK-Chef), Club, Mannschaft |
+| Meldungen | je Saison: Club, Klassierung, Lizenznummer |
+| Benachrichtigungen | Einstellung pro Ereignistyp (E-Mail, Push; ohne Eintrag der Standard) und Anzahl Push-Abos |
+
+Die Löschung entfernt Telefonnummer und Sichtbarkeit, Benachrichtigungs-Einstellungen, Push-Abos und alle Anmelde-Tokens der Person. Name, E-Mail-Adresse, Lizenznummer, Meldungen, Funktionen und Resultate bleiben und werden WordPress als «aufbewahrt» gemeldet, mit der Begründung: Sie gehören zum Spielbetrieb (Ranglisten, Matchreports, Anmeldung). Die Daten des WordPress-Kontos selbst behandelt WordPress.
+
+**Anonymisierung auf Wunsch:** nur durch die TK, nicht umkehrbar.
+
+```bash
+wp ttleague account anonymize <person-id> --yes   # ohne --yes mit Rückfrage
+```
+
+- Vorname leer, Nachname «Ehemaliges Mitglied» mit laufender Nummer (höchste vergebene Nummer plus eins, damit die Namen eindeutig bleiben).
+- Gelöscht: E-Mail, Telefon, Einwilligung, Benachrichtigungs-Einstellungen, Push-Abos, Anmelde-Tokens. Die Verknüpfung zum WordPress-Konto wird gelöst; das Konto bleibt bestehen, der Befehl nennt es und den Befehl zum Löschen. `person.status` wird `inactive`.
+- Es bleiben: Lizenznummer, Meldungen, Aufstellungen, Resultate, Wertungszahl und Funktionen. Hat die Person noch eine Funktion in der aktiven Saison, weist der Befehl darauf hin.
+- `audit_log`: Eintrag `anonymized` mit dem neuen Namen, dem gelösten Konto (ID) und was entfernt wurde, ohne den bisherigen Namen und ohne Adressen. Frühere Einträge `email_changed` der Person verlieren die Adressen.
+- Danach erhöht `Privacy::anonymize()` die Datenversion (`DataVersion::bump()`): Ranglisten, Matchreports und Profile zeigen den Platzhalter. Das Spielerprofil ist unter `/spieler/<Lizenz>-ehemaliges-mitglied-<n>/` erreichbar; die Adresse mit dem alten Namen leitet dorthin weiter.
+- Nicht erfasst: freie Texte (Bemerkungen, Begründungen) und Fotos von Spielberichten, in denen der Name stehen kann, sowie bereits versandte E-Mails.
+
 ## Rechte
 
 Alle fachlichen Rechte sind Meta-Capabilities, die `map_meta_cap` aus den Daten der aktiven Saison ableitet. Wer `ttl_tk` hat (Rolle `ttl_tk` und Administratoren), darf alles.
@@ -208,7 +236,7 @@ Antwort von `confirm` und `objection`: `{ "status": "...", "version": "..." }`; 
 ## Protokoll
 
 - `fixture_event`: jedes fachliche Ereignis (`entered`, `edited`, `confirmed`, `disputed`, `decided`, `forfeit`, `reset`, `photo`) mit Konto, Person, Kommentar, Zusatzdaten (`score`, `warnings`, `action`, `winner`, `by_tk`) und Zeitpunkt (UTC). `GET entry` liefert ihn als `history`.
-- `audit_log`: technische Nachvollziehbarkeit jeder Änderung an `fixture`, `lineup`, `game` mit Zustand vorher und nachher als JSON.
+- `audit_log`: technische Nachvollziehbarkeit jeder Änderung an `fixture`, `lineup`, `game` mit Zustand vorher und nachher als JSON. Für Personen (`entity = person`) unter anderem `privacy_erased` und `anonymized` (siehe Datenschutz-Werkzeuge), ohne die gelöschten Werte.
 
 ## Ereignisse
 
@@ -324,9 +352,9 @@ Ohne Bibliothek, mit der OpenSSL-Erweiterung von PHP (P-256, ECDH, AES-128-GCM).
 
 | Daten | Ort | Inhalt | Gelöscht |
 |---|---|---|---|
-| Einstellungen | `notification_pref` | Person, Ereignistyp, E-Mail und Push ja oder nein | mit der Person |
+| Einstellungen | `notification_pref` | Person, Ereignistyp, E-Mail und Push ja oder nein | über die Datenschutz-Werkzeuge (Löschung, Anonymisierung) |
 | Versandprotokoll | `notification_log` | Person oder Konto, Art, Bezug (IDs), Zusatz, Kanal, Status, Zeitpunkt; kein Inhalt, keine Adresse | nach 365 Tagen |
-| Push-Abos | `push_subscription` | Person, Endpunkt beim Push-Dienst des Browsers (Google, Mozilla, Apple oder Microsoft), öffentlicher Schlüssel und Geheimnis des Browsers für die Verschlüsselung, Zeitpunkt | beim Deaktivieren auf dem Gerät, bei Antwort 404 oder 410 des Dienstes, als am längsten nicht gemeldetes von mehr als zehn Abos |
+| Push-Abos | `push_subscription` | Person, Endpunkt beim Push-Dienst des Browsers (Google, Mozilla, Apple oder Microsoft), öffentlicher Schlüssel und Geheimnis des Browsers für die Verschlüsselung, Zeitpunkt | beim Deaktivieren auf dem Gerät, bei Antwort 404 oder 410 des Dienstes, als am längsten nicht gemeldetes von mehr als zehn Abos, über die Datenschutz-Werkzeuge |
 | VAPID-Schlüssel | Option `ttleague_vapid` oder `wp-config.php` | Schlüsselpaar der Website | Option bei der Deinstallation mit `ttleague_remove_data_on_uninstall` |
 | E-Mails | Mail-Dienst der Website | Namen, Begegnung, Resultat, Begründung einer Einsprache, Bemerkung der TK | nach den Regeln des Mail-Dienstes |
 | Push-Nachrichten | Push-Dienst des Browsers | Inhalt Ende-zu-Ende verschlüsselt; der Dienst sieht Endpunkt, Zeitpunkt, Grösse, TTL, Dringlichkeit und den Kontakt (`sub`) der Website | nach Zustellung oder Ablauf der TTL |
@@ -380,7 +408,7 @@ Regeln (`TTLeague\Accounts\ClubAccounts`):
 | Ebene | Ordner | Inhalt |
 |---|---|---|
 | Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, Links der Kontaktdaten (`ContactBox`), Formular (`EntryFormTest`) und Gleichheit von PHP und Skript (`EntryViewParityTest`, auch mit vorgeschlagener Aufstellung), ohne WordPress |
-| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks`, `Contacts` (Kontaktdaten je Club und Begegnung), vorgeschlagene Aufstellung (`LineupSuggestionTest`: Seitenwechsel, späteste Anspielzeit, Forfait, gesperrte Spieler, Clubduell, Cup) und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
+| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks`, `Contacts` (Kontaktdaten je Club und Begegnung), `PersonalData` (Auskunft, Löschung, Anonymisierung mit laufender Nummer, Protokoll ohne Namen, Platzhalter in den Lesemodellen), vorgeschlagene Aufstellung (`LineupSuggestionTest`: Seitenwechsel, späteste Anspielzeit, Forfait, gesperrte Spieler, Clubduell, Cup) und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
 | WordPress | `tests/WordPress/` | mit echtem WordPress (wp-phpunit, `composer test:wp`, siehe README), siehe unten |
 
 Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
@@ -388,6 +416,7 @@ Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
 - `AccountService::ensure_user()` mit echten Konten: Ein bestehendes Konto mit erweiterten Rechten (Rollen `administrator`, `editor`, `contributor`, `ttl_tk` sowie Abonnenten mit `manage_options`, `edit_posts` oder zusätzlicher Rolle `ttl_tk`) und das Konto einer anderen Person werden nicht verknüpft; ein freies Abonnenten-Konto wird verknüpft, sonst wird ein Konto angelegt.
 - Anmeldung per Link: Anfrage (Link oder Passwort-Hinweis, neutrale Antwort, Rate-Limit), Einlösen mit Konto und 60 Tagen «angemeldet bleiben», abgelaufene und verbrauchte Tokens, Herkunftsprüfung über Origin und Referer, Nonce, Weiterleitung nur auf eigene Seiten, Einwilligung und Profil.
 - Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison), auch `ttl_view_contacts`.
+- Datenschutz-Werkzeuge (`PrivacyTest`): Exporter und Eraser bei WordPress registriert, Export über `person.email` und über das verknüpfte Konto, Löschung mit Meldung des Aufbewahrten, Anonymisierung mit neuer Datenversion (gecachte Ansichten zeigen den Platzhalter, das gelöste Konto verliert seine Rechte). `AccountCommandTest` prüft `wp ttleague account anonymize` mit einem Ersatz für die Klasse `WP_CLI` (Rückfrage ohne `--yes`, Meldungen, Fehler).
 - Kontaktdaten (`ContactViewsTest`): Clubseite, Mannschaftsseite, Matchreport und Erfassungsseite mit und ohne Recht; Telefon nur mit Freigabe, keine Links ohne E-Mail, keine Kontaktdaten in früheren Saisons. Die Ausgabe für Gäste ist vor und nach dem Aufruf eines Funktionärs identisch, auch wenn dieser den Cache füllt; Object-Cache und Transients des Plugins enthalten weder Adresse noch Nummer.
 - REST-API über den REST-Server von WordPress: 401, 403, 404, 422 mit Feldfehlern, 409 bei veralteter `version`, Erfassen und Bestätigen mit Verlauf und Ereignissen, `me/fixtures`, Rechte und fehlende Datei beim Foto.
 - Ereignisse: Ein Listener, der eine Ausnahme wirft, lässt die gespeicherte Erfassung erfolgreich; Cache-Version und Neuberechnung sind vorher erledigt, der Fehler steht im Fehlerprotokoll.
@@ -397,4 +426,4 @@ Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
 - Seiten der Darstellung: Eine eigene Seite unter `/erfassen/` wird mit Block übernommen, ohne Block unverändert übernommen und als «(Block fehlt)» gemeldet; «Website-Zustand» listet fehlende, unveröffentlichte und blocklose Seiten mit Link zum Bearbeiten.
 - Schema über `dbDelta()` (vollständig, InnoDB, ohne Änderungen bei einem erneuten Lauf) und die Rolle der TK.
 
-Weiterhin von Hand: Speichern eines Fotos (`POST fixtures/{id}/photo` verlangt eine echte Upload-Datei, `is_uploaded_file()`), die Sperre der Ablage durch den echten Webserver der Produktion (Checkliste der Inbetriebnahme), Anmeldung mit echten Cookies und `X-WP-Nonce` im Browser, Versand über einen echten Mailserver.
+Weiterhin von Hand: der Ablauf einer Anfrage unter «Werkzeuge → Personenbezogene Daten exportieren/löschen» (Bestätigung per E-Mail, Bericht), der Befehl `wp ttleague account anonymize` mit echtem WP-CLI, Speichern eines Fotos (`POST fixtures/{id}/photo` verlangt eine echte Upload-Datei, `is_uploaded_file()`), die Sperre der Ablage durch den echten Webserver der Produktion (Checkliste der Inbetriebnahme), Anmeldung mit echten Cookies und `X-WP-Nonce` im Browser, Versand über einen echten Mailserver.
