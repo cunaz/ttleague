@@ -1,10 +1,10 @@
 # Spielplan der Meisterschaft
 
-Dieses Dokument beschreibt den Spielplan-Generator: wie aus Gruppen, Spielwochen, Hallensperren und Tischzahlen der Entwurf eines Spielplans entsteht, welche Kollisionen die Prüfung meldet und wie sie Ausweichtermine vorschlägt. Es beschreibt nur die Domäne (`src/Domain/Schedule/`, reines PHP ohne WordPress und ohne Datenbank). Die Oberfläche der TK folgt später in diesem Dokument. Alle Beispiele verwenden erfundene Daten.
+Dieses Dokument beschreibt den Spielplan-Generator: wie aus Gruppen, Spielwochen, Hallensperren und Tischzahlen der Entwurf eines Spielplans entsteht, welche Kollisionen die Prüfung meldet und wie sie Ausweichtermine vorschlägt. Es beschreibt nur die Domäne (`src/Domain/Schedule/`, reines PHP ohne WordPress und ohne Datenbank). Die Oberfläche der TK (Spielwochen wählen, Entwurf erzeugen, verlegen) beschreibt `docs/saison.md`. Alle Beispiele verwenden erfundene Daten.
 
 ## Zweck
 
-Die Meisterschaft wird mit Vor- und Rückrunde gespielt (Art. 13.1 des Wettspielreglements). Jedes Team hat ein Heimlokal mit festem Heimspieltag und Anspielzeit; der Termin einer Begegnung ist deshalb «Spielwoche plus Heimspieltag des Heimteams». In den Spielplänen von fünf früheren Saisons lagen 75 bis 95 % der Begegnungen auf diesem Tag. Der Generator liefert genau diesen Regelfall als Entwurf. Was nicht aufgeht (gesperrte Halle, zu wenige Tische, zwei Mannschaften eines Clubs am selben Abend), meldet die Prüfung mit einem Ausweichvorschlag. Verlegt wird nie automatisch: Die TK entscheidet, ändert den Plan von Hand und lässt ihn neu prüfen.
+Die Meisterschaft wird mit Vor- und Rückrunde gespielt (Art. 13.1 des Wettspielreglements). Jedes Team hat ein Heimlokal mit festem Heimspieltag und Anspielzeit; der Termin einer Begegnung ist deshalb «Spielwoche plus Heimspieltag des Heimteams». In Ligen mit festen Heimspieltagen liegt der grösste Teil der Begegnungen auf diesem Tag. Der Generator liefert genau diesen Regelfall als Entwurf. Was nicht aufgeht (gesperrte Halle, zu wenige Tische, zwei Mannschaften eines Clubs am selben Abend), meldet die Prüfung mit einem Ausweichvorschlag. Verlegt wird nie automatisch: Die TK entscheidet, ändert den Plan von Hand und lässt ihn neu prüfen.
 
 | Aufgabe | Klasse | Methode |
 |---|---|---|
