@@ -1,6 +1,6 @@
 <?php
 /**
- * Fachliche Rechte aus den Daten der aktiven Saison.
+ * Fachliche Rechte aus den Daten der aktiven Saison (Clubverwaltung auch aus der geplanten).
  *
  * @package TTLeague
  */
@@ -51,6 +51,14 @@ final class AccessPolicy {
 		return null === $id ? null : (int) $id;
 	}
 
+	/**
+	 * Die Saison, die die TK aufsetzt und für die die Clubs melden.
+	 */
+	public function planned_season_id(): ?int {
+		$id = $this->db->get_var( "SELECT id FROM {$this->db->table( 'season' )} WHERE status = 'planned' ORDER BY start_date DESC, id DESC LIMIT 1" );
+		return null === $id ? null : (int) $id;
+	}
+
 	public function can_enter_result( int $person_id, int $fixture_id ): bool {
 		return $this->represents( $person_id, $fixture_id, self::HOME );
 	}
@@ -69,9 +77,64 @@ final class AccessPolicy {
 		return $this->represents( $person_id, $fixture_id, self::AWAY ) ? self::AWAY : null;
 	}
 
+	/**
+	 * TK-Chef des Clubs in der aktiven oder in der geplanten Saison (Meldung für die nächste Saison).
+	 */
 	public function can_manage_club( int $person_id, int $club_id ): bool {
-		$season = $this->active_season_id();
-		return null !== $season && in_array( $club_id, $this->roles( $person_id, $season )['tk_chef_clubs'], true );
+		return in_array( $club_id, $this->managed_clubs( $person_id ), true );
+	}
+
+	/**
+	 * Clubs, die die Person als TK-Chef verwaltet: aus der aktiven und der geplanten Saison.
+	 *
+	 * @return list<int>
+	 */
+	public function managed_clubs( int $person_id ): array {
+		$clubs = array();
+		foreach ( array( $this->active_season_id(), $this->planned_season_id() ) as $season ) {
+			if ( null !== $season ) {
+				$clubs = array_merge( $clubs, $this->roles( $person_id, $season )['tk_chef_clubs'] );
+			}
+		}
+		return array_values( array_unique( $clubs ) );
+	}
+
+	/**
+	 * Verschieben oder einen Termin vorschlagen darf, wer eine der beiden Seiten vertritt.
+	 */
+	public function can_reschedule( int $person_id, int $fixture_id ): bool {
+		return null !== $this->side_for( $person_id, $fixture_id );
+	}
+
+	/**
+	 * Den Gruppenzettel einer RL-Gruppe trägt der Gruppenchef nach, ersatzweise der TK-Chef
+	 * seines Clubs oder der TK-Chef des Platzclubs. Nur in der aktiven Saison.
+	 */
+	public function can_enter_rl_group( int $person_id, int $group_id ): bool {
+		$row = $this->db->get_row(
+			"SELECT g.host_club_id, c.season_id, s.status AS season_status, p.person_id AS chief_person_id, ps.club_id AS chief_club_id
+			FROM {$this->db->table( 'rl_group' )} g
+			JOIN {$this->db->table( 'rl_round' )} r ON r.id = g.rl_round_id
+			JOIN {$this->db->table( 'competition' )} c ON c.id = r.competition_id
+			JOIN {$this->db->table( 'season' )} s ON s.id = c.season_id
+			LEFT JOIN {$this->db->table( 'player' )} p ON p.id = g.chief_player_id
+			LEFT JOIN {$this->db->table( 'player_season' )} ps ON ps.player_id = g.chief_player_id AND ps.season_id = c.season_id
+			WHERE g.id = %d",
+			array( $group_id )
+		);
+		if ( null === $row || 'active' !== $row['season_status'] ) {
+			return false;
+		}
+		if ( null !== $row['chief_person_id'] && (int) $row['chief_person_id'] === $person_id ) {
+			return true;
+		}
+		$own = $this->roles( $person_id, (int) $row['season_id'] )['tk_chef_clubs'];
+		foreach ( array( $row['chief_club_id'], $row['host_club_id'] ) as $club ) {
+			if ( null !== $club && in_array( (int) $club, $own, true ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

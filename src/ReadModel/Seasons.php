@@ -1,6 +1,6 @@
 <?php
 /**
- * Saisons: Liste, aktive Saison, Regeln.
+ * Öffentliche Saisons: Liste, aktive Saison, Regeln.
  *
  * @package TTLeague
  */
@@ -16,13 +16,16 @@ use TTLeague\ReadModel\Cache\Cache;
 /**
  * Eine Saison ist ein Array
  * array{id:int,name:string,slug:string,start_date:string,end_date:string,status:string,rules:array<string,mixed>}.
+ *
+ * Geplante Saisons (Status «planned») sind nicht öffentlich und kommen hier nicht vor: weder in
+ * der Saisonwahl noch über Slug oder ID. Die Schreibseite liest sie über Season\SeasonRepository.
  */
 final class Seasons {
 
 	public function __construct( private readonly Db $db, private readonly Cache $cache ) {}
 
 	/**
-	 * Alle Saisons, neueste zuerst.
+	 * Alle öffentlichen Saisons (aktiv oder archiviert), neueste zuerst.
 	 *
 	 * @return list<array{id:int,name:string,slug:string,start_date:string,end_date:string,status:string,rules:array<string,mixed>}>
 	 */
@@ -31,7 +34,7 @@ final class Seasons {
 			'seasons',
 			array(),
 			function (): array {
-				$rows    = $this->db->get_results( "SELECT id, name, slug, start_date, end_date, status, rules_json FROM {$this->db->table( 'season' )} ORDER BY start_date DESC, id DESC" );
+				$rows    = $this->db->get_results( "SELECT id, name, slug, start_date, end_date, status, rules_json FROM {$this->db->table( 'season' )} WHERE status <> 'planned' ORDER BY start_date DESC, id DESC" );
 				$seasons = array();
 				foreach ( $rows as $row ) {
 					$rules     = json_decode( (string) $row['rules_json'], true );
@@ -75,7 +78,7 @@ final class Seasons {
 	}
 
 	/**
-	 * Die aktive Saison; ohne aktive die neueste nicht geplante, sonst die neueste überhaupt.
+	 * Die aktive Saison; ohne aktive die neueste archivierte.
 	 *
 	 * @return array{id:int,name:string,slug:string,start_date:string,end_date:string,status:string,rules:array<string,mixed>}|null
 	 */
@@ -83,11 +86,6 @@ final class Seasons {
 		$all = $this->all();
 		foreach ( $all as $season ) {
 			if ( 'active' === $season['status'] ) {
-				return $season;
-			}
-		}
-		foreach ( $all as $season ) {
-			if ( 'planned' !== $season['status'] ) {
 				return $season;
 			}
 		}

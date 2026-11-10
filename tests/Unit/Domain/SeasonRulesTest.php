@@ -126,4 +126,63 @@ final class SeasonRulesTest extends TestCase {
 		self::assertSame( 7, $rules->rl_points_for_rank( 1, 7 ) );
 		self::assertSame( 1, $rules->rl_points_for_rank( 7, 7 ) );
 	}
+
+	public function test_season_operation_parameters_have_defaults_and_can_be_set(): void {
+		$rules = new SeasonRules();
+		self::assertSame( 2, $rules->schedule_tables_per_match );
+		self::assertSame( 10, $rules->classification_min_games );
+		self::assertSame( 6, $rules->rl_group_size );
+		self::assertSame( 7, $rules->rl_group_size_max );
+
+		$custom = SeasonRules::from_array(
+			array(
+				'schedule_tables_per_match' => 1,
+				'classification_min_games'  => 0,
+				'rl_group_size'             => 5,
+				'rl_group_size_max'         => 5,
+			)
+		);
+		self::assertSame( 1, $custom->schedule_tables_per_match );
+		self::assertSame( 0, $custom->classification_min_games );
+		self::assertSame( 5, $custom->rl_group_size );
+		self::assertSame( 5, $custom->rl_group_size_max );
+		self::assertEquals( $custom, SeasonRules::from_array( $custom->to_array() ) );
+	}
+
+	/**
+	 * @return array<string,array{array<string,int>}>
+	 */
+	public static function invalid_operation_parameters(): array {
+		return array(
+			'keine Tische'              => array( array( 'schedule_tables_per_match' => 0 ) ),
+			'negative Mindestspiele'    => array( array( 'classification_min_games' => -1 ) ),
+			'Gruppe zu klein'           => array( array( 'rl_group_size' => 2 ) ),
+			'Ausnahme unter der Grösse' => array(
+				array(
+					'rl_group_size'     => 6,
+					'rl_group_size_max' => 5,
+				),
+			),
+		);
+	}
+
+	/**
+	 * @param array<string,int> $rules Regeln.
+	 */
+	#[DataProvider( 'invalid_operation_parameters' )]
+	public function test_invalid_operation_parameters_are_rejected( array $rules ): void {
+		$this->expectException( \InvalidArgumentException::class );
+		SeasonRules::from_array( $rules );
+	}
+
+	public function test_bonus_point_follows_the_usual_group_size(): void {
+		$rules = SeasonRules::from_array(
+			array(
+				'rl_group_size'     => 5,
+				'rl_group_size_max' => 6,
+			)
+		);
+		self::assertSame( 6, $rules->rl_points_for_rank( 1, 5 ), 'übliche Grösse ohne Zusatzpunkt' );
+		self::assertSame( 7, $rules->rl_points_for_rank( 1, 6 ), 'grössere Gruppe mit Zusatzpunkt' );
+	}
 }

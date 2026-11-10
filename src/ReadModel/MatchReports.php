@@ -66,7 +66,7 @@ final class MatchReports {
 			LEFT JOIN {$this->db->table( 'club' )} hec ON hec.id = he.club_id
 			LEFT JOIN {$this->db->table( 'cup_entry' )} ae ON ae.id = f.away_entry_id
 			LEFT JOIN {$this->db->table( 'club' )} aec ON aec.id = ae.club_id
-			WHERE f.id = %d",
+			WHERE f.id = %d AND s.status <> 'planned'",
 			array( $fixture_id )
 		);
 		if ( null === $row || ! in_array( $row['competition_type'], array( 'MM', 'CUP' ), true ) ) {

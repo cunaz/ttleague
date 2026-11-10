@@ -20,7 +20,7 @@ Dieses Dokument beschreibt, wie die Daten in den Tabellen `wp_ttl_*` abgelegt we
 | `slug` | `2024-25` |
 | `name` | `2024/25` |
 | `start_date`, `end_date` | 1. August bis 31. Juli |
-| `status` | `active` (genau eine Saison), `archived`, `planned` |
+| `status` | `active` (höchstens eine Saison), `archived`, `planned` (höchstens eine; nicht öffentlich, siehe `docs/saisonbetrieb.md`) |
 | `rules_json` | `SeasonRules::to_array()`, die Regeln dieser Saison (z. B. `substitute_max`, `cup_mode`) |
 
 ## Clubs, Lokale, Personen, Spieler
@@ -90,15 +90,17 @@ Satz- und Punkteverhältnisse zählen nur Spiele mit `status = played`.
 ## Cup (`cup_entry`, `cup_tie`)
 
 - `cup_entry`: gemeldete 2er-Mannschaft mit `name` «Seefeld 1», `player1_id`, `player2_id`, `points_total` (Summe der Klassierungen bei der Meldung), `seed` (Setzung).
+- `cup_entry.status`: `active` (Standard) oder `withdrawn`.
 - `cup_tie` (Tableau-Positionen) ist optional; Importe aus Altsystemen können es leer lassen.
 
 ## Ranglistenturnier (`rl_*`)
 
 - `rl_round.round_no` 1 bis 3, Finalrunde 4 mit `is_final` 1.
+- `rl_round.status`: `planned`, `published` (aufgeboten) oder `closed`. Der Standardwert ist `closed`, damit Runden aus Altdaten als abgeschlossen gelten. Ein Import, der eine laufende Saison übernimmt, setzt aufgebotene, noch nicht gespielte Runden auf `published`.
 - `rl_group.category` 1 bis 3, `group_no` ab 1, `start_at` Ortszeit, `host_club_id` Platzclub, `note` Rohtext des Aufgebots.
 - `rl_group_player.status`: `played`, `absent`, `disqualified`, `forfeit` oder `scheduled` (aufgeboten, Gruppe hat noch nicht gespielt); `rank_no` und `points` nach `GroupRanking`, bei `scheduled` leer.
 - `rl_group.venue_id`: Lokal des Platzclubs, sofern bekannt.
-- `rl_participant.category` 1 bis 3.
+- `rl_participant.category` 1 bis 3; `status` `registered` (Standard) oder `withdrawn`.
 
 ## Wertungszahl (`player_rating`, `rating_event`)
 

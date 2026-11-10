@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026111006';
+	public const VERSION = '2026111007';
 
 	/**
 	 * Indizes, die eine neuere Schemaversion ersetzt hat. dbDelta() entfernt keine Indizes;
@@ -33,11 +33,13 @@ final class Schema {
 	public const TABLES = array(
 		'season',
 		'club',
+		'club_season',
 		'venue',
 		'venue_closure',
 		'person',
 		'player',
 		'player_season',
+		'player_request',
 		'player_rating',
 		'rating_event',
 		'classification_proposal',
@@ -97,6 +99,11 @@ final class Schema {
   end_date date NOT NULL,
   status varchar(16) NOT NULL DEFAULT 'planned',
   rules_json longtext,
+  registration_opens date DEFAULT NULL,
+  registration_closes date DEFAULT NULL,
+  late_registration_until date DEFAULT NULL,
+  schedule_json longtext,
+  classification_closed_at datetime DEFAULT NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
@@ -115,6 +122,21 @@ final class Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY number (number),
   UNIQUE KEY slug (slug)
+) $charset_collate;",
+
+			// Teilnahme und Meldestand eines Clubs in einer Saison (open, submitted, reviewed).
+			$t( 'club_season' )             => "CREATE TABLE {$t('club_season')} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  season_id bigint(20) unsigned NOT NULL,
+  club_id bigint(20) unsigned NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'open',
+  submitted_at datetime DEFAULT NULL,
+  submitted_by bigint(20) unsigned DEFAULT NULL,
+  reviewed_at datetime DEFAULT NULL,
+  reviewed_by bigint(20) unsigned DEFAULT NULL,
+  note text,
+  PRIMARY KEY  (id),
+  UNIQUE KEY season_club (season_id,club_id)
 ) $charset_collate;",
 
 			$t( 'venue' )                   => "CREATE TABLE {$t('venue')} (
@@ -185,9 +207,34 @@ final class Schema {
   classification tinyint(3) unsigned NOT NULL,
   status varchar(16) NOT NULL DEFAULT 'active',
   registered_at datetime DEFAULT NULL,
+  registered_by bigint(20) unsigned DEFAULT NULL,
+  approved_by bigint(20) unsigned DEFAULT NULL,
+  approved_at datetime DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY player_season (player_id,season_id),
   KEY season_club (season_id,club_id)
+) $charset_collate;",
+
+			// Meldung einer neuen Person ohne Lizenznummer; die TK gibt frei (requested, approved, rejected).
+			$t( 'player_request' )          => "CREATE TABLE {$t('player_request')} (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  season_id bigint(20) unsigned NOT NULL,
+  club_id bigint(20) unsigned NOT NULL,
+  last_name varchar(80) NOT NULL,
+  first_name varchar(80) NOT NULL DEFAULT '',
+  email varchar(190) DEFAULT NULL,
+  classification tinyint(3) unsigned DEFAULT NULL,
+  stt_license varchar(20) DEFAULT NULL,
+  status varchar(16) NOT NULL DEFAULT 'requested',
+  player_id bigint(20) unsigned DEFAULT NULL,
+  requested_by bigint(20) unsigned NOT NULL,
+  requested_at datetime NOT NULL,
+  decided_by bigint(20) unsigned DEFAULT NULL,
+  decided_at datetime DEFAULT NULL,
+  note text,
+  PRIMARY KEY  (id),
+  KEY season_club (season_id,club_id),
+  KEY status (status)
 ) $charset_collate;",
 
 			$t( 'player_rating' )           => "CREATE TABLE {$t('player_rating')} (
@@ -217,6 +264,7 @@ final class Schema {
   player_id bigint(20) unsigned NOT NULL,
   current_value tinyint(3) unsigned NOT NULL,
   rating decimal(8,2) NOT NULL,
+  games_count int(11) NOT NULL DEFAULT 0,
   proposed tinyint(3) unsigned NOT NULL,
   decided tinyint(3) unsigned DEFAULT NULL,
   decided_by bigint(20) unsigned DEFAULT NULL,
@@ -367,6 +415,9 @@ final class Schema {
   player2_id bigint(20) unsigned DEFAULT NULL,
   points_total tinyint(3) unsigned DEFAULT NULL,
   seed tinyint(3) unsigned DEFAULT NULL,
+  status varchar(16) NOT NULL DEFAULT 'active',
+  registered_by bigint(20) unsigned DEFAULT NULL,
+  registered_at datetime DEFAULT NULL,
   $source_ref
   PRIMARY KEY  (id),
   KEY competition_id (competition_id)
@@ -390,6 +441,9 @@ final class Schema {
   competition_id bigint(20) unsigned NOT NULL,
   player_id bigint(20) unsigned NOT NULL,
   category tinyint(3) unsigned NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'registered',
+  registered_by bigint(20) unsigned DEFAULT NULL,
+  registered_at datetime DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY competition_player (competition_id,player_id)
 ) $charset_collate;",
@@ -401,6 +455,9 @@ final class Schema {
   date_from date DEFAULT NULL,
   date_to date DEFAULT NULL,
   is_final tinyint(1) NOT NULL DEFAULT 0,
+  status varchar(16) NOT NULL DEFAULT 'closed',
+  closed_by bigint(20) unsigned DEFAULT NULL,
+  closed_at datetime DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY competition_round (competition_id,round_no)
 ) $charset_collate;",
@@ -414,6 +471,8 @@ final class Schema {
   venue_id bigint(20) unsigned DEFAULT NULL,
   start_at datetime DEFAULT NULL,
   chief_player_id bigint(20) unsigned DEFAULT NULL,
+  entered_by bigint(20) unsigned DEFAULT NULL,
+  entered_at datetime DEFAULT NULL,
   note text,
   $source_ref
   PRIMARY KEY  (id),
@@ -447,15 +506,21 @@ final class Schema {
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   fixture_id bigint(20) unsigned NOT NULL,
   requested_by bigint(20) unsigned NOT NULL,
+  kind varchar(16) NOT NULL DEFAULT 'postpone',
   old_date datetime DEFAULT NULL,
   new_date datetime NOT NULL,
   status varchar(16) NOT NULL DEFAULT 'requested',
+  reason text,
   accepted_by bigint(20) unsigned DEFAULT NULL,
+  response_note text,
+  responded_at datetime DEFAULT NULL,
   approved_by bigint(20) unsigned DEFAULT NULL,
+  approved_at datetime DEFAULT NULL,
   created_at datetime NOT NULL,
   updated_at datetime NOT NULL,
   PRIMARY KEY  (id),
-  KEY fixture_id (fixture_id)
+  KEY fixture_id (fixture_id),
+  KEY status (status)
 ) $charset_collate;",
 
 			$t( 'event' )                   => "CREATE TABLE {$t('event')} (
@@ -464,9 +529,13 @@ final class Schema {
   type varchar(16) NOT NULL,
   title varchar(160) NOT NULL,
   starts_at datetime NOT NULL,
+  ends_at datetime DEFAULT NULL,
+  location varchar(160) DEFAULT NULL,
   deadline datetime DEFAULT NULL,
   max_participants smallint(5) unsigned DEFAULT NULL,
   post_id bigint(20) unsigned DEFAULT NULL,
+  status varchar(16) NOT NULL DEFAULT 'open',
+  created_by bigint(20) unsigned DEFAULT NULL,
   PRIMARY KEY  (id),
   KEY starts_at (starts_at)
 ) $charset_collate;",

@@ -93,7 +93,7 @@ final class Fixtures {
 			LEFT JOIN {$this->db->table( 'cup_entry' )} he ON he.id = f.home_entry_id
 			LEFT JOIN {$this->db->table( 'cup_entry' )} ae ON ae.id = f.away_entry_id
 			LEFT JOIN {$this->db->table( 'venue' )} v ON v.id = COALESCE(f.venue_id, ht.home_venue_id)
-			WHERE co.type IN ('MM', 'CUP') AND {$where}
+			WHERE co.type IN ('MM', 'CUP') AND s.status <> 'planned' AND {$where}
 			ORDER BY {$order}
 			LIMIT %d",
 			array_merge( $args, array( $limit ) )
