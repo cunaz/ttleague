@@ -117,7 +117,7 @@ Beispiel mit 18 Spielwochen und 7 Runden (drei Phasen), Nummern der Spielwochen 
 | 2 | 1, 4, 7, 9, 12, 14, 17 |
 | 3 | 2, 5, 7, 10, 13, 15, 18 |
 
-Der Grund: Mannschaften desselben Clubs spielen meist in verschiedenen Gruppen und am selben Heimspieltag. Spielen alle Gruppen in denselben Wochen, treffen ihre Heimspiele regelmässig auf denselben Abend, und Ersatzspieler fehlen. Mit dem Versatz sinkt die Zahl dieser Hinweise im Entwurf deutlich. Der Prüfer bleibt derselbe: Fällt eine Runde durch den Versatz auf einen Tag mit gesperrtem Lokal oder zu wenigen Tischen, meldet er das wie bisher als harte Kollision; verhindert wird sie nicht.
+Der Grund: Mannschaften desselben Clubs spielen meist in verschiedenen Gruppen und am selben Heimspieltag. Spielen alle Gruppen in denselben Wochen, treffen ihre Heimspiele regelmässig auf denselben Abend, und Ersatzspieler fehlen. Im Abgleich mit gespielten Saisons einer Liga sank die Zahl dieser Hinweise im Entwurf mit dem Versatz auf etwa die Hälfte. Zugesichert ist das nicht: Je nach Gruppen, Heimspieltagen und Zahl der Spielwochen kann der Versatz auch mehr Hinweise ergeben. Der Prüfer bleibt derselbe: Fällt eine Runde durch den Versatz auf einen Tag mit gesperrtem Lokal oder zu wenigen Tischen, meldet er das wie bisher als harte Kollision; verhindert wird sie nicht.
 
 ## Abgleich zweier Pläne
 

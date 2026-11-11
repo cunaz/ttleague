@@ -14,8 +14,8 @@ namespace TTLeague\Domain\Schedule;
  * spiegelt die Vorrunde mit getauschtem Heimrecht. Hat eine Halbserie genau so viele
  * Spielwochen wie die Gruppe Runden, fällt Runde n in die n-te Spielwoche. Hat sie mehr,
  * verteilt der Generator die Runden gleichmässig über alle Spielwochen und versetzt die
- * Gruppen gegeneinander (weeks_for()): So spielen seltener mehrere Mannschaften eines Clubs am
- * selben Abend. Der Termin ist Spielwoche plus Heimspieltag des Heimteams zur Anspielzeit im
+ * Gruppen gegeneinander (weeks_for()): So spielen in der Regel seltener mehrere Mannschaften
+ * eines Clubs am selben Abend. Der Termin ist Spielwoche plus Heimspieltag des Heimteams zur Anspielzeit im
  * Heimlokal. Der Generator prüft keine Kollisionen, das macht der ScheduleChecker.
  */
 final class ScheduleGenerator {
