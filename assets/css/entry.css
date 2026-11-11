@@ -277,6 +277,16 @@
 	padding-inline: 0.3rem;
 }
 
+/* Hinweis auf die vorgeschlagene Aufstellung aus dem letzten Spiel */
+.ttl-entry__suggested {
+	margin: 0;
+	padding: 0.45rem 0.65rem;
+	border-radius: 0.4rem;
+	font-size: var(--ttl-small);
+	background: color-mix(in srgb, var(--ttl-warn) 10%, var(--ttl-surface));
+	border: 1px solid color-mix(in srgb, var(--ttl-warn) 45%, transparent);
+}
+
 .ttl-entry__slot {
 	display: grid;
 	grid-template-columns: 2rem minmax(0, 1fr);

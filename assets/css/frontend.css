@@ -1134,6 +1134,62 @@
 	color: var(--ttl-win);
 }
 
+/* Knopf «Teilen» (Matchreport, Leseansicht der Erfassungsseite); ohne JavaScript verborgen */
+
+.ttl-share {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.75rem;
+	margin-block: 0.75rem;
+}
+
+.ttl-share[hidden] {
+	display: none;
+}
+
+.ttl .ttl-share__button {
+	gap: 0.5rem;
+}
+
+.ttl-share__icon {
+	flex: none;
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.ttl-share__status:not(:empty) {
+	font-size: var(--ttl-small);
+	font-weight: 600;
+}
+
+/* Kontaktdaten (nur für angemeldete Funktionärinnen und Funktionäre) */
+
+.ttl-contact {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 0.5rem;
+	font-size: var(--ttl-small);
+}
+
+.ttl-contact__link {
+	display: inline-flex;
+	align-items: center;
+	min-height: var(--ttl-touch);
+	overflow-wrap: anywhere;
+}
+
+.ttl-contacts__sides {
+	display: grid;
+	gap: 0 var(--ttl-gap);
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.ttl .ttl-contacts__side .ttl-subtitle {
+	margin-block-start: 0.25rem;
+}
+
 /* Nicht gefunden */
 
 .ttl-not-found .ttl-inline-list a {
@@ -1371,7 +1427,8 @@
 
 @media (min-width: 600px) {
 
-	.ttl-lineups {
+	.ttl-lineups,
+	.ttl-contacts__sides {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
@@ -1588,7 +1645,8 @@
 	.ttl-filter,
 	.ttl-tabs,
 	.ttl-form,
-	.ttl-subscribe {
+	.ttl-subscribe,
+	.ttl-share {
 		display: none;
 	}
 

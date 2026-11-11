@@ -13,6 +13,7 @@ use TTLeague\Accounts\LoginFlow;
 use TTLeague\Frontend\Assets;
 use TTLeague\Frontend\Frontend;
 use TTLeague\Frontend\PageInstaller;
+use TTLeague\Frontend\Views\ContactBox;
 use TTLeague\Rest\ResultController;
 
 /**
@@ -60,7 +61,8 @@ final class EntryBlock {
 			$fixture_id,
 			$actor,
 			self::links( $fixture_id ),
-			array( Results::class, 'photo_url' )
+			array( Results::class, 'photo_url' ),
+			static fn( int $id ): string => ContactBox::fixture_section( $id, 3 )
 		);
 		if ( null !== $result['state'] && null !== $result['config'] ) {
 			wp_interactivity_state( EntryMarkup::NS, $result['state'] );

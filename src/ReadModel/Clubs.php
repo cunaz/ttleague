@@ -95,7 +95,7 @@ final class Clubs {
 	 * @return array{
 	 *   teams:list<array<string,mixed>>,
 	 *   venues:list<array<string,mixed>>,
-	 *   roles:list<array{role:string,name:string,team_id:?int,player:?array<string,mixed>}>,
+	 *   roles:list<array{role:string,person_id:int,name:string,team_id:?int,player:?array<string,mixed>}>,
 	 *   players:list<array<string,mixed>>
 	 * }
 	 */
@@ -144,7 +144,7 @@ final class Clubs {
 
 				$roles = array();
 				foreach ( $this->db->get_results(
-					"SELECT cr.role, cr.team_id, pe.first_name, pe.last_name, p.id AS player_id, p.license_no
+					"SELECT cr.role, cr.team_id, cr.person_id, pe.first_name, pe.last_name, p.id AS player_id, p.license_no
 					FROM {$this->db->table( 'club_role' )} cr
 					JOIN {$this->db->table( 'person' )} pe ON pe.id = cr.person_id
 					LEFT JOIN {$this->db->table( 'player' )} p ON p.person_id = pe.id
@@ -152,11 +152,13 @@ final class Clubs {
 					ORDER BY cr.role = 'tk_chef' DESC, pe.last_name, pe.first_name",
 					array( $season_id, $club_id )
 				) as $row ) {
+					// person_id ordnet in der Ansicht die Kontaktdaten zu; diese selbst stehen nie im Cache.
 					$roles[] = array(
-						'role'    => (string) $row['role'],
-						'name'    => Names::full( $row['first_name'], $row['last_name'] ),
-						'team_id' => Sql::int_or_null( $row['team_id'] ),
-						'player'  => null === $row['player_id'] ? null : Names::player( $row ),
+						'role'      => (string) $row['role'],
+						'person_id' => (int) $row['person_id'],
+						'name'      => Names::full( $row['first_name'], $row['last_name'] ),
+						'team_id'   => Sql::int_or_null( $row['team_id'] ),
+						'player'    => null === $row['player_id'] ? null : Names::player( $row ),
 					);
 				}
 

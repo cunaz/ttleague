@@ -9,7 +9,9 @@
  *
  * Nach jeder erfolgreichen Aktion lädt die Seite neu (Meldung über sessionStorage), damit
  * Status, Verlauf und Hinweise wieder vom Server kommen. Ein Entwurf des Formulars liegt im
- * localStorage, solange er nicht gespeichert ist.
+ * localStorage, solange er nicht gespeichert ist. Die vorgeschlagene Aufstellung aus dem
+ * letzten Spiel ist Teil des Ausgangszustands (cfg.initialForm) und damit kein Entwurf: Sie
+ * wird nie gespeichert, und ein vorhandener Entwurf ersetzt sie.
  */
 import {
 	store,
