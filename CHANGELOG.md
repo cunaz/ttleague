@@ -12,3 +12,4 @@ Alle nennenswerten Änderungen an ttleague werden hier festgehalten.
 - Datenversion für die Cache-Invalidierung.
 - WP-CLI-Befehl `wp ttleague info`.
 - Grundlage für den Saisonbetrieb: geplante Saison (nicht öffentlich), Schemaversion 2026111007, Rechte für Verschiebung und Gruppenzettel, Erweiterungspunkte für Module, CSV-Exporte (`wp ttleague export`).
+- Ranglistenturnier: Anmeldung mit Sperrdaten in «Mein Bereich», Gruppenvorschlag je Runde, Aufgebot, Gruppenzettel (Formular und REST), Abschluss mit Rang und Punkten, Final, Backend-Seite und CSV-Exporte. Runden in Planung sind nicht öffentlich.

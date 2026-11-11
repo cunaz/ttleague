@@ -148,6 +148,19 @@ final class RankingRoundStatusTest extends IntegrationTestCase {
 		self::assertSame( 1, substr_count( $html, 'abgemeldet' ), 'Wer sich für die Runde abgemeldet hat, ist im Aufgebot markiert.' );
 		// Die Gesamtrangliste zählt weiter nur gespielte Gruppen.
 		self::assertSame( array( 1 => 6.0 ), $rl['overall'][1][0]['rounds'] );
+		// Muster hat sich für die Runde abgemeldet: Der Termin steht nicht mehr in seinem Kalender.
+		self::assertSame( array( $this->ids['rl_group_1'] ), $this->feed_groups() );
+		$this->db->update(
+			'rl_group_player',
+			array( 'status' => 'scheduled' ),
+			array(
+				'rl_group_id' => $this->group_2,
+				'player_id'   => $this->muster,
+			)
+		);
+		self::assertSame( array( $this->ids['rl_group_1'], $this->group_2 ), $this->feed_groups(), 'Aufgeboten: Der Termin steht im Kalender-Abo.' );
+		// In einer abgeschlossenen (importierten) Runde bleibt auch «abwesend» im Kalender wie bisher.
+		$this->set_status( 'closed', 'absent' );
 		self::assertSame( array( $this->ids['rl_group_1'], $this->group_2 ), $this->feed_groups() );
 	}
 }

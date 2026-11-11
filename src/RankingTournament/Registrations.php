@@ -25,6 +25,9 @@ use TTLeague\Results\Actor;
  * Anmelden können Personen und TK-Chefs bis und mit dem Tag des Anmeldeschlusses (Ortszeit),
  * danach nur die TK. Abmelden und Sperrdaten melden bleiben möglich.
  *
+ * Jeder Schreibvorgang sperrt in seiner Transaktion zuerst die Saison (wie Rounds und
+ * GroupEntry) und liest danach den Stand neu.
+ *
  * Sperrdaten sind Zeilen in availability mit context «rl», eine pro gesperrtem Abend. Eine
  * Zeile mit context «rl_answer» über die ganze Rundenwoche hält fest, dass die Person ihre
  * Sperrdaten für diese Woche gemeldet hat, auch wenn sie an jedem Abend kann.
@@ -108,6 +111,7 @@ final class Registrations {
 
 		$id = $this->db->transaction(
 			function () use ( $actor, $season_id, $name, $categories, $deadline, $start ): int {
+				$this->lock_season( $season_id );
 				$existing = $this->repo->competition_of_season( $season_id );
 				$format   = null === $existing ? array() : $existing['format'];
 				$before   = null === $existing ? null : array(
@@ -195,6 +199,7 @@ final class Registrations {
 
 		$result = $this->db->transaction(
 			function () use ( $actor, $competition, $player, $category ): array {
+				$this->lock_season( $competition['season_id'] );
 				$existing = $this->repo->participant( $competition['id'], $player['player_id'] );
 				if ( null !== $existing && self::REGISTERED === $existing['status'] ) {
 					return array(
@@ -272,6 +277,7 @@ final class Registrations {
 		[ $competition, $player ] = $this->target( $actor, $player_id );
 		$participant_id           = $this->db->transaction(
 			function () use ( $actor, $competition, $player ): ?int {
+				$this->lock_season( $competition['season_id'] );
 				$existing = $this->repo->participant( $competition['id'], $player['player_id'] );
 				if ( null === $existing ) {
 					Fail::conflict( __( 'Die Person ist nicht zum Ranglistenturnier angemeldet.', 'ttleague' ) );
@@ -327,6 +333,7 @@ final class Registrations {
 		$this->check_category( $competition, $category );
 		$participant_id = $this->db->transaction(
 			function () use ( $actor, $competition, $player, $category ): ?int {
+				$this->lock_season( $competition['season_id'] );
 				$existing = $this->repo->participant( $competition['id'], $player['player_id'] );
 				if ( null === $existing ) {
 					Fail::conflict( __( 'Die Person ist nicht zum Ranglistenturnier angemeldet.', 'ttleague' ) );
@@ -566,6 +573,15 @@ final class Registrations {
 		if ( $category < 1 || $category > 255 || ( array() !== $numbers && ! in_array( $category, $numbers, true ) ) ) {
 			Fail::invalid( 'category', __( 'Diese Kategorie gibt es nicht.', 'ttleague' ) );
 		}
+	}
+
+	/**
+	 * Sperrt die Saison bis zum Ende der Transaktion. Wie Rounds und GroupEntry: Alle
+	 * Schreibvorgänge des Turniers laufen so hintereinander, zwei gleichzeitige Anmeldungen
+	 * derselben Person legen keine zweite Zeile an, und eine Abmeldung kreuzt keine Einteilung.
+	 */
+	private function lock_season( int $season_id ): void {
+		$this->db->get_var( "SELECT id FROM {$this->db->table( 'season' )} WHERE id = %d FOR UPDATE", array( $season_id ) );
 	}
 
 	private function require_tk( Actor $actor ): void {
