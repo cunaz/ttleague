@@ -165,7 +165,9 @@ final class SeasonPage {
 				$set( self::GROUPS, true, __( 'Jede Mannschaft ist zugeteilt.', 'ttleague' ) );
 			}
 
-			if ( array() !== $facts['groups_without_schedule'] ) {
+			if ( $facts['teams'] < 1 || array() !== $facts['unassigned'] ) {
+				$set( self::SCHEDULE, false, __( 'Zuerst jede Mannschaft einer Gruppe zuteilen.', 'ttleague' ) );
+			} elseif ( array() !== $facts['groups_without_schedule'] ) {
 				/* translators: %s: Gruppen */
 				$set( self::SCHEDULE, false, sprintf( __( 'Spielplan fehlt oder passt nicht: %s.', 'ttleague' ), implode( ', ', $facts['groups_without_schedule'] ) ) );
 			} elseif ( null !== $facts['schedule_error'] ) {
@@ -173,8 +175,6 @@ final class SeasonPage {
 			} elseif ( $facts['hard_conflicts'] > 0 ) {
 				/* translators: %d: Anzahl */
 				$set( self::SCHEDULE, false, sprintf( _n( '%d harte Kollision.', '%d harte Kollisionen.', $facts['hard_conflicts'], 'ttleague' ), $facts['hard_conflicts'] ) );
-			} elseif ( $facts['teams'] < 1 ) {
-				$set( self::SCHEDULE, false, __( 'Noch kein Spielplan.', 'ttleague' ) );
 			} else {
 				$set( self::SCHEDULE, true, __( 'Der Spielplan ist vollständig und ohne harte Kollision.', 'ttleague' ) );
 			}
