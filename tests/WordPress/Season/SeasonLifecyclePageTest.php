@@ -90,11 +90,11 @@ final class SeasonLifecyclePageTest extends SeasonWpTestCase {
 		$next    = $this->ready();
 		$fixture = $this->fixture( 'wollishofen_1', 'seefeld_1' );
 		$html    = $this->page( SeasonPage::SCHEDULE );
-		self::assertStringContainsString( 'Harte Kollisionen: 4.', $html );
+		self::assertStringContainsString( 'Harte Kollisionen: 2.', $html );
 		self::assertStringContainsString( 'Halle Wollishofen: Kapazität des Lokals am 08.09.2027 überschritten', $html );
 		self::assertStringContainsString( 'Wollishofen 1 – Seefeld 1 auf Mi, 29.9.2027, 19:30 verlegen', $html );
 		self::assertStringContainsString( 'name="_wpnonce" value="' . wp_create_nonce( SeasonActions::SUGGESTION . '_' . $fixture ) . '"', $html );
-		self::assertStringContainsString( '4 harte Kollisionen.', $html, 'Der Reiter zeigt den Stand.' );
+		self::assertStringContainsString( '2 harte Kollisionen.', $html, 'Der Reiter zeigt den Stand.' );
 
 		$target = $this->post(
 			SeasonActions::SUGGESTION,
@@ -109,7 +109,7 @@ final class SeasonLifecyclePageTest extends SeasonWpTestCase {
 		self::assertSame( '2027-09-29 19:30:00', $this->db->get_var( "SELECT scheduled_at FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( $fixture ) ) );
 		$html = $this->page( SeasonPage::SCHEDULE );
 		self::assertStringContainsString( 'Der Vorschlag ist übernommen. Der Plan ist neu geprüft.', $html );
-		self::assertStringContainsString( 'Harte Kollisionen: 3.', $html );
+		self::assertStringContainsString( 'Harte Kollisionen: 1.', $html );
 
 		$this->post(
 			SeasonActions::SUGGESTION,
@@ -213,7 +213,7 @@ final class SeasonLifecyclePageTest extends SeasonWpTestCase {
 		$html = $this->page( SeasonPage::PUBLISH );
 		self::assertStringContainsString( 'Bereit zur Freigabe, mit ausdrücklicher Bestätigung.', $html );
 		self::assertStringContainsString( 'name="accept[conflicts]" value="1" required', $html );
-		self::assertStringContainsString( 'Der Spielplan hat 4 harte Kollisionen.', $html );
+		self::assertStringContainsString( 'Der Spielplan hat 2 harte Kollisionen.', $html );
 		self::assertStringNotContainsString( 'accept[predecessor]', $html );
 
 		$fields = array(

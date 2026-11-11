@@ -148,20 +148,66 @@ final class ScheduleGeneratorTest extends ScheduleTestCase {
 		);
 	}
 
-	public function test_group_with_fewer_rounds_uses_the_first_weeks_of_each_leg(): void {
+	public function test_group_with_fewer_rounds_is_spread_over_all_weeks_of_each_leg(): void {
 		$fixtures = ( new ScheduleGenerator() )->generate( $this->input() );
 		$weeks    = static fn( array $group ) => array_values( array_unique( array_map( static fn( PlannedFixture $fixture ) => $fixture->week(), $group ) ) );
 		$mondays  = static fn( array $dates ) => array_map( static fn( \DateTimeImmutable $monday ) => $monday->format( 'Y-m-d' ), $dates );
 
 		self::assertSame(
-			array_merge( $mondays( $this->mondays( '2026-09-07', 5 ) ), $mondays( $this->mondays( '2027-01-04', 5 ) ) ),
+			array( '2026-09-07', '2026-09-14', '2026-09-21', '2026-10-05', '2026-10-12', '2027-01-04', '2027-01-11', '2027-01-18', '2027-02-01', '2027-02-08' ),
 			$weeks( $this->of_group( $fixtures, 'A' ) ),
-			'Sechs Teams: fünf Runden pro Halbserie, die letzten zwei Spielwochen bleiben Reserve.'
+			'Sechs Teams: fünf Runden pro Halbserie, verteilt über die sieben Spielwochen.'
 		);
 		self::assertSame(
 			array_merge( $mondays( $this->mondays( '2026-09-07', 7 ) ), $mondays( $this->mondays( '2027-01-04', 7 ) ) ),
-			$weeks( $this->of_group( $fixtures, 'B' ) )
+			$weeks( $this->of_group( $fixtures, 'B' ) ),
+			'Sieben Teams: genau so viele Runden wie Spielwochen, Runde n in Woche n.'
 		);
+	}
+
+	public function test_groups_are_staggered_when_the_rounds_fit_twice(): void {
+		// Zwei Gruppen mit je vier Teams (drei Runden pro Halbserie), sechs Spielwochen pro Halbserie.
+		$fixtures = ( new ScheduleGenerator() )->generate(
+			new ScheduleInput(
+				array( $this->group( 'A', array_slice( self::SIX, 0, 4 ) ), $this->group( 'B', array_slice( self::SEVEN, 0, 4 ) ) ),
+				$this->mondays( '2026-09-07', 6 ),
+				$this->mondays( '2027-01-04', 6 )
+			)
+		);
+		$weeks    = static fn( array $group ) => array_values( array_unique( array_map( static fn( PlannedFixture $fixture ) => $fixture->week(), $group ) ) );
+
+		self::assertSame( array( '2026-09-07', '2026-09-21', '2026-10-05', '2027-01-04', '2027-01-18', '2027-02-01' ), $weeks( $this->of_group( $fixtures, 'A' ) ) );
+		self::assertSame( array( '2026-09-14', '2026-09-28', '2026-10-12', '2027-01-11', '2027-01-25', '2027-02-08' ), $weeks( $this->of_group( $fixtures, 'B' ) ) );
+	}
+
+	public function test_weeks_for_a_group_are_even_ascending_and_within_the_leg(): void {
+		$weeks = $this->mondays( '2026-08-17', 18 );
+		$index = static fn( array $chosen ) => array_map( static fn( \DateTimeImmutable $week ) => (int) ( $week->diff( $weeks[0] )->days / 7 ), $chosen );
+
+		// 18 Wochen, 7 Runden: drei Phasen, die vierte Gruppe beginnt wieder wie die erste.
+		self::assertSame( array( 0, 2, 5, 7, 10, 12, 15 ), $index( ScheduleGenerator::weeks_for( $weeks, 7, 0 ) ) );
+		self::assertSame( array( 0, 3, 6, 8, 11, 13, 16 ), $index( ScheduleGenerator::weeks_for( $weeks, 7, 1 ) ) );
+		self::assertSame( array( 1, 4, 6, 9, 12, 14, 17 ), $index( ScheduleGenerator::weeks_for( $weeks, 7, 2 ) ) );
+		self::assertSame( $index( ScheduleGenerator::weeks_for( $weeks, 7, 0 ) ), $index( ScheduleGenerator::weeks_for( $weeks, 7, 3 ) ) );
+
+		// Genau so viele Wochen wie Runden oder weniger: unverändert.
+		self::assertSame( array_slice( $weeks, 0, 7 ), ScheduleGenerator::weeks_for( array_slice( $weeks, 0, 7 ), 7, 2 ) );
+
+		// Jede Auswahl ist aufsteigend, ohne Wiederholung und so lang wie die Runden.
+		foreach ( range( 2, 18 ) as $available ) {
+			foreach ( range( 1, $available ) as $rounds ) {
+				foreach ( range( 0, 4 ) as $position ) {
+					$chosen = $index( ScheduleGenerator::weeks_for( array_slice( $weeks, 0, $available ), $rounds, $position ) );
+					if ( $available > $rounds ) {
+						self::assertCount( $rounds, $chosen, "$available Wochen, $rounds Runden" );
+					}
+					$sorted = array_values( array_unique( $chosen ) );
+					sort( $sorted );
+					self::assertSame( $sorted, $chosen, "$available Wochen, $rounds Runden, Gruppe $position" );
+					self::assertLessThan( $available, max( $chosen ) );
+				}
+			}
+		}
 	}
 
 	public function test_week_across_the_new_year(): void {

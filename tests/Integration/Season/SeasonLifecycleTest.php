@@ -246,7 +246,7 @@ final class SeasonLifecycleTest extends SeasonTestCase {
 		self::assertSame( array( LifecycleRules::CONFLICTS ), $this->open( $next ) );
 
 		$refusal = $this->refused( fn() => $this->lifecycle->publish( $this->tk, $next, '2027/28' ), Refusal::INVALID );
-		self::assertStringContainsString( '4 harte Kollisionen', $refusal->errors[0]['message'] );
+		self::assertStringContainsString( '2 harte Kollisionen', $refusal->errors[0]['message'] );
 		$this->refused( fn() => $this->lifecycle->publish( $this->tk, $next, '2027/28', array( LifecycleRules::PREDECESSOR ) ), Refusal::INVALID );
 		self::assertSame( 'planned', $this->season_status( $next ) );
 
@@ -255,7 +255,7 @@ final class SeasonLifecycleTest extends SeasonTestCase {
 		self::assertSame( 'active', $this->season_status( $next ) );
 		$after = json_decode( (string) $this->db->get_var( "SELECT after_json FROM {$this->db->table( 'audit_log' )} WHERE action = 'published'" ), true );
 		self::assertSame( array( LifecycleRules::CONFLICTS ), $after['confirmed'] );
-		self::assertSame( 4, $after['hard_conflicts'] );
+		self::assertSame( 2, $after['hard_conflicts'] );
 	}
 
 	public function test_resolved_collisions_need_no_confirmation(): void {
