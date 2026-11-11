@@ -58,7 +58,7 @@ Alle Eingaben sind unveränderliche Wertobjekte; ungültige Werte lösen eine `I
 
 - Pro Gruppe ein Rundenturnier nach dem Kreisverfahren. Bei ungerader Teamzahl hat pro Runde ein Team spielfrei: sechs Teams spielen 2 × 5 Runden mit je drei Begegnungen (30), sieben Teams 2 × 7 Runden mit je drei Begegnungen (42).
 - Die Rückrunde spiegelt die Vorrunde: dieselben Paarungen in derselben Reihenfolge, Heimrecht getauscht.
-- Runde n der Vorrunde fällt in die n-te Spielwoche der Vorrunde, Runde n der Rückrunde in die n-te Spielwoche der Rückrunde.
+- Hat eine Halbserie genau so viele Spielwochen wie die Gruppe Runden, fällt Runde n in ihre n-te Spielwoche. Hat sie mehr, wählt `weeks_for()` die Spielwoche jeder Runde (siehe «Verteilung auf die Spielwochen»).
 - Termin: Montag der Spielwoche plus Heimspieltag des Heimteams, zur Anspielzeit des Heimteams, im Heimlokal des Heimteams. Wochen über den Jahreswechsel sind gewöhnliche Wochen (Montag, 28. Dezember 2026, mit Heimspieltag Freitag ergibt den 1. Januar 2027).
 - Reichen die Spielwochen nicht für die Runden, gibt es keinen Entwurf, sondern eine `InvalidArgumentException`, die alle betroffenen Gruppen und Halbserien nennt, zum Beispiel «Zu wenige Spielwochen für die Anzahl Runden: Gruppe B braucht in der Rückrunde 7, vorhanden sind 6.»
 
@@ -117,7 +117,7 @@ Beispiel mit 18 Spielwochen und 7 Runden (drei Phasen), Nummern der Spielwochen 
 | 2 | 1, 4, 7, 9, 12, 14, 17 |
 | 3 | 2, 5, 7, 10, 13, 15, 18 |
 
-Der Grund: Mannschaften desselben Clubs spielen meist in verschiedenen Gruppen und am selben Heimspieltag. Spielen alle Gruppen in denselben Wochen, treffen ihre Heimspiele regelmässig auf denselben Abend, und Ersatzspieler fehlen. Mit dem Versatz sinkt die Zahl dieser Hinweise im Entwurf deutlich. Harte Kollisionen entstehen dadurch nicht neu; der Prüfer bleibt derselbe.
+Der Grund: Mannschaften desselben Clubs spielen meist in verschiedenen Gruppen und am selben Heimspieltag. Spielen alle Gruppen in denselben Wochen, treffen ihre Heimspiele regelmässig auf denselben Abend, und Ersatzspieler fehlen. Mit dem Versatz sinkt die Zahl dieser Hinweise im Entwurf deutlich. Der Prüfer bleibt derselbe: Fällt eine Runde durch den Versatz auf einen Tag mit gesperrtem Lokal oder zu wenigen Tischen, meldet er das wie bisher als harte Kollision; verhindert wird sie nicht.
 
 ## Abgleich zweier Pläne
 
