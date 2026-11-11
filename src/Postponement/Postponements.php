@@ -101,7 +101,8 @@ final class Postponements {
 			static function ( int $user_id ): ?string {
 				$user = get_userdata( $user_id );
 				return false === $user ? null : $user->display_name;
-			}
+			},
+			array( Notifications::class, 'report_error' )
 		);
 	}
 

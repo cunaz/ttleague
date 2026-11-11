@@ -320,6 +320,33 @@ final class PostponementNotificationsTest extends PostponementTestCase {
 		self::assertCount( 2, $this->email->sent, 'nur einmal pro Person' );
 	}
 
+	public function test_a_failing_request_is_reported_and_does_not_stop_the_run(): void {
+		$this->request_f1();
+		$errors        = array();
+		$notifications = $this->postponement_notifications(
+			array(
+				'from_hour'  => 0,
+				'until_hour' => 24,
+			),
+			static function ( \Throwable $e, string $context ) use ( &$errors ): void {
+				$errors[] = $context;
+			}
+		);
+		$this->email->sent = array();
+		$this->clock->advance( '+3 days' );
+		// Ungültige Regeln der Saison: Der Kontext der Begegnung lässt sich nicht laden.
+		$this->db->update( 'season', array( 'rules_json' => '{"sets_to_win":0}' ), array( 'status' => 'active' ) );
+
+		self::assertSame( array(), $notifications->remind(), 'kein Abbruch' );
+		self::assertCount( 1, $errors );
+		self::assertStringStartsWith( 'Erinnerung zur Verschiebung ', $errors[0] );
+		self::assertSame( array(), $this->email->sent );
+
+		// Ist der Fehler behoben, geht die Erinnerung im nächsten Lauf hinaus.
+		$this->db->update( 'season', array( 'rules_json' => '{}' ), array( 'status' => 'active' ) );
+		self::assertSame( array( M::REMINDER ), array_column( $notifications->remind(), 'event' ) );
+	}
+
 	public function test_answered_requests_are_not_reminded(): void {
 		$declined = $this->request_f1()['id'];
 		$this->postponements->decline( $declined, $this->actor['captain_a1'] );

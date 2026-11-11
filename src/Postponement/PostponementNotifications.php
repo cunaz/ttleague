@@ -41,6 +41,9 @@ final class PostponementNotifications implements PostponementEvents {
 	/** @var callable(int):?string */
 	private $user_name;
 
+	/** @var callable(\Throwable,string):void Meldet einen Fehler, ohne den Lauf abzubrechen. */
+	private $on_error;
+
 	/**
 	 * @param array{from_hour?:int,until_hour?:int} $hours     Versandfenster der Erinnerung (Ortszeit), wie bei den Fristen.
 	 * @param callable(int):?string|null            $user_name Anzeigename eines Kontos ohne Person.
@@ -56,10 +59,12 @@ final class PostponementNotifications implements PostponementEvents {
 		private readonly \DateTimeZone $timezone,
 		array $hours = array(),
 		?callable $user_name = null,
+		?callable $on_error = null,
 	) {
 		$this->from_hour  = max( 0, min( 23, (int) ( $hours['from_hour'] ?? Deadlines::FROM_HOUR ) ) );
 		$this->until_hour = max( $this->from_hour + 1, min( 24, (int) ( $hours['until_hour'] ?? Deadlines::UNTIL_HOUR ) ) );
 		$this->user_name  = $user_name ?? static fn(): ?string => null;
+		$this->on_error   = $on_error ?? static function (): void {};
 	}
 
 	public function changed( int $postponement_id, string $action, int $user_id, ?int $person_id ): void {
@@ -115,21 +120,44 @@ final class PostponementNotifications implements PostponementEvents {
 		$report = array();
 		foreach ( $this->repo->active_seasons() as $season ) {
 			foreach ( $this->repo->open_in_season( $season, array( Rules::REQUESTED ) ) as $row ) {
-				$ctx = $row['created_at'] <= $limit ? $this->fixtures->context( $row['fixture_id'] ) : null;
-				// Ist inzwischen ein Resultat erfasst, kann die Gegenseite nicht mehr zustimmen: keine Erinnerung.
-				if ( null === $ctx || ! Rules::fixture_open( $ctx->status ) ) {
+				if ( $row['created_at'] > $limit ) {
 					continue;
 				}
-				$notification = $this->messages->reminder( $row, $ctx, PostponementService::REMINDER_DAYS, PostponementService::UNANSWERED_DAYS );
-				$requester    = $this->parties->requester_person( $row );
-				$report[]     = array(
-					'event'      => $notification->event,
-					'ref'        => $notification->ref_id,
-					'deliveries' => $this->send( $notification, $this->recipients->sides( $ctx, $this->parties->of( $row, $ctx )['opponent'] ), (int) $row['requested_by'], $requester ),
-				);
+				// Ein Fehler bei einem Antrag (z. B. ungültige Regeln seiner Saison) wird gemeldet
+				// und hält die Erinnerungen der übrigen nicht auf.
+				try {
+					$entry = $this->remind_one( $row );
+				} catch ( \Throwable $e ) {
+					( $this->on_error )( $e, 'Erinnerung zur Verschiebung ' . (int) $row['id'] );
+					continue;
+				}
+				if ( null !== $entry ) {
+					$report[] = $entry;
+				}
 			}
 		}
 		return $report;
+	}
+
+	/**
+	 * Erinnerung zu einem Antrag; null, wenn es keine braucht.
+	 *
+	 * @param array<string,mixed> $row Antrag.
+	 * @return array{event:string,ref:int,deliveries:list<array{recipient:string,channel:string,status:string}>}|null
+	 */
+	private function remind_one( array $row ): ?array {
+		$ctx = $this->fixtures->context( $row['fixture_id'] );
+		// Ist inzwischen ein Resultat erfasst, kann die Gegenseite nicht mehr zustimmen: keine Erinnerung.
+		if ( null === $ctx || ! Rules::fixture_open( $ctx->status ) ) {
+			return null;
+		}
+		$notification = $this->messages->reminder( $row, $ctx, PostponementService::REMINDER_DAYS, PostponementService::UNANSWERED_DAYS );
+		$requester    = $this->parties->requester_person( $row );
+		return array(
+			'event'      => $notification->event,
+			'ref'        => $notification->ref_id,
+			'deliveries' => $this->send( $notification, $this->recipients->sides( $ctx, $this->parties->of( $row, $ctx )['opponent'] ), (int) $row['requested_by'], $requester ),
+		);
 	}
 
 	/**

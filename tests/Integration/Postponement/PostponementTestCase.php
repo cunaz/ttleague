@@ -68,7 +68,7 @@ abstract class PostponementTestCase extends NotificationTestCase {
 	protected function postponement_notifications( array $hours = array(
 		'from_hour'  => 0,
 		'until_hour' => 24,
-	) ): PostponementNotifications {
+	), ?callable $on_error = null ): PostponementNotifications {
 		return new PostponementNotifications(
 			new PostponementRepository( $this->db ),
 			$this->repo,
@@ -79,7 +79,8 @@ abstract class PostponementTestCase extends NotificationTestCase {
 			$this->clock,
 			new \DateTimeZone( self::ZONE ),
 			$hours,
-			static fn( int $id ): ?string => 108 === $id ? 'TK-Konto' : null
+			static fn( int $id ): ?string => 108 === $id ? 'TK-Konto' : null,
+			$on_error
 		);
 	}
 
