@@ -95,6 +95,7 @@ Damit Module einander nicht in dieselben Dateien schreiben:
 - **Mein Bereich:** Abschnitte über die Aktion `ttleague_my_area_sections` (wie «Meine Spiele» und «Mein Club»).
 - **Benachrichtigungen:** Ereignistypen meldet ein Modul über den Filter `ttleague_notification_types` an (Typ => Bezeichnung; Konstanten in `Notifications\EventTypes`). Sie erscheinen damit in den Einstellungen in «Mein Bereich»; ohne Eintrag gilt wie bisher E-Mail an, Push aus. Ein Modul baut eine `Notification`, holt die Empfänger über `Notifications::recipients()` und versendet mit `Notifications::notifier()->send()`; Dedupe über `ref_type`, `ref_id` und `ref_key` wie in Phase 2.
 - **TK-Übersicht:** Listen der Übersicht über den Filter `ttleague_tk_overview_sections`: `id` (Anker), `title`, `count`, `html` (fertiges, escaptes HTML). Sie stehen nach den Listen der Erfassung.
+- **Erfassungsseite und Begegnungen:** Abschnitte der Erfassungsseite über den Filter `ttleague_entry_sections`, Aktionen in «Meine Spiele» über `ttleague_my_games_actions`, Aktionen im Matchreport über `ttleague_report_actions` (eingeführt mit der Verschiebung, Einzelheiten in [verschiebung.md](verschiebung.md)).
 - **Exporte:** Listen über den Filter `ttleague_exports` (siehe «Exporte»).
 
 Reservierte Ereignistypen:
