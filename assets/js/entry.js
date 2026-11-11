@@ -95,6 +95,7 @@ function formSnapshot( form ) {
 
 const initialSnapshot = formSnapshot( cfg.initialForm );
 let lastSnapshot = initialSnapshot;
+let lastMode = cfg.initialMode;
 let draftTimer = null;
 let pendingDraft = null;
 let leaving = false;
@@ -106,19 +107,27 @@ let leaving = false;
  * @return {boolean} Passend.
  */
 function fitsShape( form ) {
-	if ( ! form || ! form.lineup || ! form.games ) {
+	const object = ( value ) => value && 'object' === typeof value && ! Array.isArray( value );
+	if ( ! object( form ) || ! object( form.lineup ) || ! object( form.games ) || 'string' !== typeof form.comment ) {
 		return false;
 	}
 	for ( const side of SIDES ) {
+		if ( ! object( form.lineup[ side ] ) ) {
+			return false;
+		}
 		for ( const slot of cfg.slots[ side ] ) {
-			if ( ! ( slot in ( form.lineup[ side ] || {} ) ) ) {
+			if ( 'string' !== typeof form.lineup[ side ][ slot ] ) {
 				return false;
 			}
 		}
 	}
 	return cfg.order.every( ( game ) => {
 		const row = form.games[ game.seq ];
-		return row && Array.isArray( row.pts ) && row.pts.length === cfg.maxSets;
+		return object( row ) &&
+			[ 'st', 'win', 'hp', 'ap' ].every( ( key ) => 'string' === typeof row[ key ] ) &&
+			[ 'sh', 'sa' ].every( ( key ) => null === row[ key ] || Number.isInteger( row[ key ] ) ) &&
+			Array.isArray( row.pts ) && row.pts.length === cfg.maxSets &&
+			row.pts.every( ( pair ) => Array.isArray( pair ) && 2 === pair.length && pair.every( ( point ) => 'string' === typeof point ) );
 	} );
 }
 
@@ -492,32 +501,59 @@ const { state } = store( NS, {
 		persist() {
 			const snapshot = formSnapshot( state.form );
 			const mode = state.mode;
-			if ( snapshot === lastSnapshot ) {
+			if ( snapshot === lastSnapshot && mode === lastMode ) {
 				return;
 			}
 			lastSnapshot = snapshot;
+			lastMode = mode;
 			if ( pendingDraft ) {
 				pendingDraft = null;
 				state.draft = { text: '', offer: false };
 			}
 			window.clearTimeout( draftTimer );
-			draftTimer = window.setTimeout( () => {
-				if ( leaving ) {
-					return;
-				}
-				if ( snapshot === initialSnapshot ) {
-					removeKey( 'local', cfg.draftKey );
-				} else {
-					writeJson( 'local', cfg.draftKey, {
-						v: cfg.version,
-						mode,
-						at: Date.now(),
-						form: JSON.parse( snapshot ),
-					} );
-				}
-			}, 300 );
+			draftTimer = window.setTimeout( saveDraft, 300 );
 		},
 	},
+} );
+
+/** Sichert den aktuellen Stand auch dann, wenn der verzögerte Watch-Callback noch nicht lief. */
+function saveDraft() {
+	if ( leaving ) {
+		return;
+	}
+	const snapshot = formSnapshot( state.form );
+	if ( snapshot === initialSnapshot ) {
+		// Ein älterer Entwurf wartet noch auf die Entscheidung der Person.
+		if ( ! pendingDraft ) {
+			removeKey( 'local', cfg.draftKey );
+		}
+		return;
+	}
+	writeJson( 'local', cfg.draftKey, {
+		v: cfg.version,
+		mode: state.mode,
+		at: Date.now(),
+		form: JSON.parse( snapshot ),
+	} );
+}
+
+// Mobile Browser können den Tab nach dem Ausblenden beenden, bevor der Timer abläuft.
+window.addEventListener( 'pagehide', saveDraft );
+document.addEventListener( 'visibilitychange', () => {
+	if ( 'hidden' === document.visibilityState ) {
+		saveDraft();
+	}
+} );
+window.addEventListener( 'beforeunload', ( event ) => {
+	if ( leaving ) {
+		return;
+	}
+	saveDraft();
+	if ( state.busy || state.photo.busy || formSnapshot( state.form ) !== initialSnapshot ||
+		String( state.reason ).trim() || String( state.decision.comment ).trim() ) {
+		event.preventDefault();
+		event.returnValue = '';
+	}
 } );
 
 function applyDraft( draft ) {
@@ -650,6 +686,10 @@ function* request( url, body ) {
 		data = yield response.json();
 	} catch ( e ) {
 		data = null;
+	}
+	if ( response.ok && ( ! data || 'object' !== typeof data || Array.isArray( data ) ) ) {
+		// Eine HTML-Fehlerseite oder unvollständige Antwort bestätigt keinen Schreibvorgang.
+		return { ok: false, status: 502, data: null };
 	}
 	return { ok: response.ok, status: response.status, data };
 }
