@@ -1,0 +1,65 @@
+/**
+ * ttleague – Block «Anlass: Anmeldung» (nur auf Seiten mit dem Block geladen).
+ *
+ * Baut auf frontend.css auf: Variablen (--ttl-*), .ttl-facts, .ttl-form, .ttl-field,
+ * .ttl-button, .ttl-badge, .ttl-notice.
+ */
+
+.ttl-event__facts {
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-event__state {
+	margin-block: 0 0.75rem;
+}
+
+.ttl-event__state .ttl-muted {
+	display: block;
+	font-size: var(--ttl-small);
+}
+
+.ttl-event__club,
+.ttl-event__names {
+	margin-block-start: calc(var(--ttl-gap) * 1.5);
+}
+
+.ttl-event__club h4,
+.ttl-event__names h4 {
+	margin-block: 0 0.5rem;
+}
+
+.ttl-event__players {
+	list-style: none;
+	margin: 0 0 var(--ttl-gap);
+	padding: 0;
+}
+
+.ttl-event__players li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem 0.75rem;
+	padding-block: 0.35rem;
+	border-block-end: 1px solid color-mix(in srgb, var(--ttl-ink) 12%, transparent);
+}
+
+.ttl-event__name {
+	flex: 1 1 12rem;
+	font-weight: 600;
+}
+
+.ttl .ttl-event__players .ttl-event__form {
+	margin: 0;
+}
+
+.ttl-event__names ol {
+	margin-block: 0 var(--ttl-gap);
+	padding-inline-start: 1.5rem;
+}
+
+@media print {
+	.ttl-event__form,
+	.ttl-event__club {
+		display: none;
+	}
+}
