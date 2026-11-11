@@ -62,20 +62,54 @@ final class PersonalData {
 	}
 
 	/**
+	 * Führt $work für die Person der Anfrage aus und hält die Zuordnung dabei fest: Zuordnen
+	 * und Verarbeiten laufen in einer Transaktion, die Zeilen der Kandidaten sind gesperrt.
+	 * Eine gleichzeitig gelöste oder neue Verknüpfung kann so nicht dazu führen, dass die
+	 * Daten einer anderen Person exportiert oder gelöscht werden. Ist die Zuordnung mehrdeutig
+	 * oder gibt es keine Person, läuft $work nicht.
+	 *
+	 * @template T
+	 * @param int|null         $user_id WordPress-Konto mit dieser Adresse, falls es eines gibt.
+	 * @param callable(int): T $work    Verarbeitung der Person (Export oder Löschung).
+	 * @return array{ambiguous:bool,person_id:int|null,result:T|null}
+	 */
+	public function for_request( string $email, ?int $user_id, callable $work ): array {
+		return $this->db->transaction(
+			function () use ( $email, $user_id, $work ): array {
+				$ids = $this->candidates( $email, $user_id, true );
+				if ( 1 !== count( $ids ) ) {
+					return array(
+						'ambiguous' => count( $ids ) > 1,
+						'person_id' => null,
+						'result'    => null,
+					);
+				}
+				return array(
+					'ambiguous' => false,
+					'person_id' => $ids[0],
+					'result'    => $work( $ids[0] ),
+				);
+			}
+		);
+	}
+
+	/**
 	 * Alle Personen, auf die Adresse oder Konto zeigen.
 	 *
+	 * @param bool $lock Zeilen bis zum Ende der Transaktion sperren (FOR UPDATE).
 	 * @return list<int>
 	 */
-	private function candidates( string $email, ?int $user_id ): array {
+	private function candidates( string $email, ?int $user_id, bool $lock = false ): array {
 		$email = trim( $email );
 		$ids   = array();
+		$for   = $lock ? ' FOR UPDATE' : '';
 		if ( '' !== $email ) {
-			foreach ( $this->db->get_col( "SELECT id FROM {$this->db->table( 'person' )} WHERE LOWER(email) = LOWER(%s) ORDER BY id", array( $email ) ) as $id ) {
+			foreach ( $this->db->get_col( "SELECT id FROM {$this->db->table( 'person' )} WHERE LOWER(email) = LOWER(%s) ORDER BY id{$for}", array( $email ) ) as $id ) {
 				$ids[ (int) $id ] = true;
 			}
 		}
 		if ( null !== $user_id && $user_id > 0 ) {
-			foreach ( $this->db->get_col( "SELECT id FROM {$this->db->table( 'person' )} WHERE user_id = %d ORDER BY id", array( $user_id ) ) as $id ) {
+			foreach ( $this->db->get_col( "SELECT id FROM {$this->db->table( 'person' )} WHERE user_id = %d ORDER BY id{$for}", array( $user_id ) ) as $id ) {
 				$ids[ (int) $id ] = true;
 			}
 		}

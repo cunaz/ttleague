@@ -71,7 +71,9 @@ final class Privacy {
 		unset( $page );
 		$service = self::service();
 		$items   = array();
-		if ( self::ambiguous( $service, $email_address ) ) {
+		// Zuordnen und Lesen in einer Transaktion (PersonalData::for_request).
+		$found = $service->for_request( $email_address, self::user_id( $email_address ), static fn( int $person_id ): ?array => $service->export( $person_id ) );
+		if ( $found['ambiguous'] ) {
 			$items[] = array(
 				'group_id'          => 'ttleague-notice',
 				'group_label'       => __( 'Spielbetrieb: Hinweis', 'ttleague' ),
@@ -80,11 +82,8 @@ final class Privacy {
 				'data'              => self::rows( array( __( 'Hinweis', 'ttleague' ) => self::ambiguous_message() ) ),
 			);
 		}
-		foreach ( self::people( $service, $email_address ) as $person_id ) {
-			$data = $service->export( $person_id );
-			if ( null !== $data ) {
-				$items = array_merge( $items, self::items( $person_id, $data ) );
-			}
+		if ( null !== $found['person_id'] && null !== $found['result'] ) {
+			$items = array_merge( $items, self::items( $found['person_id'], $found['result'] ) );
 		}
 		return array(
 			'data' => $items,
@@ -106,7 +105,13 @@ final class Privacy {
 		$removed  = false;
 		$retained = false;
 		$messages = array();
-		if ( self::ambiguous( $service, $email_address ) ) {
+		// Zuordnen und Löschen in einer Transaktion (PersonalData::for_request).
+		$found = $service->for_request(
+			$email_address,
+			self::user_id( $email_address ),
+			static fn( int $person_id ): ?array => $service->erase( $person_id, $actor > 0 ? $actor : null, 'privacy-tools' )
+		);
+		if ( $found['ambiguous'] ) {
 			// Nichts gelöscht: Die Daten könnten einer anderen Person gehören.
 			return array(
 				'items_removed'  => false,
@@ -115,13 +120,10 @@ final class Privacy {
 				'done'           => true,
 			);
 		}
-		foreach ( self::people( $service, $email_address ) as $person_id ) {
-			$result = $service->erase( $person_id, $actor > 0 ? $actor : null, 'privacy-tools' );
-			if ( null === $result ) {
-				continue;
-			}
+		$result = $found['result'];
+		if ( null !== $result ) {
 			$retained = true;
-			$removed  = $removed || $result['phone'] || $result['preferences'] + $result['push_subscriptions'] + $result['login_tokens'] > 0;
+			$removed  = $result['phone'] || $result['preferences'] + $result['push_subscriptions'] + $result['login_tokens'] > 0;
 		}
 		if ( $retained ) {
 			$messages[] = __( 'Spielbetrieb: Name, E-Mail-Adresse, Lizenznummer, Meldungen (Club, Klassierung), Funktionen und Resultate bleiben gespeichert. Sie gehören zum Spielbetrieb: Ranglisten, Matchreports und die Anmeldung beruhen darauf. Auf Wunsch anonymisiert die Technische Kommission die Person; dann verschwinden Name und E-Mail-Adresse.', 'ttleague' );
@@ -151,19 +153,11 @@ final class Privacy {
 	}
 
 	/**
-	 * @return list<int> Höchstens eine Person; keine, wenn die Zuordnung mehrdeutig ist.
+	 * WordPress-Konto mit der Adresse der Anfrage, falls es eines gibt.
 	 */
-	private static function people( PersonalData $service, string $email_address ): array {
+	private static function user_id( string $email_address ): ?int {
 		$user = get_user_by( 'email', $email_address );
-		return $service->person_ids( $email_address, $user instanceof \WP_User ? (int) $user->ID : null );
-	}
-
-	/**
-	 * Zeigen die Adresse und das Konto mit dieser Adresse auf verschiedene Personen?
-	 */
-	private static function ambiguous( PersonalData $service, string $email_address ): bool {
-		$user = get_user_by( 'email', $email_address );
-		return $service->is_ambiguous( $email_address, $user instanceof \WP_User ? (int) $user->ID : null );
+		return $user instanceof \WP_User ? (int) $user->ID : null;
 	}
 
 	private static function ambiguous_message(): string {

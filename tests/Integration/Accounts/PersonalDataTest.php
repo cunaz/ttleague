@@ -142,6 +142,68 @@ final class PersonalDataTest extends IntegrationTestCase {
 		self::assertFalse( $this->data->is_ambiguous( 'niemand@example.org', 78 ) );
 	}
 
+	public function test_request_is_processed_for_the_one_matching_person_only(): void {
+		$seen  = array();
+		$found = $this->data->for_request(
+			'konto@example.org',
+			77,
+			static function ( int $person_id ) use ( &$seen ): string {
+				$seen[] = $person_id;
+				return 'verarbeitet';
+			}
+		);
+		self::assertSame(
+			array(
+				'ambiguous' => false,
+				'person_id' => $this->id['hanna'],
+				'result'    => 'verarbeitet',
+			),
+			$found
+		);
+		self::assertSame( array( $this->id['hanna'] ), $seen );
+
+		// Mehrdeutig oder niemand: Die Verarbeitung läuft nicht.
+		$this->db->update( 'person', array( 'email' => 'gustav.gast@example.org' ), array( 'id' => $this->id['gustav'] ) );
+		$never = static function (): never {
+			self::fail( 'darf nicht laufen' );
+		};
+		self::assertSame(
+			array(
+				'ambiguous' => true,
+				'person_id' => null,
+				'result'    => null,
+			),
+			$this->data->for_request( 'gustav.gast@example.org', 77, $never )
+		);
+		self::assertFalse( $this->data->for_request( 'niemand@example.org', 78, $never )['ambiguous'] );
+	}
+
+	public function test_the_match_cannot_change_while_the_request_is_processed(): void {
+		$other = self::another_connection();
+		$other->pdo()->exec( 'SET SESSION innodb_lock_wait_timeout = 1' );
+		$table   = $this->db->table( 'person' );
+		$blocked = null;
+
+		$this->data->for_request(
+			'konto@example.org',
+			77,
+			function ( int $person_id ) use ( $other, $table, &$blocked ): void {
+				// Während der Verarbeitung versucht eine zweite Verbindung, die Verknüpfung zu lösen.
+				try {
+					$other->pdo()->exec( "UPDATE `{$table}` SET user_id = NULL WHERE id = " . $person_id );
+					$blocked = false;
+				} catch ( \PDOException $e ) {
+					$blocked = str_contains( $e->getMessage(), 'Lock wait timeout' );
+				}
+			}
+		);
+
+		self::assertTrue( $blocked, 'die Zeile der Person ist bis zum Ende der Verarbeitung gesperrt' );
+		self::assertSame( '77', (string) $this->person( 'hanna' )['user_id'] );
+		// Danach ist die Zeile wieder frei.
+		self::assertSame( 1, $other->pdo()->exec( "UPDATE `{$table}` SET user_id = NULL WHERE id = " . $this->id['hanna'] ) );
+	}
+
 	public function test_address_and_account_pointing_to_different_people_match_nobody(): void {
 		// Gustav hat die Adresse der Anfrage, das Konto mit dieser Adresse ist mit Hanna verknüpft.
 		$this->db->update( 'person', array( 'email' => 'gustav.gast@example.org' ), array( 'id' => $this->id['gustav'] ) );
