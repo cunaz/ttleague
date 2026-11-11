@@ -1255,6 +1255,88 @@
 	font-size: var(--wp--preset--font-size--small, 0.875rem);
 }
 
+/* Cup-Tableau: Runden als Spalten, unter 600px untereinander */
+
+.ttl-bracket {
+	display: grid;
+	gap: var(--ttl-gap);
+	margin-block: 0.5rem 1.5rem;
+}
+
+.ttl-bracket__round {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.ttl .ttl-bracket__title {
+	margin: 0 0 0.25rem;
+	font-size: 1rem;
+}
+
+.ttl .ttl-bracket__deadline {
+	margin: 0 0 0.5rem;
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+}
+
+.ttl .ttl-bracket__ties {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	justify-content: space-around;
+	gap: 0.75rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ttl-bracket__tie {
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius);
+	background: var(--ttl-surface);
+	overflow: hidden;
+}
+
+.ttl-bracket__team {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.4rem 0.6rem;
+}
+
+.ttl-bracket__team + .ttl-bracket__team {
+	border-top: 1px solid var(--ttl-line);
+}
+
+.ttl-bracket__team--empty {
+	color: var(--ttl-muted);
+}
+
+.ttl-bracket__name {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.ttl-bracket__score {
+	font-weight: 700;
+}
+
+.ttl-bracket__home {
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+	text-decoration: none;
+}
+
+.ttl .ttl-bracket__meta {
+	margin: 0;
+	padding: 0.3rem 0.6rem;
+	border-top: 1px solid var(--ttl-line);
+	background: var(--ttl-soft);
+	font-size: var(--ttl-small);
+}
+
 /* Karten unter 600px */
 
 @media (max-width: 599.98px) {
@@ -1426,6 +1508,12 @@
 /* Ab Tablet */
 
 @media (min-width: 600px) {
+
+	.ttl-bracket {
+		grid-auto-columns: minmax(11rem, 1fr);
+		grid-auto-flow: column;
+		overflow-x: auto;
+	}
 
 	.ttl-lineups,
 	.ttl-contacts__sides {
