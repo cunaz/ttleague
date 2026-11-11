@@ -273,15 +273,8 @@ final class AdminTest extends EventsTestCase {
 				)
 			)
 		);
-		self::assertSame( 'Anlass abgesagt. 2 angemeldete Personen erhalten eine Mitteilung.', $this->flash()['message'] );
-		self::assertSame(
-			array(
-				'a1@example.invalid' => array( 'Abgesagt: Plauschturnier' ),
-				'h1@example.invalid' => array( 'Abgesagt: Plauschturnier' ),
-			),
-			$this->subjects(),
-			'Teilnehmende und Warteliste'
-		);
+		self::assertSame( 'Anlass abgesagt. Die Mitteilungen an 2 angemeldete Personen werden in den nächsten Minuten versendet.', $this->flash()['message'] );
+		self::assertSame( array(), $this->mails, 'der Versand läuft getrennt über WP-Cron, siehe CancellationTest' );
 		self::assertSame( 'cancelled', $status( array( 'decision' => 'reopen' ) ) );
 		self::assertSame( 'error', $this->flash()['type'] );
 	}

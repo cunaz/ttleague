@@ -97,9 +97,13 @@ final class AdminActions {
 					break;
 				case 'cancel':
 					$service->cancel( $event, $actor );
-					$people = count( Events::repository()->registered_people( $event ) );
-					/* translators: %d: Anzahl Personen */
-					$outcome = Outcome::success( sprintf( _n( 'Anlass abgesagt. %d angemeldete Person erhält eine Mitteilung.', 'Anlass abgesagt. %d angemeldete Personen erhalten eine Mitteilung.', $people, 'ttleague' ), $people ) );
+					$people  = count( Events::repository()->registered_people( $event ) );
+					$outcome = Outcome::success(
+						0 === $people
+							? __( 'Anlass abgesagt. Es war niemand angemeldet.', 'ttleague' )
+							/* translators: %d: Anzahl Personen */
+							: sprintf( _n( 'Anlass abgesagt. Die Mitteilung an %d angemeldete Person wird in den nächsten Minuten versendet.', 'Anlass abgesagt. Die Mitteilungen an %d angemeldete Personen werden in den nächsten Minuten versendet.', $people, 'ttleague' ), $people )
+					);
 					break;
 				default:
 					$outcome = Outcome::error( __( 'Unbekannte Aktion.', 'ttleague' ) );

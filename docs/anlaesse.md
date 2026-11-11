@@ -24,7 +24,7 @@ Block `ttleague/event-registration` (Attribut `event`, im Editor als Auswahllist
 
 | Wer | Sieht |
 |---|---|
-| Alle | Titel, Art, Termin, Ort, Anmeldeschluss, Anzahl Angemeldete (mit Länge der Warteliste) und freie Plätze; Hinweis, wenn der Anlass abgesagt, geschlossen oder die Frist vorbei ist. |
+| Alle | Titel, Art, Termin, Ort, wirksamer Anmeldeschluss (ohne gesetzte Frist der Beginn), Anzahl Angemeldete (mit Länge der Warteliste) und freie Plätze; Hinweis, wenn der Anlass abgesagt, geschlossen oder die Frist vorbei ist. |
 | Nicht eingeloggte Besucher | dazu den Link zum Login, der zur Seite zurückführt. |
 | Eingeloggte Personen mit verknüpfter `person` | ihren Stand (angemeldet, Platz auf der Warteliste, eigene Bemerkung) und das Formular zum An- oder Abmelden mit kurzer Bemerkung (höchstens 200 Zeichen). |
 | TK-Chefs | dazu «Spieler deines Clubs»: gemeldete Spieler ihrer Clubs in der Saison des Anlasses anmelden (Auswahlliste, Bemerkung) und abmelden. |
@@ -74,13 +74,22 @@ Ereignistyp `event_registration` («Anlässe: An- und Abmeldung, Nachrücken, Ab
 | `event_registered` | angemeldete Person, auch bei eigener Anmeldung; auf der Warteliste mit entsprechendem Text | `registration`, ID der Anmeldung, `registered` oder `waitlist` |
 | `event_unregistered` | abgemeldete Person | `registration`, ID der gelöschten Anmeldung |
 | `event_promoted` | nachgerückte Person | `registration`, ID der Anmeldung |
-| `event_cancelled` | alle Teilnehmenden und die Warteliste, ausser dem Konto, das abgesagt hat | `event`, ID des Anlasses |
+| `event_cancelled` | alle Teilnehmenden und die Warteliste, ausser dem Konto, das abgesagt hat; Versand in Schritten, siehe unten | `event`, ID des Anlasses |
 
 - Hat jemand anderes an- oder abgemeldet (TK-Chef, TK), nennt die Nachricht den Namen.
 - Eine neue Anmeldung nach einer Abmeldung hat eine neue ID und wird wieder bestätigt.
 - Der Link «Zum Anlass» führt zur veröffentlichten Ausschreibung; ohne Ausschreibung fehlt er.
 - Nur aktive Personen; ohne gültige E-Mail-Adresse geht keine E-Mail hinaus.
-- Ein Fehler beim Versand macht die An- oder Abmeldung nicht rückgängig: Die Nachrichten gehen erst nach dem Speichern hinaus, Fehler landen im Fehlerprotokoll und in `ttleague_notification_error`. Eine gescheiterte Nachricht wird nicht wiederholt.
+- Ein Fehler beim Versand macht die An- oder Abmeldung nicht rückgängig: Die Nachrichten gehen erst nach dem Speichern hinaus, Fehler landen im Fehlerprotokoll und in `ttleague_notification_error`. Eine gescheiterte Bestätigung oder Mitteilung zum Nachrücken wird nicht wiederholt.
+
+**Absagemitteilungen** gehen nicht in der Anfrage der Absage hinaus: Bei vielen Angemeldeten und langsamem Versand bräche sonst das Zeitlimit ab, der Anlass wäre abgesagt und der Rest erhielte nichts.
+
+- Die Absage merkt den Versand nur vor: einmaliges WP-Cron-Ereignis `ttleague_event_cancellation` (Anlass-ID, Person-ID, nach der der Schritt weitermacht), sofort fällig. WP-Cron startet es mit der nächsten Anfrage, also schon mit der Weiterleitung nach dem Formular; mit `DISABLE_WP_CRON` der Cron des Servers. Ein eigener Aufruf von `spawn_cron()` ist deshalb nicht nötig. Die Rückmeldung an die TK sagt, dass die Mitteilungen versendet werden.
+- Ein Schritt (`EventNotifications::send_cancellations()`) versendet an höchstens 25 Empfänger (`CANCEL_BATCH`), in der Reihenfolge der Person-ID, und nur an Personen, die laut Versandprotokoll noch keine Absagemitteilung zu diesem Anlass haben. Bleibt ein Rest, plant er sich für die Personen danach erneut ein. Der Schritt ist beliebig wiederholbar; das Versandprotokoll verhindert doppelten Versand.
+- Das absagende Konto steht im `audit_log` der Absage und bleibt in jedem Lauf ausgenommen. Die Kanaleinstellungen gelten wie sonst. Personen ohne Kanal (inaktiv, ohne gültige Adresse, abgewählt) zählen nicht zum Schritt.
+- Ein Fehler bei einem Empfänger (auch eine Ausnahme vor dem eigentlichen Versand) wird gemeldet, zählt zum Schritt und hält die übrigen nicht auf.
+- Auffangnetz: Der stündliche Lauf der Benachrichtigungen (`ttleague_notifications_hourly`) führt für jeden Anlass, der in den letzten 7 Tagen abgesagt wurde (`CANCEL_CATCH_UP_DAYS`, Zeitpunkt aus dem `audit_log`), denselben Schritt von vorn aus. Das holt ein verlorenes Ereignis, einen abgebrochenen Lauf und gescheiterte Zustellungen nach, auch nachts. Danach wird nichts mehr nachgeholt.
+- Bei der Deaktivierung des Plugins werden geplante Schritte entfernt.
 
 ## Dienste und Ereignisse
 
@@ -91,8 +100,8 @@ Ereignistyp `event_registration` («Anlässe: An- und Abmeldung, Nachrücken, Ab
 | `Events\RegistrationService` | an- und abmelden, Rechte, Clubspieler eines TK-Chefs |
 | `Events\Waitlist` | freie Plätze mit den ältesten Anmeldungen der Warteliste füllen |
 | `Events\EventRepository` | Abfragen und Sperre |
-| `Events\EventListener` | Ereignisse nach dem Speichern: `WordPressEventListener` (Cache-Version, Aktionen), `EventNotifications` (Nachrichten) |
-| `Events\Events` | `register()`: Hooks |
+| `Events\EventListener` | Ereignisse nach dem Speichern: `WordPressEventListener` (Cache-Version, Aktionen), `EventNotifications` (Nachrichten, Absagemitteilungen in Schritten) |
+| `Events\Events` | `register()`: Hooks, Cron-Schritte der Absagemitteilungen |
 | `Events\AdminPage`, `AdminActions` | Backend |
 | `Events\RegistrationView`, `BlockActions` | Block, Shortcode-Ansicht und ihre Formulare |
 | `Events\Export` | CSV |
@@ -116,7 +125,7 @@ Nicht in diesem Paket: Kalender-Abo für Anlässe, eine Übersicht der Anlässe 
 
 - `tests/Unit/Domain/RegistrationRulesTest.php`: Frist an der Grenze (auch in der Sommerzeit), Sperrgründe, Platzierung genau an der Höchstzahl, Nachrücken.
 - `tests/Unit/Events/`: Eingabeprüfung mit Grenzen, Texte der Nachrichten (Schweizer Schreibweise, Escaping in der E-Mail).
-- `tests/Integration/Events/` gegen MariaDB: anmelden, doppelt anmelden, Höchstzahl und Warteliste, Nachrücken in der Reihenfolge der Anmeldung (Zeitpunkt vor ID), Anmeldeschluss an der Grenze, geschlossen und abgesagt, Rechte je Fall, Saison des Anlasses, Höchstzahl erhöhen, aufheben und senken, Statuswechsel, Absage. Gleichzeitigkeit mit einer zweiten Verbindung: Eine Anmeldung wartet auf die Sperre des Anlasses; der Platz wird unter der Sperre gezählt; eine Absage zwischen Prüfung und Schreiben weist die Anmeldung ab; jede Schreibtransaktion beginnt mit der Sperre. Benachrichtigungen über aufgezeichnete Kanäle: Empfänger, Bezug, Dedupe, Einstellungen.
-- `tests/WordPress/Events/`: Block für nicht eingeloggte Besucher, Personen ohne Funktion, Captains, TK-Chefs und TK (wer Namen sieht), Shortcode, Escaping; Formulare mit Nonce und Rechten, Rückmeldung und Weiterleitung nur auf eigene Adressen; ein Fehlschlag von `wp_mail` oder eines Listeners lässt die Anmeldung bestehen; Backend mit Nonce und `ttl_tk` für jede Aktion; CSV nur mit `ttl_tk`.
+- `tests/Integration/Events/` gegen MariaDB: anmelden, doppelt anmelden, Höchstzahl und Warteliste, Nachrücken in der Reihenfolge der Anmeldung (Zeitpunkt vor ID), Anmeldeschluss an der Grenze, geschlossen und abgesagt, Rechte je Fall, Saison des Anlasses, Höchstzahl erhöhen, aufheben und senken, Statuswechsel, Absage. Gleichzeitigkeit mit einer zweiten Verbindung: Eine Anmeldung wartet auf die Sperre des Anlasses; der Platz wird unter der Sperre gezählt; eine Absage zwischen Prüfung und Schreiben weist die Anmeldung ab; jede Schreibtransaktion beginnt mit der Sperre. Benachrichtigungen über aufgezeichnete Kanäle: Empfänger, Bezug, Dedupe, Einstellungen; Absagemitteilungen in Schritten (Stapelgrenze, Fortsetzung, Durchgang von vorn, Fehler bei einem Empfänger, Fenster von 7 Tagen an der Grenze).
+- `tests/WordPress/Events/`: Block für nicht eingeloggte Besucher, Personen ohne Funktion, Captains, TK-Chefs und TK (wer Namen sieht), Shortcode, Escaping; Formulare mit Nonce und Rechten, Rückmeldung und Weiterleitung nur auf eigene Adressen; ein Fehlschlag von `wp_mail` oder eines Listeners lässt die Anmeldung bestehen; Backend mit Nonce und `ttl_tk` für jede Aktion; CSV nur mit `ttl_tk`; Absage: versendet selbst nichts und plant den Versand, Läufe zu 25 mit eingeplantem Rest, das absagende Konto erhält nichts, der stündliche Lauf holt ein verlorenes Ereignis und eine gescheiterte E-Mail nach.
 
-Nicht automatisiert geprüft: die Vorschau im Editor über die REST-Route (nur das HTML der Vorschau), die Auswahlliste im Editor (`assets/js/editor.js`), die Darstellung im Browser.
+Nicht automatisiert geprüft: der Start des Cron-Ereignisses durch WP-Cron selbst (die Tests lösen den Hook aus), die Vorschau im Editor über die REST-Route (nur das HTML der Vorschau), die Auswahlliste im Editor (`assets/js/editor.js`), die Darstellung im Browser.

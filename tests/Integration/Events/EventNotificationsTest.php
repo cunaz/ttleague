@@ -13,9 +13,12 @@ use TTLeague\Accounts\Preferences;
 use TTLeague\Events\EventMessages;
 use TTLeague\Events\EventNotifications;
 use TTLeague\Events\EventRepository;
+use TTLeague\Notifications\Channel;
 use TTLeague\Notifications\EventTypes;
+use TTLeague\Notifications\Notification;
 use TTLeague\Notifications\NotificationLog;
 use TTLeague\Notifications\Notifier;
+use TTLeague\Notifications\Recipient;
 use TTLeague\Notifications\RecipientResolver;
 use TTLeague\Tests\Integration\Notifications\RecordingChannel;
 
@@ -130,20 +133,229 @@ final class EventNotificationsTest extends EventTestCase {
 		self::assertSame( array( $this->p( 'h2' ) . ' event_promoted', $this->p( 'h3' ) . ' event_promoted' ), $this->sent() );
 	}
 
-	public function test_a_cancellation_reaches_participants_and_the_waitlist(): void {
-		$event = $this->event( array( 'max_participants' => '2' ) );
-		$this->register_all( $event, array( 'h1', 'tk', 'h2', 'a1', 'nobody' ) );
-		$this->db->update( 'person', array( 'status' => 'inactive' ), array( 'id' => $this->person['a1'] ) );
-		$this->db->update( 'person', array( 'email' => null ), array( 'id' => $this->person['nobody'] ) );
+	public function test_cancelling_itself_sends_nothing(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1', 'h2' ) );
 		$this->email->sent = array();
 
 		$this->events->cancel( $event, $this->actor['tk'] );
 
-		self::assertSame( array( $this->p( 'h1' ) . ' event_cancelled', $this->p( 'h2' ) . ' event_cancelled' ), $this->sent(), 'nicht an das Konto, das abgesagt hat, nicht an inaktive Personen, nicht ohne Adresse' );
+		self::assertSame( array(), $this->email->sent, 'der Versand läuft getrennt in Schritten' );
+		self::assertSame( '0', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'notification_log' )} WHERE event_type = 'event_cancelled'" ) );
+	}
+
+	public function test_cancellation_notices_reach_participants_and_the_waitlist_but_not_the_cancelling_account(): void {
+		$event = $this->event( array( 'max_participants' => '2' ) );
+		$this->register_all( $event, array( 'h1', 'tk', 'h2', 'a1', 'nobody' ) );
+		$this->db->update( 'person', array( 'status' => 'inactive' ), array( 'id' => $this->person['a1'] ) );
+		$this->db->update( 'person', array( 'email' => null ), array( 'id' => $this->person['nobody'] ) );
+		$this->events->cancel( $event, $this->actor['tk'] );
+		$this->email->sent = array();
+
+		$result = $this->notifications->send_cancellations( $event );
+
+		self::assertSame(
+			array(
+				'sent'   => 2,
+				'failed' => 0,
+				'next'   => null,
+			),
+			$result
+		);
+		self::assertEqualsCanonicalizing( array( $this->p( 'h1' ) . ' event_cancelled', $this->p( 'h2' ) . ' event_cancelled' ), $this->sent(), 'nicht an das Konto, das abgesagt hat, nicht an inaktive Personen, nicht ohne Adresse' );
 		$sent = $this->email->sent[0];
 		self::assertSame( array( 'event', $event, '' ), array( $sent['ref_type'], $sent['ref_id'], $sent['ref_key'] ) );
 		self::assertSame( 'Abgesagt: Plauschturnier', $sent['subject'] );
 		self::assertSame( array( 'Der Anlass Plauschturnier (Fr, 20.11.2026, 19:30, Turnhalle Seefeld) ist abgesagt. Deine Anmeldung ist damit hinfällig.' ), $sent['notification']->paragraphs );
+	}
+
+	/**
+	 * Fünf Angemeldete, Schritte zu zwei Empfängern: 2, 2, 1. Jeder Schritt macht nach der zuletzt
+	 * besuchten Person weiter; ein Durchgang von vorn nach vollständigem Versand versendet nichts.
+	 */
+	public function test_cancellation_notices_go_out_in_limited_steps(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1', 'h2', 'h3', 'h4', 'a1' ) );
+		$this->events->cancel( $event, $this->actor['tk_account'] );
+		$this->email->sent = array();
+		$order             = array( $this->person['h1'], $this->person['h2'], $this->person['h3'], $this->person['h4'], $this->person['a1'] );
+		sort( $order );
+
+		$first = $this->notifications->send_cancellations( $event, 0, 2 );
+		self::assertSame(
+			array(
+				'sent'   => 2,
+				'failed' => 0,
+				'next'   => $order[1],
+			),
+			$first,
+			'höchstens ein Schritt, der Rest bleibt'
+		);
+		self::assertSame( array( 'p' . $order[0], 'p' . $order[1] ), $this->email->recipients( 'event_cancelled' ) );
+
+		$second = $this->notifications->send_cancellations( $event, $first['next'], 2 );
+		self::assertSame( $order[3], $second['next'] );
+		$third = $this->notifications->send_cancellations( $event, $second['next'], 2 );
+		self::assertSame(
+			array(
+				'sent'   => 1,
+				'failed' => 0,
+				'next'   => null,
+			),
+			$third,
+			'der letzte Schritt versendet nur den Rest'
+		);
+		self::assertSame( array_map( static fn( int $id ): string => 'p' . $id, $order ), $this->email->recipients( 'event_cancelled' ), 'jede Person genau einmal' );
+
+		$again = $this->notifications->send_cancellations( $event, 0, 2 );
+		self::assertSame(
+			array(
+				'sent'   => 0,
+				'failed' => 0,
+				'next'   => null,
+			),
+			$again,
+			'nach vollständigem Versand nichts mehr'
+		);
+		self::assertCount( 5, $this->email->sent );
+	}
+
+	/**
+	 * Ein Durchgang von vorn überspringt, wer die Mitteilung schon hat, und versendet nur den Rest:
+	 * so holt der stündliche Lauf einen abgebrochenen Versand nach.
+	 */
+	public function test_a_fresh_pass_sends_only_to_those_still_without_the_notice(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1', 'h2', 'h3' ) );
+		$this->events->cancel( $event, $this->actor['tk_account'] );
+		$this->email->sent = array();
+		$this->notifications->send_cancellations( $event, 0, 2 );
+
+		$result = $this->notifications->send_cancellations( $event, 0, 2 );
+
+		self::assertSame( 1, $result['sent'] );
+		self::assertNull( $result['next'] );
+		self::assertCount( 3, $this->email->sent );
+		self::assertCount( 3, array_unique( $this->email->recipients( 'event_cancelled' ) ) );
+	}
+
+	/**
+	 * Der Kanal wirft bei einer Person schon bei der Prüfung der Erreichbarkeit (das fängt der
+	 * Notifier nicht ab). Die übrigen erhalten ihre Mitteilung trotzdem, der Fehler wird gemeldet
+	 * und zählt zum Schritt; ein späterer Durchgang versucht es bei dieser Person erneut.
+	 */
+	public function test_an_error_for_one_recipient_does_not_stop_the_others(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1', 'h2', 'h3' ) );
+		$this->events->cancel( $event, $this->actor['tk_account'] );
+		$broken        = $this->person['h2'];
+		$errors        = array();
+		$inner         = new RecordingChannel( 'email' );
+		$channel       = new class( $inner, $broken ) implements Channel {
+
+			public bool $broken_now = true;
+
+			public function __construct( private readonly RecordingChannel $inner, private readonly int $broken ) {}
+
+			public function name(): string {
+				return self::EMAIL;
+			}
+
+			public function reaches( Recipient $recipient ): bool {
+				if ( $this->broken_now && $recipient->person_id === $this->broken ) {
+					throw new \RuntimeException( 'Adressprüfung gescheitert' );
+				}
+				return $this->inner->reaches( $recipient );
+			}
+
+			public function deliver( Recipient $recipient, Notification $notification ): bool {
+				return $this->inner->deliver( $recipient, $notification );
+			}
+		};
+		$notifications = new EventNotifications(
+			new EventRepository( $this->db ),
+			new RecipientResolver( $this->db ),
+			new Notifier( new Preferences( $this->db ), new NotificationLog( $this->db, $this->clock ), array( $channel ) ),
+			new EventMessages( new FakeLinks() ),
+			null,
+			static function ( \Throwable $error, string $context ) use ( &$errors ): void {
+				$errors[] = $error->getMessage() . ' | ' . $context;
+			}
+		);
+
+		$result = $notifications->send_cancellations( $event );
+
+		self::assertSame(
+			array(
+				'sent'   => 2,
+				'failed' => 1,
+				'next'   => null,
+			),
+			$result
+		);
+		self::assertEqualsCanonicalizing( array( $this->p( 'h1' ), $this->p( 'h3' ) ), $inner->recipients( 'event_cancelled' ) );
+		self::assertSame( array( 'Adressprüfung gescheitert | event_cancelled p' . $broken ), $errors );
+
+		$channel->broken_now = false;
+		$retry               = $notifications->send_cancellations( $event );
+		self::assertSame( 1, $retry['sent'], 'nur noch die Person von vorhin' );
+		self::assertCount( 3, $inner->sent );
+	}
+
+	public function test_a_failed_delivery_counts_as_a_step_and_is_retried_by_a_later_pass(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1', 'h2', 'h3' ) );
+		$this->events->cancel( $event, $this->actor['tk_account'] );
+		$this->email->sent = array();
+		$this->email->fail = true;
+
+		$failed = $this->notifications->send_cancellations( $event, 0, 2 );
+
+		self::assertSame( 0, $failed['sent'] );
+		self::assertSame( 2, $failed['failed'], 'auch gescheiterte Versuche begrenzen den Schritt' );
+		self::assertNotNull( $failed['next'] );
+
+		$this->email->fail = false;
+		$this->notifications->send_cancellations( $event, 0, 2 );
+		$this->notifications->send_cancellations( $event, 0, 2 );
+		self::assertCount( 3, array_unique( $this->email->recipients( 'event_cancelled' ) ) );
+		self::assertCount( 3, $this->email->sent );
+	}
+
+	public function test_only_cancelled_events_get_cancellation_notices(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1' ) );
+		$this->email->sent = array();
+
+		$open = $this->notifications->send_cancellations( $event );
+		$none = $this->notifications->send_cancellations( 99999 );
+
+		self::assertSame( array( 0, null ), array( $open['sent'], $open['next'] ) );
+		self::assertSame( 0, $none['sent'] );
+		self::assertSame( array(), $this->email->sent );
+	}
+
+	/**
+	 * Nachgeholt wird sieben Tage lang; massgebend ist der Zeitpunkt der Absage im Änderungsprotokoll.
+	 */
+	public function test_catching_up_covers_events_cancelled_in_the_last_seven_days(): void {
+		$recent = $this->event();
+		$border = $this->event( array( 'title' => 'Genau sieben Tage' ) );
+		$old    = $this->event( array( 'title' => 'Älter' ) );
+		$open   = $this->event( array( 'title' => 'Offen' ) );
+		foreach ( array( $recent, $border, $old ) as $event ) {
+			$this->events->cancel( $event, $this->actor['tk'] );
+		}
+		$audit = $this->db->table( 'audit_log' );
+		$at    = fn( int $event, string $time ) => $this->db->query( "UPDATE {$audit} SET created_at = %s WHERE entity = 'event' AND entity_id = %d AND action = 'cancelled'", array( $time, $event ) );
+		$at( $recent, '2026-11-09 12:00:00' );
+		$at( $border, '2026-11-03 12:00:00' );
+		$at( $old, '2026-11-03 11:59:59' );
+
+		self::assertSame( array( $recent, $border ), $this->notifications->recently_cancelled( $this->clock->now() ) );
+		self::assertNotContains( $open, $this->notifications->recently_cancelled( $this->clock->now() ) );
+		self::assertSame( $this->actor['tk']->user_id, $this->events->repository()->cancelled_by( $recent ) );
+		self::assertNull( $this->events->repository()->cancelled_by( $open ) );
 	}
 
 	public function test_no_message_is_sent_twice_for_the_same_registration(): void {
@@ -151,10 +363,8 @@ final class EventNotificationsTest extends EventTestCase {
 		$result = $this->registrations->register( $event, $this->person['h1'], $this->actor['h1'] );
 
 		$this->notifications->registered( $event, $result['id'], $this->person['h1'], 'registered', $this->actor['h1']->user_id );
-		$this->events->cancel( $event, $this->actor['tk_account'] );
-		$this->notifications->cancelled( $event, 208 );
 
-		self::assertSame( array( $this->p( 'h1' ) . ' event_registered', $this->p( 'h1' ) . ' event_cancelled' ), $this->sent() );
+		self::assertSame( array( $this->p( 'h1' ) . ' event_registered' ), $this->sent() );
 	}
 
 	public function test_a_new_registration_after_leaving_is_confirmed_again(): void {

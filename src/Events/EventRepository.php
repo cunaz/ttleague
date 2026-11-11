@@ -11,6 +11,7 @@ namespace TTLeague\Events;
 
 use TTLeague\Domain\Events\RegistrationRules;
 use TTLeague\Infrastructure\Database\Db;
+use TTLeague\Notifications\NotificationLog;
 
 /**
  * Ein Anlass ist ein Array
@@ -211,6 +212,60 @@ final class EventRepository {
 		return array_map(
 			'intval',
 			$this->db->get_col( "SELECT person_id FROM {$this->db->table( 'registration' )} WHERE event_id = %d ORDER BY created_at, id", array( $event_id ) )
+		);
+	}
+
+	/**
+	 * Angemeldete Personen (Teilnehmende und Warteliste) ohne bestätigt versendete Nachricht
+	 * dieser Art zum Anlass, nach Person-ID geordnet und erst ab der Person nach $after_person.
+	 * Offene Reservierungen im Versandprotokoll zählen nicht als versendet.
+	 *
+	 * @param string $kind Art der Nachricht im Versandprotokoll (notification_log.event_type).
+	 * @return list<int>
+	 */
+	public function people_without_notice( int $event_id, string $kind, string $ref_type, int $after_person = 0 ): array {
+		return array_map(
+			'intval',
+			$this->db->get_col(
+				"SELECT r.person_id FROM {$this->db->table( 'registration' )} r
+				WHERE r.event_id = %d AND r.person_id > %d
+					AND NOT EXISTS (
+						SELECT 1 FROM {$this->db->table( 'notification_log' )} l
+						WHERE l.person_id = r.person_id AND l.event_type = %s AND l.ref_type = %s AND l.ref_id = %d AND l.status = %s
+					)
+				ORDER BY r.person_id",
+				array( $event_id, $after_person, $kind, $ref_type, $event_id, NotificationLog::SENT )
+			)
+		);
+	}
+
+	/**
+	 * Konto, das den Anlass abgesagt hat (aus dem Änderungsprotokoll), oder null.
+	 */
+	public function cancelled_by( int $event_id ): ?int {
+		$user = $this->db->get_var(
+			"SELECT user_id FROM {$this->db->table( 'audit_log' )} WHERE entity = 'event' AND entity_id = %d AND action = 'cancelled' ORDER BY id DESC LIMIT 1",
+			array( $event_id )
+		);
+		return null === $user ? null : (int) $user;
+	}
+
+	/**
+	 * Abgesagte Anlässe, deren Absage (Änderungsprotokoll, UTC) nicht vor $since liegt.
+	 *
+	 * @param string $since Zeitpunkt in UTC «Y-m-d H:i:s».
+	 * @return list<int>
+	 */
+	public function cancelled_since( string $since ): array {
+		return array_map(
+			'intval',
+			$this->db->get_col(
+				"SELECT DISTINCT e.id FROM {$this->db->table( 'event' )} e
+				JOIN {$this->db->table( 'audit_log' )} a ON a.entity = 'event' AND a.entity_id = e.id AND a.action = 'cancelled'
+				WHERE e.status = %s AND a.created_at >= %s
+				ORDER BY e.id",
+				array( RegistrationRules::CANCELLED, $since )
+			)
 		);
 	}
 

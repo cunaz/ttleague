@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Events;
 
+use TTLeague\Domain\Events\RegistrationRules;
 use TTLeague\Notifications\Notifier;
 use TTLeague\Notifications\RecipientResolver;
 
@@ -17,6 +18,9 @@ use TTLeague\Notifications\RecipientResolver;
  *   hat. Hat jemand anderes gehandelt (TK-Chef, TK), nennt die Nachricht den Namen.
  * - Nachrücken: Mitteilung an die nachgerückte Person.
  * - Absage: an alle Teilnehmenden und die Warteliste, ausser an das Konto, das abgesagt hat.
+ *   Nicht im Aufruf der Absage, sondern danach in begrenzten Schritten (send_cancellations()):
+ *   Bei vielen Empfängern und langsamem Versand bräche sonst das Zeitlimit der Anfrage ab, und
+ *   der Rest erhielte nichts.
  *
  * Nur aktive Personen; die Kanäle wählt jede Person für den Ereignistyp event_registration.
  * In WordPress hängt die Klasse an den Aktionen ttleague_event_*; in Tests kann sie den
@@ -24,11 +28,21 @@ use TTLeague\Notifications\RecipientResolver;
  */
 final class EventNotifications implements EventListener {
 
+	/** Höchstzahl der Empfänger, an die ein Lauf Absagemitteilungen versendet. */
+	public const CANCEL_BATCH = 25;
+
+	/** So viele Tage nach der Absage holt der stündliche Lauf ausstehende Mitteilungen nach. */
+	public const CANCEL_CATCH_UP_DAYS = 7;
+
 	/** @var callable(int):?string */
 	private $user_name;
 
+	/** @var callable(\Throwable,string):void */
+	private $on_error;
+
 	/**
-	 * @param callable(int):?string|null $user_name Anzeigename eines Kontos ohne Person.
+	 * @param callable(int):?string|null             $user_name Anzeigename eines Kontos ohne Person.
+	 * @param callable(\Throwable,string):void|null $on_error  Fehler bei einem Empfänger melden.
 	 */
 	public function __construct(
 		private readonly EventRepository $repo,
@@ -36,20 +50,96 @@ final class EventNotifications implements EventListener {
 		private readonly Notifier $notifier,
 		private readonly EventMessages $messages,
 		?callable $user_name = null,
+		?callable $on_error = null,
 	) {
 		$this->user_name = $user_name ?? static fn(): ?string => null;
+		$this->on_error  = $on_error ?? static function (): void {};
 	}
 
 	public function event_changed( int $event_id, int $user_id, string $action ): void {
 		unset( $event_id, $user_id, $action ); // Keine Benachrichtigung.
 	}
 
+	/**
+	 * Die Absage selbst versendet nichts: Die WordPress-Schicht plant den Versand ein
+	 * (Events::on_cancelled()), der dann über send_cancellations() läuft.
+	 */
 	public function cancelled( int $event_id, int $user_id ): void {
-		$event = $this->repo->find( $event_id );
-		if ( null === $event ) {
-			return;
+		unset( $event_id, $user_id );
+	}
+
+	/**
+	 * Ein Schritt des Versands der Absagemitteilungen: an höchstens $limit Empfänger, die laut
+	 * Versandprotokoll noch keine haben, in der Reihenfolge der Person-ID ab der Person nach
+	 * $after_person. Beliebig oft wiederholbar: Wer die Mitteilung hat, erhält sie nicht noch
+	 * einmal (NotificationLog). Das Konto, das abgesagt hat, steht im Änderungsprotokoll und
+	 * bleibt ausgenommen. Ein Fehler bei einem Empfänger wird gemeldet und hält die übrigen
+	 * nicht auf; er zählt zum Schritt, damit auch dann jeder Lauf begrenzt bleibt.
+	 *
+	 * Personen ohne Kanal (inaktiv, keine gültige Adresse, Benachrichtigung abgewählt) und das
+	 * ausgenommene Konto kosten keinen Versand und zählen nicht.
+	 *
+	 * @return array{sent:int,failed:int,next:int|null} Empfänger mit versendeter Mitteilung,
+	 *         Empfänger mit gescheitertem Versand und die Person, nach der der nächste Schritt
+	 *         weitermacht (null, wenn dieser Durchgang alle besucht hat).
+	 */
+	public function send_cancellations( int $event_id, int $after_person = 0, int $limit = self::CANCEL_BATCH ): array {
+		$result = array(
+			'sent'   => 0,
+			'failed' => 0,
+			'next'   => null,
+		);
+		$event  = $this->repo->find( $event_id );
+		if ( null === $event || RegistrationRules::CANCELLED !== $event['status'] ) {
+			return $result;
 		}
-		$this->notifier->send( $this->messages->cancelled( $event ), $this->recipients->persons( $this->repo->registered_people( $event_id ) ), $user_id );
+		$pending    = $this->repo->people_without_notice( $event_id, EventMessages::CANCELLED, EventMessages::REF_EVENT, $after_person );
+		$recipients = array();
+		foreach ( $this->recipients->persons( $pending ) as $recipient ) {
+			$recipients[ (int) $recipient->person_id ] = $recipient;
+		}
+		$notification = $this->messages->cancelled( $event );
+		$exclude      = $this->repo->cancelled_by( $event_id );
+		$attempts     = 0;
+		$last         = $after_person;
+		foreach ( $pending as $person_id ) {
+			if ( $attempts >= $limit ) {
+				$result['next'] = $last;
+				break;
+			}
+			$last = $person_id;
+			if ( ! isset( $recipients[ $person_id ] ) ) {
+				continue;
+			}
+			try {
+				$report = $this->notifier->send( $notification, array( $recipients[ $person_id ] ), $exclude );
+			} catch ( \Throwable $e ) {
+				( $this->on_error )( $e, EventMessages::CANCELLED . ' p' . $person_id );
+				$report = array( array( 'status' => Notifier::FAILED ) );
+			}
+			if ( array() === $report ) {
+				continue;
+			}
+			++$attempts;
+			$statuses = array_column( $report, 'status' );
+			if ( in_array( Notifier::SENT, $statuses, true ) ) {
+				++$result['sent'];
+			} elseif ( in_array( Notifier::FAILED, $statuses, true ) ) {
+				++$result['failed'];
+			}
+		}
+		return $result;
+	}
+
+	/**
+	 * Abgesagte Anlässe, deren Absage höchstens CANCEL_CATCH_UP_DAYS Tage zurückliegt: Für sie
+	 * holt der stündliche Lauf ausstehende Mitteilungen nach.
+	 *
+	 * @param \DateTimeImmutable $now Jetzt (UTC).
+	 * @return list<int>
+	 */
+	public function recently_cancelled( \DateTimeImmutable $now ): array {
+		return $this->repo->cancelled_since( $now->modify( '-' . self::CANCEL_CATCH_UP_DAYS . ' days' )->format( 'Y-m-d H:i:s' ) );
 	}
 
 	public function registered( int $event_id, int $registration_id, int $person_id, string $status, int $user_id ): void {
