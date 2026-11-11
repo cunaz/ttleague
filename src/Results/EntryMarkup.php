@@ -11,6 +11,7 @@ namespace TTLeague\Results;
 
 use TTLeague\Domain\Match\FixtureWorkflow as Flow;
 use TTLeague\Frontend\Support\Format;
+use TTLeague\Frontend\Views\ShareButton;
 
 /**
  * Rendert die Seite für eine Person mit Rolle. Dynamische Teile tragen Direktiven der
@@ -26,7 +27,7 @@ final class EntryMarkup {
 	 * @param array<string,mixed> $entry  Antwort von ResultService::entry().
 	 * @param array<string,mixed> $data   Daten aus EntryForm::data().
 	 * @param array<string,mixed> $state  Startzustand (form, view, message, photo …).
-	 * @param array<string,mixed> $page   report (Adresse des Matchreports), login, decisions (erlaubte Entscheide der TK).
+	 * @param array<string,mixed> $page   report (Adresse des Matchreports), login, decisions (erlaubte Entscheide der TK), contacts (fertiges HTML des Abschnitts «Kontakt» oder leer).
 	 * @param \DateTimeZone       $timezone Zeitzone der Website (für Zeitstempel in UTC).
 	 */
 	public function __construct(
@@ -59,7 +60,8 @@ final class EntryMarkup {
 		if ( $can['enter'] || in_array( 'correct', (array) $this->page['decisions'], true ) ) {
 			$out .= $this->form();
 		}
-		return $out . $this->history() . '</div>';
+		// Abschnitt «Kontakt» (ContactBox): bereits escaptes HTML, leer ohne Recht.
+		return $out . (string) ( $this->page['contacts'] ?? '' ) . $this->history() . '</div>';
 	}
 
 	/**
@@ -245,6 +247,13 @@ final class EntryMarkup {
 		if ( null !== $photo && '' !== $photo ) {
 			$body .= '<p><a href="' . esc_url( (string) $photo ) . '">' . esc_html__( 'Foto des Spielberichts ansehen', 'ttleague' ) . '</a></p>';
 		}
+		// «Teilen» mit der Adresse des öffentlichen Matchreports (nur in dieser Leseansicht).
+		if ( null !== $fixture['home_score'] && null !== $fixture['away_score'] ) {
+			$body .= ShareButton::render(
+				ShareButton::title( (string) $fixture['home']['name'], (string) $fixture['away']['name'], (int) $fixture['home_score'], (int) $fixture['away_score'] ),
+				(string) $this->page['report']
+			);
+		}
 		return '<section class="ttl-section ttl-entry__result" aria-labelledby="ttl-e-result-title"' . $this->hide_unless( 'view.formHidden' ) . '>'
 			. '<h3 id="ttl-e-result-title" class="ttl-section__title">' . esc_html__( 'Erfasstes Resultat', 'ttleague' ) . '</h3>' . $body . '</section>';
 	}
@@ -422,6 +431,9 @@ final class EntryMarkup {
 			$team = $this->data['teams'][ $side ];
 			$out .= '<fieldset id="ttl-e-lineup-' . $side . '" class="ttl-entry__side" tabindex="-1">'
 				. '<legend class="ttl-entry__side-title">' . esc_html( $team ) . ' <span class="ttl-muted">' . esc_html( 'home' === $side ? __( '(Heim)', 'ttleague' ) : __( '(Gast)', 'ttleague' ) ) . '</span></legend>';
+			// Sichtbar, solange die Seite dem Vorschlag aus dem letzten Spiel entspricht (view.lineup.{side}.sug).
+			$out .= '<p class="ttl-entry__suggested"' . $this->hide_unless( 'view.lineup.' . $side . '.sug' ) . '>'
+				. esc_html__( 'Aufstellung aus dem letzten Spiel vorgeschlagen, bitte prüfen.', 'ttleague' ) . '</p>';
 			foreach ( $this->data['slots'][ $side ] as $slot ) {
 				$out .= $this->slot( $side, (string) $slot );
 			}

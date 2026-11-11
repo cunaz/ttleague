@@ -93,6 +93,33 @@ final class EntryViewParityTest extends TestCase {
 		$form['games']['1']['pts'][4] = array( '12', '' );
 		$scenarios['Satzpunkte']      = array( $data, $form, array( 'games.1.set_points' => 'Spiel 1: Satz 5: ungültig.' ), 'enter', array() );
 
+		$suggested = EntryScenario::entry(
+			'MM',
+			array(),
+			array(),
+			array(
+				'home' => array(
+					'A' => 11,
+					'B' => 12,
+					'C' => 14,
+				),
+				'away' => array( 'X' => 21 ),
+			)
+		);
+		$data      = EntryForm::data( $suggested );
+		$form      = EntryForm::initial( $suggested, $data );
+
+		$scenarios['vorgeschlagene Aufstellung'] = array( $data, $form, array(), 'enter', array() );
+		$form['lineup']['home']['C']             = '13';
+		$form['lineup']['away']['Y']             = EntryForm::MISSING;
+		EntryScenario::play( $form, 1, 3, 1 );
+		$scenarios['Vorschlag geändert'] = array( $data, $form, array( 'lineup.away.Z' => 'Bitte einen Spieler wählen.' ), 'enter', array() );
+
+		$suggested = EntryScenario::entry( 'CUP', array(), array(), array( 'away' => array( 'Z' => 22 ) ) );
+		$data      = EntryForm::data( $suggested );
+
+		$scenarios['Vorschlag im Cup, nur Gast'] = array( $data, EntryForm::initial( $suggested, $data ), array(), 'enter', array() );
+
 		return $scenarios;
 	}
 
@@ -108,5 +135,33 @@ final class EntryViewParityTest extends TestCase {
 		$script = EntryScript::call( 'buildView', array( $data, $form, (object) $errors, $mode, (object) $ui ) );
 
 		self::assertSame( EntryScript::canonical( $php ), EntryScript::canonical( $script ) );
+	}
+
+	/**
+	 * Der Vorschlag ist gekennzeichnet, solange die Seite ihm entspricht (auch im Skript, das
+	 * nach jeder Änderung neu rechnet).
+	 */
+	public function test_script_marks_a_side_while_it_matches_the_suggestion(): void {
+		$scenarios        = self::scenarios();
+		[ $data, $form ]  = $scenarios['vorgeschlagene Aufstellung'];
+		[ , $changed ]    = $scenarios['Vorschlag geändert'];
+		[ $plain, $full ] = $scenarios['leer'];
+
+		$view = EntryScript::call( 'buildView', array( $data, $form, (object) array(), 'enter', (object) array() ) );
+		self::assertTrue( $view['lineup']['home']['sug'] );
+		self::assertTrue( $view['lineup']['away']['sug'] );
+
+		$view = EntryScript::call( 'buildView', array( $data, $changed, (object) array(), 'enter', (object) array() ) );
+		self::assertFalse( $view['lineup']['home']['sug'] );
+		self::assertFalse( $view['lineup']['away']['sug'] );
+
+		$view = EntryScript::call( 'buildView', array( $plain, $full, (object) array(), 'enter', (object) array() ) );
+		self::assertFalse( $view['lineup']['home']['sug'], 'ohne Vorschlag keine Kennzeichnung' );
+
+		// Ältere Daten ohne den Schlüssel suggestion (z. B. aus einem Seitencache) bleiben gültig.
+		unset( $data['suggestion'] );
+		$view = EntryScript::call( 'buildView', array( $data, $form, (object) array(), 'enter', (object) array() ) );
+		self::assertFalse( $view['lineup']['home']['sug'] );
+		self::assertFalse( EntryForm::view( $data, $form )['lineup']['home']['sug'] );
 	}
 }

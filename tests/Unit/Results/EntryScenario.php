@@ -18,11 +18,12 @@ use TTLeague\Results\EntryForm;
 final class EntryScenario {
 
 	/**
-	 * @param array<string,mixed> $current Gespeichertes Resultat.
-	 * @param array<string,mixed> $rules   Abweichende Regeln.
+	 * @param array<string,mixed>             $current    Gespeichertes Resultat.
+	 * @param array<string,mixed>             $rules      Abweichende Regeln.
+	 * @param array<string,array<string,int>> $suggestion Vorgeschlagene Aufstellung pro Seite (Slot => Spieler-ID).
 	 * @return array<string,mixed>
 	 */
-	public static function entry( string $type = 'MM', array $current = array(), array $rules = array() ): array {
+	public static function entry( string $type = 'MM', array $current = array(), array $rules = array(), array $suggestion = array() ): array {
 		$cup        = 'CUP' === $type;
 		$candidate  = static fn( int $id, string $name, int $rank, string $reason = 'stamm', bool $ok = true, string $message = 'Stammspieler.', int $subs = 0 ): array => array(
 			'player_id'              => $id,
@@ -84,6 +85,10 @@ final class EntryScenario {
 			),
 			'order'      => $cup ? GameOrder::cup() : GameOrder::team_match(),
 			'candidates' => $candidates,
+			'suggestion' => array(
+				'home' => (object) ( $suggestion['home'] ?? array() ),
+				'away' => (object) ( $suggestion['away'] ?? array() ),
+			),
 			'current'    => $current + array(
 				'lineup'      => array(
 					'home' => (object) array(),

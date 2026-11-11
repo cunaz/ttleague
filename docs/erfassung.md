@@ -29,6 +29,34 @@ Dieses Dokument ist der Vertrag für Phase 2: Konten, Anmeldung, Rechte, Status�
 - Beim ersten Login muss die Person den Datenschutzhinweis bestätigen (`person.consent_at`). Bis dahin zeigt `/mein-bereich/` nur die Einwilligung.
 - `/mein-bereich/` (Block `ttleague/my-area`) zeigt Profil (Name, E-Mail, Telefon mit Sichtbarkeit), Funktionen in der aktiven Saison, Benachrichtigungseinstellungen und weitere Abschnitte, die Module über die Aktion `ttleague_my_area_sections` (Parameter: `MyAreaContext`) einhängen, z. B. «Meine Spiele» oder «Mein Club».
 
+## Datenschutz-Werkzeuge
+
+Code in `TTLeague\Accounts\PersonalData` (ohne WordPress) und `TTLeague\Accounts\Privacy` (Anbindung an WordPress).
+
+**Export und Löschung über WordPress** («Werkzeuge → Personenbezogene Daten exportieren» und «… löschen»): Das Plugin registriert sich über `wp_privacy_personal_data_exporters` und `wp_privacy_personal_data_erasers` unter dem Schlüssel `ttleague`. Die Person wird über die E-Mail-Adresse der Anfrage gefunden: `person.email` (Gross-/Kleinschreibung egal) oder das WordPress-Konto mit dieser Adresse, das mit einer Person verknüpft ist. Zeigen die Adresse und das Konto auf zwei verschiedene Personen, ist die Zuordnung mehrdeutig: Es wird nichts exportiert und nichts gelöscht, Export und Löschung melden das, und die TK klärt die Zuordnung zuerst. Zuordnen und Verarbeiten laufen in einer Transaktion mit gesperrten Zeilen (`PersonalData::for_request()`), damit eine gleichzeitig geänderte Verknüpfung nichts verfälscht.
+
+| Gruppe im Export | Inhalt |
+|---|---|
+| Profil | Vorname, Nachname, E-Mail, Telefon, Sichtbarkeit des Telefons, Einwilligung (Zeitpunkt in UTC), Status |
+| Funktionen | je Saison: Funktion (Captain, TK-Chef), Club, Mannschaft |
+| Meldungen | je Saison: Club, Klassierung, Lizenznummer |
+| Benachrichtigungen | Einstellung pro Ereignistyp (E-Mail, Push; ohne Eintrag der Standard) und Anzahl Push-Abos |
+
+Die Löschung entfernt Telefonnummer und Sichtbarkeit, Benachrichtigungs-Einstellungen, Push-Abos und alle Anmelde-Tokens der Person. Name, E-Mail-Adresse, Lizenznummer, Meldungen, Funktionen und Resultate bleiben und werden WordPress als «aufbewahrt» gemeldet, mit der Begründung: Sie gehören zum Spielbetrieb (Ranglisten, Matchreports, Anmeldung). Die Daten des WordPress-Kontos selbst behandelt WordPress.
+
+**Anonymisierung auf Wunsch:** nur durch die TK, nicht umkehrbar.
+
+```bash
+wp ttleague account anonymize <person-id> --yes   # ohne --yes mit Rückfrage
+```
+
+- Vorname leer, Nachname «Ehemaliges Mitglied» mit laufender Nummer (höchste vergebene Nummer plus eins, damit die Namen eindeutig bleiben).
+- Gelöscht: E-Mail, Telefon, Einwilligung, Benachrichtigungs-Einstellungen, Push-Abos, Anmelde-Tokens. Die Verknüpfung zum WordPress-Konto wird gelöst; das Konto bleibt bestehen, der Befehl nennt es und den Befehl zum Löschen. `person.status` wird `inactive`.
+- Es bleiben: Lizenznummer, Meldungen, Aufstellungen, Resultate, Wertungszahl und Funktionen. Hat die Person noch eine Funktion in der aktiven Saison, weist der Befehl darauf hin.
+- `audit_log`: Eintrag `anonymized` mit dem neuen Namen, dem gelösten Konto (ID) und was entfernt wurde, ohne den bisherigen Namen und ohne Adressen. Frühere Einträge `email_changed` der Person verlieren die Adressen.
+- Danach erhöht `Privacy::anonymize()` die Datenversion (`DataVersion::bump()`): Ranglisten, Matchreports und Profile zeigen den Platzhalter. Das Spielerprofil ist unter `/spieler/<Lizenz>-ehemaliges-mitglied-<n>/` erreichbar; die Adresse mit dem alten Namen leitet dorthin weiter.
+- Nicht erfasst: freie Texte (Bemerkungen, Begründungen) und Fotos von Spielberichten, in denen der Name stehen kann, sowie bereits versandte E-Mails.
+
 ## Rechte
 
 Alle fachlichen Rechte sind Meta-Capabilities, die `map_meta_cap` aus den Daten der aktiven Saison ableitet. Wer `ttl_tk` hat (Rolle `ttl_tk` und Administratoren), darf alles.
@@ -40,6 +68,7 @@ Alle fachlichen Rechte sind Meta-Capabilities, die `map_meta_cap` aus den Daten 
 | `ttl_confirm_result` | Fixture-ID | wie oben für die Gastseite |
 | `ttl_manage_club` | Club-ID | TK-Chef des Clubs |
 | `ttl_invite_person` | Person-ID | TK-Chef des Clubs, für den die Person in der aktiven Saison gemeldet ist oder eine Funktion hat |
+| `ttl_view_contacts` | – | Personen mit Funktion in der aktiven Saison (Captain oder TK-Chef in `club_role`, auch ohne Team) |
 
 Ausserhalb der aktiven Saison gibt es nur `ttl_tk`. Ob eine Aktion im aktuellen Status erlaubt ist, entscheidet der `ResultService`, nicht die Capability.
 
@@ -47,6 +76,16 @@ Weitere Regeln:
 
 - Spielt ein Club gegen sich selbst (Clubduell), hat der TK-Chef dieses Clubs beide Rechte. Bestätigen darf trotzdem nie, wer das Resultat erfasst oder zuletzt geändert hat; ausgenommen ist die TK. Das prüft der `ResultService`.
 - E-Mail-Adressen ändern TK-Chefs nur für Personen ihres Clubs, deren Konto keine erweiterten Rechte hat (`ttl_tk`, `edit_posts`, `manage_options`). Sonst könnten sie über einen Anmeldelink fremde Konten übernehmen. Bei jeder Änderung erhält die bisherige Adresse eine Mitteilung.
+
+### Kontaktdaten
+
+Wer `ttl_view_contacts` hat, sieht E-Mail und Telefon der Captains und TK-Chefs der aktiven Saison. Spielerinnen und Spieler einer Cup-Mannschaft ohne Funktion haben das Recht nicht.
+
+- **Wo:** Clubseite (Liste der Funktionen), Mannschaftsseite (Captain), Matchreport und Erfassungsseite (Abschnitt «Kontakt» mit Captains des Teams und TK-Chefs des Clubs, für beide Seiten; im Cup nur die TK-Chefs). Auf der Erfassungsseite nur für Personen mit Rolle für die Begegnung.
+- **Was:** E-Mail als `mailto:`-Link. Telefon als `tel:`-Link, aber nur mit `person.phone_visible` («Mein Bereich»). Fehlt die E-Mail oder ist sie ungültig, erscheint kein Link. Inaktive Personen haben keine Kontaktdaten.
+- **Nur aktive Saison:** Seiten früherer Saisons zeigen keine Kontaktdaten, auch nicht für die TK.
+- **Kein Cache:** `TTLeague\Accounts\Contacts` liest die Daten bei jeder Anfrage aus der Datenbank, an den Lesemodellen vorbei. Die Lesemodelle enthalten nur die `person_id` der Funktion, nie E-Mail oder Telefon. `TTLeague\Frontend\Views\ContactBox` prüft das Recht und baut die Links.
+- **Gäste:** Für Gäste und Angemeldete ohne Recht bleibt die Ausgabe gleich wie bisher, inklusive Fussnote «Kontaktdaten sehen angemeldete Funktionärinnen und Funktionäre». So bleibt sie zwischenspeicherbar.
 
 ## Status einer Begegnung
 
@@ -76,13 +115,14 @@ Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttlea
 **Formular (Heimseite, TK):**
 
 - Aufstellung: pro Slot eine Auswahl aus `candidates`, gruppiert nach Stammspieler, gebunden, Ersatz und nicht spielberechtigt. Nicht berechtigte Spieler sind sichtbar, aber gesperrt (Kurzgrund in der Option, volle Begründung in der aufklappbaren Liste); im Korrekturmodus der TK sind sie wählbar, weil die API dort nur Hinweise gibt. «fehlt (nicht angetreten)» sendet den Slot als `null`; ein leerer Slot ist ein Fehler.
+- Vorschlag: Ist noch nichts erfasst, beginnt die Aufstellung mit `suggestion`, der Aufstellung aus dem letzten Spiel jedes Teams (siehe `GET entry`). Unter dem Namen der Mannschaft steht «Aufstellung aus dem letzten Spiel vorgeschlagen, bitte prüfen», solange die Seite dem Vorschlag genau entspricht. Spiele werden nie vorgeschlagen. Der Vorschlag ist kein Entwurf: Er ist der Ausgangszustand des Formulars und wird nicht gespeichert.
 - Spiele in Spielfolge (Cup fünf): Schnellknöpfe 3:0 bis 0:3 (nochmals tippen hebt die Wahl auf), Schalter «kampflos» mit Siegerseite, Doppelpaarung pro Seite (bei genau zwei Spielern automatisch, dann nicht gesendet), Satzpunkte nur bei `set_points_enabled` (freiwillig, nur vollständig gesendet).
 - Fehlt ein Spieler, schlägt das Formular «kampflos» für die andere Seite vor (fehlen beide: «nicht gespielt»), solange das Spiel nicht ausdrücklich erfasst ist. Widerspricht ein erfasstes Spiel der Aufstellung, erscheint ein Hinweis mit «Übernehmen». Im Cup mit `first_to_three` sind die Spiele nach dem dritten Sieg freiwillig; nicht erfasste werden nicht gesendet.
 - Laufendes Gesamtresultat (`aria-live`) in der Fusszeile mit «Speichern», Bemerkung, Foto des Spielberichts (`capture="environment"`, Upload über `POST photo` gleich nach der Auswahl).
 - Absenden: `POST result` mit `version`, im Korrekturmodus der TK `POST decision` mit `action: correct`. Pflichtangaben prüft schon der Browser. Feldfehler (422) erscheinen am Feld und in einer Übersicht mit Sprungmarken, 409 mit «Seite neu laden», abgelaufene Anmeldung mit Link zur Anmeldung. Nach jedem Erfolg lädt die Seite neu (Meldung über `sessionStorage`); Status, Hinweise und Verlauf kommen dann vom Server.
-- Entwurf im `localStorage` (pro Begegnung und Konto), gelöscht nach dem Speichern. Beruht er auf dem aktuellen Stand (`version`), wird er wiederhergestellt, sonst angeboten.
+- Entwurf im `localStorage` (pro Begegnung und Konto), gelöscht nach dem Speichern. Beruht er auf dem aktuellen Stand (`version`), wird er wiederhergestellt, sonst angeboten. Ein Entwurf hat Vorrang vor der vorgeschlagenen Aufstellung; «Entwurf verwerfen» führt zum Vorschlag zurück.
 
-**Gastseite:** das erfasste Resultat zum Lesen (Aufstellung, Spiele, Hinweise, Foto) und der Verlauf aus `history`. «Resultat bestätigen» (`POST confirm` mit `version`) und «Einsprache erheben» (Begründung 10 bis 2000 Zeichen, `POST objection`), je nach `can.confirm` und `can.object`.
+**Gastseite:** das erfasste Resultat zum Lesen (Aufstellung, Spiele, Hinweise, Foto, Knopf «Teilen» mit der Adresse des Matchreports, siehe `docs/frontend.md`) und der Verlauf aus `history`. «Resultat bestätigen» (`POST confirm` mit `version`) und «Einsprache erheben» (Begründung 10 bis 2000 Zeichen, `POST objection`), je nach `can.confirm` und `can.object`.
 
 **TK:** Bei `can.decide` ein Bereich «Entscheid der TK» mit den im Status erlaubten Entscheiden (`FixtureWorkflow`, «abschliessen» nur mit Resultat), Forfait mit Sieger und Bemerkung (`POST decision`). «Korrigieren» öffnet das Formular im Korrekturmodus.
 
@@ -90,7 +130,9 @@ Seite «Resultat erfassen» (Schlüssel `entry`, Pfad `/erfassen/`, Block `ttlea
 
 **Matchreport:** Angemeldete Personen mit `ttl_enter_result` oder `ttl_confirm_result` (Fixture-ID) oder `ttl_tk` sehen einen Knopf «Resultat erfassen», «Resultat ändern», «Resultat bestätigen» bzw. «Entscheid der TK». Für Gäste bleibt die Ausgabe gleich, damit sie zwischengespeichert werden kann.
 
-**Technik:** Unveränderliches (Spielfolge, Kandidaten, Texte, Adressen, Nonce) kommt über `wp_interactivity_config`, der Zustand über `wp_interactivity_state`. Das Ansichtsmodell, an das die Direktiven gebunden sind, rechnet `EntryForm::view()` in PHP für den Startzustand und `buildView()` im Skriptmodul `@ttleague/entry-view` (`assets/js/entry-view.js`, reine Funktionen ohne Abhängigkeiten, auch Prüfung und Daten für die API) im Browser; beide müssen übereinstimmen. `EntryViewParityTest` vergleicht sie mit Node, falls vorhanden, und schickt die im Skript gebauten Daten an den `ResultService`. Stile in `assets/css/entry.css`, geladen nur auf der Erfassungsseite und in «Mein Bereich». `current.warnings` gehört zur letzten Erfassung; nach einem Zurücksetzen oder Forfait (keine Spiele) zeigt die Seite sie nicht an.
+**Kontakt:** Mit `ttl_view_contacts` steht vor dem Verlauf der Abschnitt «Kontakt» mit Captains und TK-Chefs beider Seiten (siehe [Kontaktdaten](#kontaktdaten)). Derselbe Abschnitt steht am Ende des Matchreports.
+
+**Technik:** Unveränderliches (Spielfolge, Kandidaten, vorgeschlagene Aufstellung, Texte, Adressen, Nonce) kommt über `wp_interactivity_config`, der Zustand über `wp_interactivity_state`. Das Ansichtsmodell, an das die Direktiven gebunden sind, rechnet `EntryForm::view()` in PHP für den Startzustand und `buildView()` im Skriptmodul `@ttleague/entry-view` (`assets/js/entry-view.js`, reine Funktionen ohne Abhängigkeiten, auch Prüfung und Daten für die API) im Browser; beide müssen übereinstimmen. `EntryViewParityTest` vergleicht sie mit Node, falls vorhanden, und schickt die im Skript gebauten Daten an den `ResultService`. Stile in `assets/css/entry.css`, geladen nur auf der Erfassungsseite und in «Mein Bereich». `current.warnings` gehört zur letzten Erfassung; nach einem Zurücksetzen oder Forfait (keine Spiele) zeigt die Seite sie nicht an.
 
 ## REST-API
 
@@ -120,12 +162,21 @@ Liefert alles für das Formular. Das Beispiel ist gekürzt: `order` enthält die
   "rules": { "sets_to_win": 3, "set_points_enabled": false, "cup_mode": "first_to_three", "slots": { "home": ["A","B","C"], "away": ["X","Y","Z"] } },
   "order": [ { "sequence": 1, "type": "single", "home": "A", "away": "X" } ],
   "candidates": { "home": [ { "player_id": 7, "name": "Hans Muster", "classification": 6, "label": "C6", "eligible": true, "reason": "stamm", "message": "Stammspieler.", "substitute_appearances": 0, "remaining": null } ], "away": [] },
+  "suggestion": { "home": { "A": 7 }, "away": {} },
   "current": { "lineup": { "home": { "A": 7 }, "away": {} }, "games": [], "entered_by": null, "entered_at": null, "warnings": [] },
   "history": [ { "type": "entered", "by": "Hans Muster", "at": "2026-11-10T21:30:00Z", "comment": null } ]
 }
 ```
 
 `candidates` enthält alle Spieler des Clubs mit Spielberechtigung für dieses Team (`EligibilityChecker`), sortiert nach Stammspielern, dann Klassierung.
+
+`suggestion` ist die vorgeschlagene Aufstellung für ein leeres Formular, pro Seite Slot => Spieler-ID:
+
+- Quelle ist die letzte erfasste Begegnung desselben Teams in derselben Saison und Konkurrenz: für die Heimseite das letzte Spiel des Heimteams, für die Gastseite das letzte Spiel des Gastteams. «Letzte» heisst späteste Anspielzeit (bei gleicher die grössere ID, Begegnungen ohne Termin zuletzt), nicht zuletzt erfasst. Es zählen nur andere Begegnungen mit Resultat und Aufstellung; ein Forfait hat keine Aufstellung und wird übersprungen.
+- Die Slots werden der Reihe nach umgelegt, auch wenn das Team im letzten Spiel auf der anderen Seite stand: X, Y, Z werden A, B, C und umgekehrt (Cup: A, B und Y, Z).
+- Übernommen werden nur Spieler, die für diese Begegnung wählbar sind (unter `candidates` mit `eligible: true`). Sonst fehlt der Slot. Ein Spieler, der auf beiden Seiten stünde (Clubduell), fehlt auf beiden.
+- Leer (`{}`), sobald etwas erfasst ist (Aufstellung, Spiele, auch ein Forfait), und für Personen, die nicht erfassen dürfen (`can.enter`).
+- Gilt für Meisterschaft und Cup. Im Cup ist das «Team» die Cup-Mannschaft (`cup_entry`); die erste Runde hat deshalb keinen Vorschlag.
 
 ### `POST fixtures/{id}/result`
 
@@ -185,7 +236,7 @@ Antwort von `confirm` und `objection`: `{ "status": "...", "version": "..." }`; 
 ## Protokoll
 
 - `fixture_event`: jedes fachliche Ereignis (`entered`, `edited`, `confirmed`, `disputed`, `decided`, `forfeit`, `reset`, `photo`) mit Konto, Person, Kommentar, Zusatzdaten (`score`, `warnings`, `action`, `winner`, `by_tk`) und Zeitpunkt (UTC). `GET entry` liefert ihn als `history`.
-- `audit_log`: technische Nachvollziehbarkeit jeder Änderung an `fixture`, `lineup`, `game` mit Zustand vorher und nachher als JSON.
+- `audit_log`: technische Nachvollziehbarkeit jeder Änderung an `fixture`, `lineup`, `game` mit Zustand vorher und nachher als JSON. Für Personen (`entity = person`) unter anderem `privacy_erased` und `anonymized` (siehe Datenschutz-Werkzeuge), ohne die gelöschten Werte.
 
 ## Ereignisse
 
@@ -301,9 +352,9 @@ Ohne Bibliothek, mit der OpenSSL-Erweiterung von PHP (P-256, ECDH, AES-128-GCM).
 
 | Daten | Ort | Inhalt | Gelöscht |
 |---|---|---|---|
-| Einstellungen | `notification_pref` | Person, Ereignistyp, E-Mail und Push ja oder nein | mit der Person |
+| Einstellungen | `notification_pref` | Person, Ereignistyp, E-Mail und Push ja oder nein | über die Datenschutz-Werkzeuge (Löschung, Anonymisierung) |
 | Versandprotokoll | `notification_log` | Person oder Konto, Art, Bezug (IDs), Zusatz, Kanal, Status, Zeitpunkt; kein Inhalt, keine Adresse | nach 365 Tagen |
-| Push-Abos | `push_subscription` | Person, Endpunkt beim Push-Dienst des Browsers (Google, Mozilla, Apple oder Microsoft), öffentlicher Schlüssel und Geheimnis des Browsers für die Verschlüsselung, Zeitpunkt | beim Deaktivieren auf dem Gerät, bei Antwort 404 oder 410 des Dienstes, als am längsten nicht gemeldetes von mehr als zehn Abos |
+| Push-Abos | `push_subscription` | Person, Endpunkt beim Push-Dienst des Browsers (Google, Mozilla, Apple oder Microsoft), öffentlicher Schlüssel und Geheimnis des Browsers für die Verschlüsselung, Zeitpunkt | beim Deaktivieren auf dem Gerät, bei Antwort 404 oder 410 des Dienstes, als am längsten nicht gemeldetes von mehr als zehn Abos, über die Datenschutz-Werkzeuge |
 | VAPID-Schlüssel | Option `ttleague_vapid` oder `wp-config.php` | Schlüsselpaar der Website | Option bei der Deinstallation mit `ttleague_remove_data_on_uninstall` |
 | E-Mails | Mail-Dienst der Website | Namen, Begegnung, Resultat, Begründung einer Einsprache, Bemerkung der TK | nach den Regeln des Mail-Dienstes |
 | Push-Nachrichten | Push-Dienst des Browsers | Inhalt Ende-zu-Ende verschlüsselt; der Dienst sieht Endpunkt, Zeitpunkt, Grösse, TTL, Dringlichkeit und den Kontakt (`sub`) der Website | nach Zustellung oder Ablauf der TTL |
@@ -356,15 +407,17 @@ Regeln (`TTLeague\Accounts\ClubAccounts`):
 
 | Ebene | Ordner | Inhalt |
 |---|---|---|
-| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, ohne WordPress |
-| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks` und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
+| Unit | `tests/Unit/` | Eingabeformat (`ResultInput`), Herkunftsprüfung (`LoginFlow::origin_matches`), Rate-Limit, Links der Kontaktdaten (`ContactBox`), Formular (`EntryFormTest`) und Gleichheit von PHP und Skript (`EntryViewParityTest`, auch mit vorgeschlagener Aufstellung), ohne WordPress |
+| Integration | `tests/Integration/` | `ResultService`, `AccessPolicy`, `AccountService`, `MagicLinks`, `Contacts` (Kontaktdaten je Club und Begegnung), `PersonalData` (Auskunft, Löschung, Anonymisierung mit laufender Nummer, Protokoll ohne Namen, Platzhalter in den Lesemodellen), vorgeschlagene Aufstellung (`LineupSuggestionTest`: Seitenwechsel, späteste Anspielzeit, Forfait, gesperrte Spieler, Clubduell, Cup) und der eindeutige Index auf `person.user_id` gegen MariaDB über `PdoDb`, ohne WordPress |
 | WordPress | `tests/WordPress/` | mit echtem WordPress (wp-phpunit, `composer test:wp`, siehe README), siehe unten |
 
 Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
 
 - `AccountService::ensure_user()` mit echten Konten: Ein bestehendes Konto mit erweiterten Rechten (Rollen `administrator`, `editor`, `contributor`, `ttl_tk` sowie Abonnenten mit `manage_options`, `edit_posts` oder zusätzlicher Rolle `ttl_tk`) und das Konto einer anderen Person werden nicht verknüpft; ein freies Abonnenten-Konto wird verknüpft, sonst wird ein Konto angelegt.
 - Anmeldung per Link: Anfrage (Link oder Passwort-Hinweis, neutrale Antwort, Rate-Limit), Einlösen mit Konto und 60 Tagen «angemeldet bleiben», abgelaufene und verbrauchte Tokens, Herkunftsprüfung über Origin und Referer, Nonce, Weiterleitung nur auf eigene Seiten, Einwilligung und Profil.
-- Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison).
+- Rechte über `map_meta_cap` mit echten Konten und Rollen (Captain, TK-Chef, Cup-Mannschaft, TK, Administrator, Vorsaison), auch `ttl_view_contacts`.
+- Datenschutz-Werkzeuge (`PrivacyTest`): Exporter und Eraser bei WordPress registriert, Export über `person.email` und über das verknüpfte Konto, Löschung mit Meldung des Aufbewahrten, Anonymisierung mit neuer Datenversion (gecachte Ansichten zeigen den Platzhalter, das gelöste Konto verliert seine Rechte). `AccountCommandTest` prüft `wp ttleague account anonymize` mit einem Ersatz für die Klasse `WP_CLI` (Rückfrage ohne `--yes`, Meldungen, Fehler).
+- Kontaktdaten (`ContactViewsTest`): Clubseite, Mannschaftsseite, Matchreport und Erfassungsseite mit und ohne Recht; Telefon nur mit Freigabe, keine Links ohne E-Mail, keine Kontaktdaten in früheren Saisons. Die Ausgabe für Gäste ist vor und nach dem Aufruf eines Funktionärs identisch, auch wenn dieser den Cache füllt; Object-Cache und Transients des Plugins enthalten weder Adresse noch Nummer.
 - REST-API über den REST-Server von WordPress: 401, 403, 404, 422 mit Feldfehlern, 409 bei veralteter `version`, Erfassen und Bestätigen mit Verlauf und Ereignissen, `me/fixtures`, Rechte und fehlende Datei beim Foto.
 - Ereignisse: Ein Listener, der eine Ausnahme wirft, lässt die gespeicherte Erfassung erfolgreich; Cache-Version und Neuberechnung sind vorher erledigt, der Fehler steht im Fehlerprotokoll.
 - Ablage der Fotos mit einem gespielten Webserver (`pre_http_request`): Testdateien aller Bildformate im Upload-Unterverzeichnis; ausgeliefert (offen, Uploads gesperrt, auch wenn nur `.webp` ausgeliefert wird), 401/403/404 (geschützt), Weiterleitung, andere Seite, Serverfehler und keine Verbindung (unbekannt, gesperrt); nach «offen» hebt nur ein bestätigter Schutz die Sperre auf; gemerktes Ergebnis nur für dasselbe Verzeichnis, denselben Monat und denselben Web-Root; Ablage ohne Bildvarianten; Löschen der Dateien mit dem Anhang, nur im Verzeichnis der Fotos; Schutzdateien wiederhergestellt; Adresse eines Verzeichnisses für `TTLEAGUE_PRIVATE_UPLOADS` (auch über symbolische Links und den Web-Root); «Website-Zustand» mit einem Bericht je Zustand (auch «ausserhalb» für ein Verzeichnis der Konstante ohne Adresse).
@@ -373,4 +426,4 @@ Die WordPress-Tests prüfen automatisiert, was bisher nur von Hand geprüft war:
 - Seiten der Darstellung: Eine eigene Seite unter `/erfassen/` wird mit Block übernommen, ohne Block unverändert übernommen und als «(Block fehlt)» gemeldet; «Website-Zustand» listet fehlende, unveröffentlichte und blocklose Seiten mit Link zum Bearbeiten.
 - Schema über `dbDelta()` (vollständig, InnoDB, ohne Änderungen bei einem erneuten Lauf) und die Rolle der TK.
 
-Weiterhin von Hand: Speichern eines Fotos (`POST fixtures/{id}/photo` verlangt eine echte Upload-Datei, `is_uploaded_file()`), die Sperre der Ablage durch den echten Webserver der Produktion (Checkliste der Inbetriebnahme), Anmeldung mit echten Cookies und `X-WP-Nonce` im Browser, Versand über einen echten Mailserver.
+Weiterhin von Hand: der Ablauf einer Anfrage unter «Werkzeuge → Personenbezogene Daten exportieren/löschen» (Bestätigung per E-Mail, Bericht), der Befehl `wp ttleague account anonymize` mit echtem WP-CLI, Speichern eines Fotos (`POST fixtures/{id}/photo` verlangt eine echte Upload-Datei, `is_uploaded_file()`), die Sperre der Ablage durch den echten Webserver der Produktion (Checkliste der Inbetriebnahme), Anmeldung mit echten Cookies und `X-WP-Nonce` im Browser, Versand über einen echten Mailserver.

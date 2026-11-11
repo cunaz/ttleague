@@ -21,7 +21,10 @@ final class Capabilities {
 	public const RESCHEDULE    = 'ttl_reschedule_fixture';
 	public const ENTER_RL      = 'ttl_enter_rl_group';
 
-	private const META = array( self::ENTER_RESULT, self::CONFIRM, self::MANAGE_CLUB, self::INVITE_PERSON, self::RESCHEDULE, self::ENTER_RL );
+	/** Kontaktdaten der Captains und TK-Chefs sehen (ohne Objekt). */
+	public const VIEW_CONTACTS = 'ttl_view_contacts';
+
+	private const META = array( self::ENTER_RESULT, self::CONFIRM, self::MANAGE_CLUB, self::INVITE_PERSON, self::RESCHEDULE, self::ENTER_RL, self::VIEW_CONTACTS );
 
 	private static ?AccessPolicy $policy = null;
 
@@ -64,7 +67,14 @@ final class Capabilities {
 		$id     = (int) ( $args[0] ?? 0 );
 		$policy = self::policy();
 		$person = $policy->person_for_user( $user_id );
-		if ( null === $person || $id <= 0 ) {
+		if ( null === $person ) {
+			return array( 'do_not_allow' );
+		}
+		if ( self::VIEW_CONTACTS === $cap ) {
+			// Ohne Objekt: Es zählt allein die Funktion in der aktiven Saison.
+			return $policy->can_view_contacts( $person ) ? array( 'read' ) : array( 'do_not_allow' );
+		}
+		if ( $id <= 0 ) {
 			return array( 'do_not_allow' );
 		}
 		$allowed = match ( $cap ) {

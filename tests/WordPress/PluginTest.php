@@ -27,6 +27,19 @@ final class PluginTest extends TestCase {
 		self::assertSame( '1', get_option( Installer::USER_UNIQUE_OPTION ), 'person.user_id ist eindeutig' );
 	}
 
+	public function test_a_schema_upgrade_invalidates_cached_read_models(): void {
+		$before = \TTLeague\Infrastructure\Cache\DataVersion::get();
+
+		Installer::maybe_upgrade();
+		self::assertSame( $before, \TTLeague\Infrastructure\Cache\DataVersion::get(), 'ohne neue Schemaversion bleibt der Cache gültig' );
+
+		update_option( Installer::OPTION, '2026010101', false );
+		Installer::maybe_upgrade();
+
+		self::assertSame( Schema::VERSION, get_option( Installer::OPTION ) );
+		self::assertSame( $before + 1, \TTLeague\Infrastructure\Cache\DataVersion::get() );
+	}
+
 	public function test_all_tables_exist_with_a_transactional_engine(): void {
 		global $wpdb;
 		$tables = array_map( static fn( string $name ): string => Schema::table( $name, $wpdb->prefix ), Schema::TABLES );

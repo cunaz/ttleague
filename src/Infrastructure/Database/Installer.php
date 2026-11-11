@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace TTLeague\Infrastructure\Database;
 
+use TTLeague\Infrastructure\Cache\DataVersion;
+
 final class Installer {
 
 	public const OPTION = 'ttleague_db_version';
@@ -25,11 +27,13 @@ final class Installer {
 	}
 
 	/**
-	 * Bei jedem Laden prüfen, ob eine neue Schemaversion vorliegt.
+	 * Bei jedem Laden prüfen, ob eine neue Schemaversion vorliegt. Nach einem Upgrade gelten
+	 * zwischengespeicherte Lesemodelle nicht mehr: Eine neue Version kann ihnen Felder hinzufügen.
 	 */
 	public static function maybe_upgrade(): void {
 		if ( get_option( self::OPTION ) !== Schema::VERSION ) {
 			self::install();
+			DataVersion::bump();
 			return;
 		}
 		// Fehlt der UNIQUE-Index auf person.user_id noch, höchstens stündlich erneut versuchen.

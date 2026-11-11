@@ -5,7 +5,8 @@
  * und in den Tests mit Node laufen. buildView() ist das Gegenstück zu
  * TTLeague\Results\EntryForm::view() in PHP; beide müssen dasselbe liefern
  * (tests/Unit/Results/EntryViewParityTest.php). cfg sind die Daten aus EntryForm::data()
- * (Spielfolge, Slots, Spieler, Texte …), form der Zustand des Formulars.
+ * (Spielfolge, Slots, Spieler, Texte, vorgeschlagene Aufstellung …), form der Zustand des
+ * Formulars.
  */
 
 export const MISSING = 'none';
@@ -178,10 +179,16 @@ export function buildView( cfg, form, errors, mode, ui ) {
 		pairs: {},
 	};
 	for ( const side of SIDES ) {
+		// Vorschlag aus dem letzten Spiel: gekennzeichnet, solange die Seite ihm genau entspricht.
+		const suggestion = cfg.suggestion?.[ side ] ?? {};
+		let suggested = Object.keys( suggestion ).length > 0;
 		view.lineup[ side ] = { err: err( `lineup.${ side }` ) };
 		for ( const slot of cfg.slots[ side ] ) {
 			const value = String( lineup[ side ]?.[ slot ] ?? '' );
 			const error = err( `lineup.${ side }.${ slot }` );
+			if ( String( suggestion[ slot ] ?? '' ) !== value ) {
+				suggested = false;
+			}
 			view.lineup[ side ][ slot ] = {
 				err: error,
 				bad: '' !== error,
@@ -190,6 +197,7 @@ export function buildView( cfg, form, errors, mode, ui ) {
 					: '',
 			};
 		}
+		view.lineup[ side ].sug = suggested;
 		view.pairs[ side ] = {};
 		const slots = cfg.slots[ side ];
 		for ( let i = 0; i < slots.length; i++ ) {
