@@ -37,6 +37,7 @@ final class Shortcode {
 		'tabellen'          => 'standings-compact',
 		'saisonwahl'        => 'season-switcher',
 		'archiv'            => 'archive',
+		'anlass'            => 'event-registration',
 	);
 
 	public static function register(): void {

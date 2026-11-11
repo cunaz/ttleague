@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Frontend;
 
+use TTLeague\Events\RegistrationView;
 use TTLeague\Frontend\Support\Html;
 use TTLeague\Frontend\Views\ArchiveView;
 use TTLeague\Frontend\Views\ClubsView;
@@ -50,6 +51,7 @@ final class Blocks {
 		'standings-compact'  => StandingsCompact::class,
 		'season-switcher'    => SeasonSwitcher::class,
 		'archive'            => ArchiveView::class,
+		'event-registration' => RegistrationView::class,
 	);
 
 	/**
