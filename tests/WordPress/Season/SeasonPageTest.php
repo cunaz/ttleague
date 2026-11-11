@@ -406,6 +406,40 @@ final class SeasonPageTest extends SeasonWpTestCase {
 		self::assertSame( 0, $this->rows( 'fixture' ) );
 	}
 
+	public function test_hints_of_the_check_are_folded_by_kind_and_hard_conflicts_stay_open(): void {
+		$next = $this->plan();
+		SeasonAdmin::grouping()->apply_proposal( $this->tk(), $next );
+		$fields = array( 'season' => (string) $next );
+		$weeks  = array(
+			'2027-09-06' => '1',
+			'2027-09-13' => '1',
+			'2027-09-20' => '1',
+			'2028-01-10' => '2',
+			'2028-01-17' => '2',
+			'2028-01-24' => '2',
+		);
+		$this->post( SeasonActions::WEEKS, $fields + array( 'week' => $weeks ), $next );
+		$this->post( SeasonActions::GENERATE, $fields, $next );
+		$html = $this->page( SeasonPage::SCHEDULE );
+		self::assertStringContainsString( 'Harte Kollisionen: 0. Hinweise: 6.', $html );
+		self::assertStringNotContainsString( 'class="ttl-season-hard"', $html );
+		// Jede Art von Hinweisen ist ein zugeklappter Block mit der Anzahl im Titel.
+		self::assertGreaterThan( 0, preg_match_all( '/<details class="ttl-season-hints"><summary>Hinweise: [^<]+ \\((\\d+)\\)<\\/summary>/', $html, $match ) );
+		self::assertSame( 6, array_sum( array_map( 'intval', $match[1] ) ) );
+		self::assertSame( 6, substr_count( $html, 'class="ttl-season-soft"' ) );
+		self::assertStringContainsString( '<summary>Hinweise: mehrere Mannschaften eines Clubs am selben Abend (', $html );
+
+		// Eine Mannschaft doppelt am selben Abend: Die harte Kollision steht offen vor den Hinweisen.
+		$fixtures = $this->db->get_col( "SELECT id FROM {$this->db->table( 'fixture' )} WHERE home_team_id = %d OR away_team_id = %d ORDER BY scheduled_at, id", array( $this->id['next_seefeld_1'], $this->id['next_seefeld_1'] ) );
+		$first    = $this->db->get_var( "SELECT scheduled_at FROM {$this->db->table( 'fixture' )} WHERE id = %d", array( (int) $fixtures[0] ) );
+		$this->db->update( 'fixture', array( 'scheduled_at' => $first ), array( 'id' => (int) $fixtures[1] ) );
+		$html = $this->page( SeasonPage::SCHEDULE );
+		self::assertStringNotContainsString( 'Harte Kollisionen: 0.', $html );
+		$hard = strpos( $html, 'class="ttl-season-hard"' );
+		self::assertNotFalse( $hard );
+		self::assertLessThan( strpos( $html, '<details class="ttl-season-hints">' ), $hard );
+	}
+
 	public function test_the_overview_of_the_tk_lists_the_next_steps(): void {
 		self::assertNotContains( SeasonPage::SECTION, array_column( DashboardPage::module_sections(), 'id' ), 'Ohne geplante Saison keine Liste.' );
 		$this->plan();

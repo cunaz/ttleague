@@ -469,38 +469,18 @@ final class SeasonSteps {
 		} else {
 			/* translators: 1: harte Kollisionen, 2: Hinweise */
 			$out .= '<p>' . esc_html( sprintf( __( 'Harte Kollisionen: %1$d. Hinweise: %2$d. Verlegt wird nie von selbst: Übernimm einen Vorschlag oder verlege von Hand.', 'ttleague' ), $overview['hard'], $overview['hints'] ) ) . '</p>';
+			// Harte Kollisionen stehen offen da; Hinweise je Art zugeklappt, damit die Seite lesbar bleibt.
+			$hints = array();
 			foreach ( $overview['conflicts'] as $conflict ) {
-				$context = array_filter( array( $conflict['venue'], $conflict['club'], $conflict['team'] ) );
-				$out    .= '<div class="' . esc_attr( $conflict['hard'] ? 'ttl-season-hard' : 'ttl-season-soft' ) . '"><p><strong>' . esc_html( $conflict['hard'] ? __( 'Kollision', 'ttleague' ) : __( 'Hinweis', 'ttleague' ) ) . ':</strong> '
-					. esc_html( ( array() === $context ? '' : implode( ', ', $context ) . ': ' ) . $conflict['message'] ) . '</p>';
-				if ( count( $conflict['fixtures'] ) <= 12 ) {
-					$out .= '<ul class="ttl-season-list">';
-					foreach ( $conflict['fixtures'] as $id ) {
-						$out .= '<li>' . esc_html( $name( $id ) . ', ' . Format::datetime( $fixtures[ $id ]['scheduled_at'] ) ) . ' <a href="' . esc_url( SeasonPage::url( SeasonPage::SCHEDULE, array( 'fixture' => (string) $id ) ) ) . '">'
-							. esc_html__( 'verlegen', 'ttleague' ) . '<span class="screen-reader-text">: ' . esc_html( $name( $id ) ) . '</span></a></li>';
-					}
-					$out .= '</ul>';
+				$html = self::conflict( $conflict, $fixtures, $name );
+				if ( $conflict['hard'] ) {
+					$out .= $html;
+				} else {
+					$hints[ (string) $conflict['kind'] ][] = $html;
 				}
-				if ( array() !== $conflict['suggestions'] ) {
-					$out .= '<div class="ttl-season-actions">';
-					foreach ( $conflict['suggestions'] as $suggestion ) {
-						$out .= SeasonPage::form(
-							SeasonActions::SUGGESTION,
-							$suggestion['fixture_id'],
-							array(
-								'fixture'   => (string) $suggestion['fixture_id'],
-								'starts_at' => $suggestion['starts_at'],
-							),
-							'ttl-tk-inline'
-						)
-							/* translators: 1: Begegnung, 2: Termin */
-							. '<button type="submit" class="button button-small">' . esc_html( sprintf( __( '%1$s auf %2$s verlegen', 'ttleague' ), $name( $suggestion['fixture_id'] ), Format::datetime( $suggestion['starts_at'] ) ) ) . '</button></form>';
-					}
-					$out .= '</div>';
-				} elseif ( 'tables_unknown' !== $conflict['kind'] ) {
-					$out .= '<p class="ttl-tk-muted">' . esc_html__( 'Kein freier Ausweichtermin in den gewählten Spielwochen.', 'ttleague' ) . '</p>';
-				}
-				$out .= '</div>';
+			}
+			foreach ( $hints as $kind => $items ) {
+				$out .= '<details class="ttl-season-hints"><summary>' . esc_html( self::hint_label( $kind ) . ' (' . count( $items ) . ')' ) . '</summary>' . implode( '', $items ) . '</details>';
 			}
 		}
 
@@ -522,6 +502,58 @@ final class SeasonSteps {
 			$out .= '</tbody></table></details>';
 		}
 		return $out;
+	}
+
+	/**
+	 * Eine Kollision oder ein Hinweis der Prüfung mit den betroffenen Begegnungen und den Vorschlägen.
+	 *
+	 * @param array<string,mixed>            $conflict Eintrag aus Scheduling::overview().
+	 * @param array<int,array<string,mixed>> $fixtures Begegnungen des Entwurfs.
+	 * @param callable(int):string           $name     Bezeichnung einer Begegnung.
+	 */
+	private static function conflict( array $conflict, array $fixtures, callable $name ): string {
+		$context = array_filter( array( $conflict['venue'], $conflict['club'], $conflict['team'] ) );
+		$out     = '<div class="' . esc_attr( $conflict['hard'] ? 'ttl-season-hard' : 'ttl-season-soft' ) . '"><p><strong>' . esc_html( $conflict['hard'] ? __( 'Kollision', 'ttleague' ) : __( 'Hinweis', 'ttleague' ) ) . ':</strong> '
+			. esc_html( ( array() === $context ? '' : implode( ', ', $context ) . ': ' ) . $conflict['message'] ) . '</p>';
+		if ( count( $conflict['fixtures'] ) <= 12 ) {
+			$out .= '<ul class="ttl-season-list">';
+			foreach ( $conflict['fixtures'] as $id ) {
+				$out .= '<li>' . esc_html( $name( $id ) . ', ' . Format::datetime( $fixtures[ $id ]['scheduled_at'] ) ) . ' <a href="' . esc_url( SeasonPage::url( SeasonPage::SCHEDULE, array( 'fixture' => (string) $id ) ) ) . '">'
+					. esc_html__( 'verlegen', 'ttleague' ) . '<span class="screen-reader-text">: ' . esc_html( $name( $id ) ) . '</span></a></li>';
+			}
+			$out .= '</ul>';
+		}
+		if ( array() !== $conflict['suggestions'] ) {
+			$out .= '<div class="ttl-season-actions">';
+			foreach ( $conflict['suggestions'] as $suggestion ) {
+				$out .= SeasonPage::form(
+					SeasonActions::SUGGESTION,
+					$suggestion['fixture_id'],
+					array(
+						'fixture'   => (string) $suggestion['fixture_id'],
+						'starts_at' => $suggestion['starts_at'],
+					),
+					'ttl-tk-inline'
+				)
+					/* translators: 1: Begegnung, 2: Termin */
+					. '<button type="submit" class="button button-small">' . esc_html( sprintf( __( '%1$s auf %2$s verlegen', 'ttleague' ), $name( $suggestion['fixture_id'] ), Format::datetime( $suggestion['starts_at'] ) ) ) . '</button></form>';
+			}
+			$out .= '</div>';
+		} elseif ( 'tables_unknown' !== $conflict['kind'] ) {
+			$out .= '<p class="ttl-tk-muted">' . esc_html__( 'Kein freier Ausweichtermin in den gewählten Spielwochen.', 'ttleague' ) . '</p>';
+		}
+		return $out . '</div>';
+	}
+
+	/**
+	 * Überschrift einer Art von Hinweisen (ConflictKind).
+	 */
+	private static function hint_label( string $kind ): string {
+		return match ( $kind ) {
+			'club_same_evening' => __( 'Hinweise: mehrere Mannschaften eines Clubs am selben Abend', 'ttleague' ),
+			'tables_unknown'    => __( 'Hinweise: Tischzahl eines Lokals unbekannt', 'ttleague' ),
+			default             => __( 'Weitere Hinweise', 'ttleague' ),
+		};
 	}
 
 	/**

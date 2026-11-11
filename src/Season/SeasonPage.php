@@ -269,6 +269,7 @@ final class SeasonPage {
 			. '.ttl-season .ttl-season-state--open{background:#fcf9e8;color:#614a00}'
 			. '.ttl-season .ttl-season-hard{border-left:4px solid #d63638;padding-left:8px}'
 			. '.ttl-season .ttl-season-soft{border-left:4px solid #dba617;padding-left:8px}'
+			. '.ttl-season .ttl-season-hints{margin:8px 0}.ttl-season .ttl-season-hints>summary{cursor:pointer;font-weight:600}'
 			. '.ttl-season .ttl-season-list{margin:4px 0 12px 18px;list-style:disc}'
 			. '.ttl-season .ttl-season-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}'
 			. '.ttl-season .ttl-season-actions form{margin:0}'
