@@ -72,6 +72,19 @@ final class BlockTest extends EventsTestCase {
 		self::assertStringNotContainsString( 'Freie Plätze', $html );
 	}
 
+	/**
+	 * Ohne gesetzte Frist gilt der Beginn als Anmeldeschluss; das steht auch so da.
+	 */
+	public function test_without_a_deadline_the_start_is_shown_as_the_deadline(): void {
+		$event = $this->event( array( 'deadline' => '' ) );
+		$data  = Events::repository()->find( $event );
+		self::assertNull( $data['deadline'] );
+
+		$html = $this->render( $event );
+
+		self::assertStringContainsString( '<dt>Anmeldeschluss</dt><dd>' . Format::datetime( $data['starts_at'] ) . '</dd>', $html );
+	}
+
 	public function test_a_person_without_function_gets_the_form_but_no_names(): void {
 		$event = $this->full_event();
 		wp_set_current_user( $this->user['nobody'] );

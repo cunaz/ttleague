@@ -211,7 +211,8 @@ final class RegistrationView extends View {
 	}
 
 	/**
-	 * Öffentliche Eckdaten: Termin, Ort, Anmeldeschluss, Anzahl und freie Plätze.
+	 * Öffentliche Eckdaten: Termin, Ort, wirksamer Anmeldeschluss (ohne gesetzte Frist der Beginn),
+	 * Anzahl und freie Plätze.
 	 *
 	 * @param array<string,mixed>                $event  Anlass.
 	 * @param array{registered:int,waitlist:int} $counts Anzahl Teilnehmende und Warteliste.
@@ -231,7 +232,7 @@ final class RegistrationView extends View {
 		$items = array(
 			__( 'Termin', 'ttleague' )         => '<time datetime="' . esc_attr( str_replace( ' ', 'T', substr( $event['starts_at'], 0, 16 ) ) ) . '">' . esc_html( $when ) . '</time>',
 			__( 'Ort', 'ttleague' )            => esc_html( (string) $event['location'] ),
-			__( 'Anmeldeschluss', 'ttleague' ) => esc_html( Format::datetime( $event['deadline'] ) ),
+			__( 'Anmeldeschluss', 'ttleague' ) => esc_html( Format::datetime( Rules::effective_deadline( $event['deadline'], $event['starts_at'] ) ) ),
 			__( 'Angemeldet', 'ttleague' )     => esc_html( $registered ),
 		);
 		if ( null !== $free ) {
