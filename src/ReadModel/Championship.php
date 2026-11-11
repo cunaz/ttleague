@@ -128,11 +128,12 @@ final class Championship {
 	/**
 	 * Tabelle aus Begegnungen; reine Funktion für Tests und andere Lesemodelle.
 	 *
-	 * @param list<int>                  $team_ids Teams der Gruppe.
-	 * @param list<array<string,mixed>> $fixtures Begegnungen der Gruppe.
-	 * @return list<array{rank:int,shared:bool,team_id:int,played:int,wins:int,draws:int,losses:int,games_won:int,games_lost:int,sets_won:int,sets_lost:int,points:int,tiebreak_note:?string}>
+	 * @param list<int>                  $team_ids  Teams der Gruppe.
+	 * @param list<array<string,mixed>> $fixtures  Begegnungen der Gruppe.
+	 * @param list<int>                  $withdrawn Zurückgezogene Teams; sie stehen am Tabellenende (Art. 13.3).
+	 * @return list<array{rank:int,shared:bool,team_id:int,played:int,wins:int,draws:int,losses:int,games_won:int,games_lost:int,sets_won:int,sets_lost:int,points:int,tiebreak_note:?string,withdrawn:bool}>
 	 */
-	public static function standings( array $team_ids, array $fixtures ): array {
+	public static function standings( array $team_ids, array $fixtures, array $withdrawn = array() ): array {
 		$matches = array();
 		foreach ( $fixtures as $fixture ) {
 			if ( ! $fixture['counted'] || null === $fixture['home_team_id'] || null === $fixture['away_team_id'] || $fixture['home_team_id'] === $fixture['away_team_id'] ) {
@@ -150,7 +151,7 @@ final class Championship {
 			);
 		}
 
-		$rows   = ( new StandingsCalculator() )->calculate( $team_ids, $matches );
+		$rows   = ( new StandingsCalculator() )->calculate( $team_ids, $matches, $withdrawn );
 		$counts = array();
 		foreach ( $rows as $row ) {
 			$counts[ $row->rank ] = ( $counts[ $row->rank ] ?? 0 ) + 1;
@@ -172,6 +173,7 @@ final class Championship {
 				'sets_lost'     => $row->sets_lost,
 				'points'        => $row->points(),
 				'tiebreak_note' => $row->tiebreak_note,
+				'withdrawn'     => in_array( $row->team, $withdrawn, true ),
 			);
 		}
 		return $result;
@@ -334,7 +336,11 @@ final class Championship {
 				}
 			}
 			$group['team_ids']  = $team_ids;
-			$group['standings'] = self::standings( $team_ids, $group_fixtures );
+			$group['standings'] = self::standings(
+				$team_ids,
+				$group_fixtures,
+				array_values( array_filter( $team_ids, static fn( int $id ): bool => 'withdrawn' === ( $teams[ $id ]['status'] ?? '' ) ) )
+			);
 		}
 		unset( $group );
 

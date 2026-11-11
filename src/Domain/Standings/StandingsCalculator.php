@@ -20,11 +20,13 @@ final class StandingsCalculator {
 	private const CRITERIA = array( 'h2h_games', 'h2h_sets', 'h2h_points', 'games', 'sets', 'points' );
 
 	/**
-	 * @param list<int|string>   $teams   Alle Teams der Gruppe, auch ohne Begegnung.
-	 * @param list<MatchSummary> $matches Gewertete Begegnungen.
+	 * @param list<int|string>   $teams     Alle Teams der Gruppe, auch ohne Begegnung.
+	 * @param list<MatchSummary> $matches   Gewertete Begegnungen.
+	 * @param list<int|string>   $withdrawn Zurückgezogene Teams (Art. 13.3): Sie stehen am Tabellenende,
+	 *                                      hinter allen anderen, unter sich nach denselben Kriterien.
 	 * @return list<StandingsRow> Sortiert, mit Rang.
 	 */
-	public function calculate( array $teams, array $matches ): array {
+	public function calculate( array $teams, array $matches, array $withdrawn = array() ): array {
 		/** @var array<int|string,StandingsRow> $rows */
 		$rows = array();
 		foreach ( $teams as $team ) {
@@ -39,16 +41,19 @@ final class StandingsCalculator {
 			}
 		}
 
-		$by_points = array();
-		foreach ( $rows as $row ) {
-			$by_points[ $row->points() ][] = $row;
-		}
-		krsort( $by_points, SORT_NUMERIC );
-
 		$ordered = array();
-		foreach ( $by_points as $group ) {
-			foreach ( $this->split( $group, $matches ) as $sub_group ) {
-				$ordered[] = $sub_group;
+		foreach ( array( false, true ) as $is_withdrawn ) {
+			$by_points = array();
+			foreach ( $rows as $row ) {
+				if ( in_array( $row->team, $withdrawn, true ) === $is_withdrawn ) {
+					$by_points[ $row->points() ][] = $row;
+				}
+			}
+			krsort( $by_points, SORT_NUMERIC );
+			foreach ( $by_points as $group ) {
+				foreach ( $this->split( $group, $matches ) as $sub_group ) {
+					$ordered[] = $sub_group;
+				}
 			}
 		}
 
