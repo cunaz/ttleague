@@ -32,9 +32,10 @@ final class EntryPage {
 	 * @param array{login:string,my_area:string,report:string,rest:string} $links Adressen (Anmeldung mit Rücksprung, Mein Bereich, Matchreport, REST-Basis der Begegnung).
 	 * @param (callable(int):string)|null                           $photo_url  Geschützte Adresse des Fotos einer Begegnung (Results::photo_url).
 	 * @param (callable(int):string)|null                           $contacts   Fertiges HTML des Abschnitts «Kontakt» einer Begegnung (ContactBox::fixture_section); prüft das Recht selbst.
+	 * @param (callable(int):string)|null                           $sections   Fertiges HTML weiterer Abschnitte der Module direkt unter dem Kopf (z. B. «Termin» der Verschiebung); prüfen ihr Recht selbst.
 	 * @return array{html:string,state:array<string,mixed>|null,config:array<string,mixed>|null}
 	 */
-	public function build( int $fixture_id, ?Actor $actor, array $links, ?callable $photo_url = null, ?callable $contacts = null ): array {
+	public function build( int $fixture_id, ?Actor $actor, array $links, ?callable $photo_url = null, ?callable $contacts = null, ?callable $sections = null ): array {
 		if ( null === $actor ) {
 			return self::only( EntryMarkup::logged_out( $links['login'] ) );
 		}
@@ -122,6 +123,7 @@ final class EntryPage {
 				'decisions' => $decisions,
 				// Nur hier, also nur für Personen mit Rolle für diese Begegnung.
 				'contacts'  => null === $contacts ? '' : $contacts( $fixture_id ),
+				'sections'  => null === $sections ? '' : $sections( $fixture_id ),
 			),
 			$this->timezone
 		);

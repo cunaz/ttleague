@@ -27,7 +27,7 @@ final class EntryMarkup {
 	 * @param array<string,mixed> $entry  Antwort von ResultService::entry().
 	 * @param array<string,mixed> $data   Daten aus EntryForm::data().
 	 * @param array<string,mixed> $state  Startzustand (form, view, message, photo …).
-	 * @param array<string,mixed> $page   report (Adresse des Matchreports), login, decisions (erlaubte Entscheide der TK), contacts (fertiges HTML des Abschnitts «Kontakt» oder leer).
+	 * @param array<string,mixed> $page   report (Adresse des Matchreports), login, decisions (erlaubte Entscheide der TK), contacts (fertiges HTML des Abschnitts «Kontakt» oder leer), sections (fertiges HTML der Abschnitte der Module unter dem Kopf oder leer).
 	 * @param \DateTimeZone       $timezone Zeitzone der Website (für Zeitstempel in UTC).
 	 */
 	public function __construct(
@@ -46,6 +46,8 @@ final class EntryMarkup {
 		$out = '<div class="ttl-entry" data-wp-interactive="' . esc_attr( self::NS ) . '" data-wp-init="callbacks.init" data-wp-watch="callbacks.persist">'
 			. $this->head()
 			. '<noscript><p class="ttl-notice ttl-notice--warning">' . esc_html__( 'Bitte JavaScript aktivieren: Erfassen, Bestätigen und Entscheide laufen über die Schnittstelle der Website.', 'ttleague' ) . '</p></noscript>'
+			// Abschnitte der Module (z. B. ein offener Antrag auf Verschiebung): bereits escaptes HTML.
+			. (string) ( $this->page['sections'] ?? '' )
 			. $this->status()
 			. $this->warnings();
 		if ( $this->has_result() ) {
@@ -734,6 +736,7 @@ final class EntryMarkup {
 			'forfeit'   => __( 'Forfait gewertet', 'ttleague' ),
 			'reset'     => __( 'Zurückgesetzt', 'ttleague' ),
 			'photo'     => __( 'Foto hochgeladen', 'ttleague' ),
+			'postponed' => __( 'Termin verschoben', 'ttleague' ),
 		);
 		$actions = array(
 			'finalize' => __( 'abgeschlossen', 'ttleague' ),
@@ -742,6 +745,10 @@ final class EntryMarkup {
 		$items   = '';
 		foreach ( $events as $event ) {
 			$label = $labels[ $event['type'] ] ?? (string) $event['type'];
+			if ( 'postponed' === $event['type'] && 'propose' === $event['action'] ) {
+				// Erster Termin einer Begegnung (Terminvorschlag), keine Verschiebung.
+				$label = __( 'Termin vereinbart', 'ttleague' );
+			}
 			if ( 'decided' === $event['type'] && isset( $actions[ (string) $event['action'] ] ) ) {
 				$label .= ': ' . $actions[ (string) $event['action'] ];
 			}
