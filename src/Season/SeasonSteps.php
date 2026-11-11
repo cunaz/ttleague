@@ -78,8 +78,8 @@ final class SeasonSteps {
 	 */
 	private static function create( ?array $planned, ?array $active ): string {
 		if ( null === $planned ) {
-			if ( null !== $active ) {
-				$next = SeasonDates::following( (string) $active['start_date'], (string) $active['end_date'] );
+			$next = SeasonAdmin::setup()->preview();
+			if ( null !== $active && null !== $next ) {
 				return '<p>' . esc_html(
 					sprintf(
 						/* translators: 1: aktive Saison, 2: neue Saison, 3: Zeitraum */

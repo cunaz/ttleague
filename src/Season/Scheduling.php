@@ -263,7 +263,7 @@ final class Scheduling {
 	 *   hints:int,
 	 *   error:string|null,
 	 *   unscheduled:int,
-	 *   venues:array<int,array{id:int,name:string,club_id:int,active:bool}>
+	 *   venues:array<int,array{id:int,name:string,club_id:int,active:bool,weekday:int|null,tables:int|null}>
 	 * }
 	 * @throws SeasonException Wenn es die Saison nicht gibt.
 	 */
@@ -646,7 +646,6 @@ final class Scheduling {
 	 *   clubs:array<int,string>,
 	 *   venues:array<int,array{id:int,name:string,club_id:int,active:bool,weekday:int|null,tables:int|null}>,
 	 *   schedule_teams:array<int,ScheduleTeam>,
-	 *   team_groups:array<int,int>,
 	 *   missing:list<array{field:string,message:string}>,
 	 *   input:ScheduleInput|null
 	 * }
@@ -704,7 +703,6 @@ final class Scheduling {
 		$team_names     = array();
 		$clubs          = array();
 		$schedule_teams = array();
-		$team_groups    = array();
 		foreach ( $this->db->get_results(
 			"SELECT t.id, t.name, t.club_id, t.competition_id, t.home_venue_id, t.default_start_time, t.status, c.name AS club
 			FROM {$this->db->table( 'team' )} t
@@ -721,7 +719,6 @@ final class Scheduling {
 				continue;
 			}
 			$groups[ $group_id ]['team_ids'][] = $id;
-			$team_groups[ $id ]                = $group_id;
 			$venue                             = null === $row['home_venue_id'] ? null : ( $venues[ (int) $row['home_venue_id'] ] ?? null );
 			$start                             = null === $row['default_start_time'] ? '' : substr( (string) $row['default_start_time'], 0, 5 );
 			$complete                          = true;
@@ -758,7 +755,6 @@ final class Scheduling {
 			'clubs'          => $clubs,
 			'venues'         => $venues,
 			'schedule_teams' => $schedule_teams,
-			'team_groups'    => $team_groups,
 			'missing'        => $missing,
 			'input'          => null,
 		);
