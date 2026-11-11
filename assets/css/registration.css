@@ -1,0 +1,100 @@
+/**
+ * ttleague – Abschnitt «Meldung» in «Mein Bereich» (nur für TK-Chefs geladen).
+ *
+ * Baut auf frontend.css und club.css auf: Variablen (--ttl-*), .ttl-table--cards, .ttl-form,
+ * .ttl-field, .ttl-button, .ttl-badge, .ttl-details, .ttl-notice.
+ */
+
+.ttl-reg__season {
+	margin-block: calc(var(--ttl-gap) * 1.5) 0.5rem;
+	padding-block-start: var(--ttl-gap);
+	border-block-start: 1px solid var(--ttl-line);
+}
+
+.ttl-reg h5 {
+	margin-block: var(--ttl-gap) 0.4rem;
+}
+
+.ttl-reg__status {
+	margin-block: 0 0.75rem;
+}
+
+.ttl .ttl-reg__form {
+	gap: 0.6rem;
+	max-width: 24rem;
+	margin-block: 0.5rem 1rem;
+}
+
+.ttl .ttl-reg__inline {
+	display: inline-block;
+	margin: 0 0.5rem 0.5rem 0;
+}
+
+.ttl .ttl-reg__details {
+	margin-block: 0.5rem;
+}
+
+.ttl-reg__actions {
+	min-width: 9rem;
+}
+
+.ttl-reg__team {
+	margin-block: 0.75rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--ttl-line);
+	border-radius: var(--ttl-radius, 6px);
+}
+
+.ttl-reg__team-title {
+	margin: 0 0 0.5rem;
+	font-size: 1rem;
+}
+
+.ttl-reg__errors {
+	margin: 0 0 0.75rem;
+	padding-inline-start: 1.2rem;
+	color: var(--ttl-loss);
+	font-size: var(--ttl-small);
+}
+
+.ttl-reg__summary {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 0.2rem 1rem;
+	margin: 0 0 0.5rem;
+}
+
+.ttl-reg__summary dt {
+	color: var(--ttl-muted);
+}
+
+.ttl-reg__summary dd {
+	margin: 0;
+}
+
+.ttl-reg__closures {
+	margin: 0 0 0.5rem;
+	padding: 0;
+	list-style: none;
+}
+
+.ttl-reg__closures li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 1rem;
+	padding-block: 0.25rem;
+}
+
+.ttl-reg .ttl-notice p {
+	margin: 0;
+}
+
+.ttl-reg .ttl-notice ul {
+	margin: 0.4rem 0 0;
+	padding-inline-start: 1.2rem;
+}
+
+.ttl-reg .ttl-notice {
+	margin-block: 0 var(--ttl-gap);
+}
