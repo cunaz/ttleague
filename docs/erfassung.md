@@ -253,7 +253,7 @@ Der `ResultService` löst WordPress-Aktionen aus; Benachrichtigungen, Dashboard 
 
 `ttleague_result_confirmed` kommt auch, wenn die TK über `decision` mit `action: confirm` bestätigt (`$by_tk = true`).
 
-Nach jeder Änderung an Resultat oder Status: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten). Beides läuft vor den Aktionen. Ausnahme ist das Foto: Es erscheint nur mit Rechten, nie auf öffentlichen Seiten, und ändert keine Wertung. Die Aktionen kommen erst nach dem Speichern; wirft ein Listener eine Ausnahme, landet sie im Fehlerprotokoll (`ttleague: Fehler in …`), und die Antwort bleibt erfolgreich. So wiederholt niemand eine gespeicherte Aktion.
+Nach jeder Änderung an Resultat oder Status: `DataVersion::bump()` und eine entprellte Neuberechnung der Wertungszahl (`ttleague_rating_recalc`, einmalig geplant in 2 Minuten). Beides läuft vor den Aktionen. Der Lauf selbst hält eine benannte Datenbanksperre (`Rating\RecalcLock`), damit nie zwei Läufe gleichzeitig rechnen und die Klassierung auf einen laufenden warten kann (`docs/klassierung.md`); ist die Sperre belegt, plant er sich neu ein. Ausnahme ist das Foto: Es erscheint nur mit Rechten, nie auf öffentlichen Seiten, und ändert keine Wertung. Die Aktionen kommen erst nach dem Speichern; wirft ein Listener eine Ausnahme, landet sie im Fehlerprotokoll (`ttleague: Fehler in …`), und die Antwort bleibt erfolgreich. So wiederholt niemand eine gespeicherte Aktion.
 
 ## Benachrichtigungen und Fristen
 
