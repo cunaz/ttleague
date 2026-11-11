@@ -153,7 +153,8 @@ final class Feeds {
 
 	/**
 	 * Begegnungen aller Teams und Cup-Mannschaften, in denen der Spieler Stammspieler, gebunden,
-	 * gemeldet oder eingesetzt ist, und seine Ranglistenturnier-Gruppen mit Anspielzeit.
+	 * gemeldet oder eingesetzt ist, und seine Ranglistenturnier-Gruppen mit Anspielzeit. Gruppen
+	 * einer Runde in Planung (Vorschlag der TK, Status «planned») gehören nicht dazu.
 	 *
 	 * @return list<array<string,mixed>>
 	 */
@@ -212,7 +213,7 @@ final class Feeds {
 			JOIN {$this->db->table( 'competition' )} co ON co.id = rr.competition_id
 			LEFT JOIN {$this->db->table( 'club' )} c ON c.id = rg.host_club_id
 			LEFT JOIN {$this->db->table( 'venue' )} v ON v.id = rg.venue_id
-			WHERE gp.player_id = %d AND co.season_id = %d AND co.type = 'RL' AND rg.start_at IS NOT NULL",
+			WHERE gp.player_id = %d AND co.season_id = %d AND co.type = 'RL' AND rg.start_at IS NOT NULL AND rr.status <> 'planned'",
 			array( $player_id, $season_id )
 		) as $row ) {
 			$rows[] = array(

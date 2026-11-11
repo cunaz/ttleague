@@ -144,7 +144,9 @@ final class RankingView extends View {
 		if ( ! $group['has_games'] ) {
 			$items = array();
 			foreach ( $group['players'] as $member ) {
-				$items[] = '<li>' . $this->player_link( $member['player'] ) . ' ' . Html::classification( $member['classification'] ) . ( null === $member['club_short'] ? '' : ' <span class="ttl-muted">' . esc_html( (string) $member['club_short'] ) . '</span>' ) . '</li>';
+				// Im Aufgebot einer freigegebenen Runde ist sichtbar, wer sich abgemeldet hat.
+				$absent  = 'published' === ( $round['status'] ?? '' ) && 'absent' === $member['status'] ? ' ' . Html::badge( __( 'abgemeldet', 'ttleague' ), 'muted' ) : '';
+				$items[] = '<li>' . $this->player_link( $member['player'] ) . ' ' . Html::classification( $member['classification'] ) . ( null === $member['club_short'] ? '' : ' <span class="ttl-muted">' . esc_html( (string) $member['club_short'] ) . '</span>' ) . $absent . '</li>';
 			}
 			$label = $round['is_final'] ? __( 'Finalisten', 'ttleague' ) : __( 'Aufgebot', 'ttleague' );
 			return $out . '<p class="ttl-card__label">' . esc_html( $label ) . '</p>' . ( array() === $items ? Html::notice( __( 'Noch niemand eingeteilt.', 'ttleague' ) ) : '<ul class="ttl-roster">' . implode( '', $items ) . '</ul>' ) . '</article>';

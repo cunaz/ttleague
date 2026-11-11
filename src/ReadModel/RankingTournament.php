@@ -25,6 +25,10 @@ use TTLeague\ReadModel\Support\Sql;
  * fehlen sie, gelten die mit GroupRanking berechneten Werte. Die Gesamtrangliste addiert
  * die gespeicherten Punkte der Runden 1 bis 3 pro Kategorie (float) und ordnet mit
  * FinalQualification.
+ *
+ * Runden mit Status «planned» sind ein Vorschlag der TK und fehlen hier ganz: weder die Runde
+ * noch ihre Gruppen, Personen oder Partien erscheinen. Freigegebene Runden («published»)
+ * zeigen das Aufgebot, abgeschlossene und importierte («closed») das Resultat.
  */
 final class RankingTournament {
 
@@ -58,13 +62,14 @@ final class RankingTournament {
 
 		$rounds = array();
 		foreach ( $this->db->get_results(
-			"SELECT id, round_no, date_from, date_to, is_final FROM {$this->db->table( 'rl_round' )} WHERE competition_id = %d ORDER BY round_no",
+			"SELECT id, round_no, date_from, date_to, is_final, status FROM {$this->db->table( 'rl_round' )} WHERE competition_id = %d AND status <> 'planned' ORDER BY round_no",
 			array( $competition_id )
 		) as $row ) {
 			$rounds[ (int) $row['id'] ] = array(
 				'id'         => (int) $row['id'],
 				'round_no'   => (int) $row['round_no'],
 				'is_final'   => '1' === (string) $row['is_final'],
+				'status'     => (string) $row['status'],
 				'date_from'  => $row['date_from'],
 				'date_to'    => $row['date_to'],
 				'categories' => array(),
@@ -79,7 +84,7 @@ final class RankingTournament {
 			JOIN {$this->db->table( 'rl_round' )} rr ON rr.id = rg.rl_round_id
 			LEFT JOIN {$this->db->table( 'club' )} c ON c.id = rg.host_club_id
 			LEFT JOIN {$this->db->table( 'venue' )} v ON v.id = rg.venue_id
-			WHERE rr.competition_id = %d
+			WHERE rr.competition_id = %d AND rr.status <> 'planned'
 			ORDER BY rr.round_no, rg.category, rg.group_no",
 			array( $competition_id )
 		) as $row ) {
@@ -119,7 +124,7 @@ final class RankingTournament {
 			JOIN {$this->db->table( 'person' )} pe ON pe.id = p.person_id
 			LEFT JOIN {$this->db->table( 'player_season' )} ps ON ps.player_id = gp.player_id AND ps.season_id = %d
 			LEFT JOIN {$this->db->table( 'club' )} c ON c.id = ps.club_id
-			WHERE rr.competition_id = %d
+			WHERE rr.competition_id = %d AND rr.status <> 'planned'
 			ORDER BY gp.rl_group_id, gp.rank_no IS NULL, gp.rank_no, pe.last_name",
 			array( $season_id, $competition_id )
 		) as $row ) {
@@ -140,7 +145,7 @@ final class RankingTournament {
 			FROM {$this->db->table( 'game' )} g
 			JOIN {$this->db->table( 'rl_group' )} rg ON rg.id = g.rl_group_id
 			JOIN {$this->db->table( 'rl_round' )} rr ON rr.id = rg.rl_round_id
-			WHERE rr.competition_id = %d
+			WHERE rr.competition_id = %d AND rr.status <> 'planned'
 			ORDER BY g.rl_group_id, g.sequence, g.id",
 			array( $competition_id )
 		) as $row ) {
