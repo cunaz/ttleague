@@ -336,13 +336,17 @@ final class EventNotificationsTest extends EventTestCase {
 	}
 
 	/**
-	 * Nachgeholt wird sieben Tage lang; massgebend ist der Zeitpunkt der Absage im Änderungsprotokoll.
+	 * Nachgeholt wird sieben Tage lang; massgebend ist der Zeitpunkt der Absage im
+	 * Änderungsprotokoll. Die älteste Absage steht zuerst.
 	 */
-	public function test_catching_up_covers_events_cancelled_in_the_last_seven_days(): void {
+	public function test_catching_up_covers_events_cancelled_in_the_last_seven_days_oldest_first(): void {
 		$recent = $this->event();
 		$border = $this->event( array( 'title' => 'Genau sieben Tage' ) );
 		$old    = $this->event( array( 'title' => 'Älter' ) );
 		$open   = $this->event( array( 'title' => 'Offen' ) );
+		foreach ( array( $recent, $border, $old, $open ) as $event ) {
+			$this->register_all( $event, array( 'h1' ) );
+		}
 		foreach ( array( $recent, $border, $old ) as $event ) {
 			$this->events->cancel( $event, $this->actor['tk'] );
 		}
@@ -352,10 +356,41 @@ final class EventNotificationsTest extends EventTestCase {
 		$at( $border, '2026-11-03 12:00:00' );
 		$at( $old, '2026-11-03 11:59:59' );
 
-		self::assertSame( array( $recent, $border ), $this->notifications->recently_cancelled( $this->clock->now() ) );
-		self::assertNotContains( $open, $this->notifications->recently_cancelled( $this->clock->now() ) );
+		$now = new \DateTimeImmutable( '2026-11-10 12:00:00', new \DateTimeZone( 'UTC' ) );
+
+		self::assertSame( array( $border, $recent ), $this->notifications->cancellations_to_catch_up( $now ) );
 		self::assertSame( $this->actor['tk']->user_id, $this->events->repository()->cancelled_by( $recent ) );
 		self::assertNull( $this->events->repository()->cancelled_by( $open ) );
+	}
+
+	/**
+	 * Nachgeholt wird nur, wo noch etwas aussteht: nicht nach vollständigem Versand, nicht für das
+	 * absagende Konto, nicht für inaktive Personen. Eine gescheiterte Zustellung steht weiter aus.
+	 */
+	public function test_catching_up_covers_only_events_with_pending_notices(): void {
+		$done      = $this->event();
+		$failed    = $this->event( array( 'title' => 'Zustellung gescheitert' ) );
+		$canceller = $this->event( array( 'title' => 'Nur das absagende Konto' ) );
+		$inactive  = $this->event( array( 'title' => 'Nur eine inaktive Person' ) );
+		$empty     = $this->event( array( 'title' => 'Niemand angemeldet' ) );
+		$this->register_all( $done, array( 'h1', 'h2' ) );
+		$this->register_all( $failed, array( 'h1', 'h2' ) );
+		$this->register_all( $canceller, array( 'tk' ) );
+		$this->register_all( $inactive, array( 'a1' ) );
+		$this->db->update( 'person', array( 'status' => 'inactive' ), array( 'id' => $this->person['a1'] ) );
+		foreach ( array( $done, $failed, $canceller, $inactive, $empty ) as $event ) {
+			$this->events->cancel( $event, $this->actor['tk'] );
+		}
+		// audit_log schreibt die echte Zeit; die Uhr des Tests steht fest.
+		$this->db->query( "UPDATE {$this->db->table( 'audit_log' )} SET created_at = %s WHERE action = 'cancelled'", array( '2026-11-10 11:00:00' ) );
+		$now = $this->clock->now();
+		self::assertSame( array( $done, $failed ), $this->notifications->cancellations_to_catch_up( $now ), 'vor dem Versand stehen beide aus' );
+
+		$this->notifications->send_cancellations( $done );
+		$this->email->fail = true;
+		$this->notifications->send_cancellations( $failed );
+
+		self::assertSame( array( $failed ), $this->notifications->cancellations_to_catch_up( $now ) );
 	}
 
 	public function test_no_message_is_sent_twice_for_the_same_registration(): void {

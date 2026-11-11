@@ -34,6 +34,9 @@ final class EventNotifications implements EventListener {
 	/** So viele Tage nach der Absage holt der stündliche Lauf ausstehende Mitteilungen nach. */
 	public const CANCEL_CATCH_UP_DAYS = 7;
 
+	/** Für höchstens so viele Anlässe plant ein stündlicher Lauf den Versand erneut ein. */
+	public const CANCEL_CATCH_UP_EVENTS = 10;
+
 	/** @var callable(int):?string */
 	private $user_name;
 
@@ -132,14 +135,19 @@ final class EventNotifications implements EventListener {
 	}
 
 	/**
-	 * Abgesagte Anlässe, deren Absage höchstens CANCEL_CATCH_UP_DAYS Tage zurückliegt: Für sie
-	 * holt der stündliche Lauf ausstehende Mitteilungen nach.
+	 * Abgesagte Anlässe mit ausstehenden Absagemitteilungen, deren Absage höchstens
+	 * CANCEL_CATCH_UP_DAYS Tage zurückliegt, die älteste Absage zuerst: Für sie plant der
+	 * stündliche Lauf den Versand erneut ein.
 	 *
 	 * @param \DateTimeImmutable $now Jetzt (UTC).
 	 * @return list<int>
 	 */
-	public function recently_cancelled( \DateTimeImmutable $now ): array {
-		return $this->repo->cancelled_since( $now->modify( '-' . self::CANCEL_CATCH_UP_DAYS . ' days' )->format( 'Y-m-d H:i:s' ) );
+	public function cancellations_to_catch_up( \DateTimeImmutable $now ): array {
+		return $this->repo->cancelled_with_pending_notices(
+			$now->modify( '-' . self::CANCEL_CATCH_UP_DAYS . ' days' )->format( 'Y-m-d H:i:s' ),
+			EventMessages::CANCELLED,
+			EventMessages::REF_EVENT
+		);
 	}
 
 	public function registered( int $event_id, int $registration_id, int $person_id, string $status, int $user_id ): void {

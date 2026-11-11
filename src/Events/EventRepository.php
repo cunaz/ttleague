@@ -251,20 +251,36 @@ final class EventRepository {
 	}
 
 	/**
-	 * Abgesagte Anlässe, deren Absage (Änderungsprotokoll, UTC) nicht vor $since liegt.
+	 * Abgesagte Anlässe mit ausstehenden Nachrichten dieser Art, deren Absage (Änderungsprotokoll,
+	 * UTC) nicht vor $since liegt; die älteste Absage zuerst. Ausstehend heisst: Eine angemeldete,
+	 * aktive Person, die nicht das absagende Konto ist, hat noch keine bestätigt versendete
+	 * Nachricht. Wer keinen Kanal hat (keine Adresse, abgewählt), zählt hier mit: Das zeigt erst
+	 * der Versandschritt, der für solche Personen nichts versendet.
 	 *
 	 * @param string $since Zeitpunkt in UTC «Y-m-d H:i:s».
+	 * @param string $kind  Art der Nachricht im Versandprotokoll (notification_log.event_type).
 	 * @return list<int>
 	 */
-	public function cancelled_since( string $since ): array {
+	public function cancelled_with_pending_notices( string $since, string $kind, string $ref_type ): array {
 		return array_map(
 			'intval',
 			$this->db->get_col(
-				"SELECT DISTINCT e.id FROM {$this->db->table( 'event' )} e
+				"SELECT e.id FROM {$this->db->table( 'event' )} e
 				JOIN {$this->db->table( 'audit_log' )} a ON a.entity = 'event' AND a.entity_id = e.id AND a.action = 'cancelled'
 				WHERE e.status = %s AND a.created_at >= %s
-				ORDER BY e.id",
-				array( RegistrationRules::CANCELLED, $since )
+					AND EXISTS (
+						SELECT 1 FROM {$this->db->table( 'registration' )} r
+						JOIN {$this->db->table( 'person' )} pe ON pe.id = r.person_id
+						WHERE r.event_id = e.id AND pe.status = 'active'
+							AND ( pe.user_id IS NULL OR a.user_id IS NULL OR pe.user_id <> a.user_id )
+							AND NOT EXISTS (
+								SELECT 1 FROM {$this->db->table( 'notification_log' )} l
+								WHERE l.person_id = r.person_id AND l.event_type = %s AND l.ref_type = %s AND l.ref_id = e.id AND l.status = %s
+							)
+					)
+				GROUP BY e.id
+				ORDER BY MIN( a.created_at ), e.id",
+				array( RegistrationRules::CANCELLED, $since, $kind, $ref_type, NotificationLog::SENT )
 			)
 		);
 	}

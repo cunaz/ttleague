@@ -167,17 +167,32 @@ final class CancellationTest extends EventsTestCase {
 		Events::catch_up_cancellations();
 
 		self::assertSame( array( 'h1@example.invalid' => array( 'Abgesagt: Plauschturnier' ) ), $this->subjects() );
+		self::assertSame( array(), $this->scheduled(), 'für das absagende Konto steht nichts aus' );
 	}
 
-	public function test_the_hourly_run_catches_up_when_the_single_event_is_lost(): void {
-		$event = $this->event();
-		$other = $this->event( array( 'title' => 'Nicht abgesagt' ) );
-		$this->register_all( $event, array( 'h1', 'a1' ) );
-		$this->register_all( $other, array( 'h3' ) );
-		$this->cancel( $event );
+	/**
+	 * Das einmalige Ereignis ging verloren. Der stündliche Lauf versendet selbst nichts, er plant
+	 * den Versandschritt neu ein; dieser versendet dann.
+	 */
+	public function test_the_hourly_run_sends_nothing_and_schedules_one_step_per_event(): void {
+		$first  = $this->event();
+		$second = $this->event( array( 'title' => 'Training' ) );
+		$open   = $this->event( array( 'title' => 'Nicht abgesagt' ) );
+		$this->register_all( $first, array( 'h1', 'a1' ) );
+		$this->register_all( $second, array( 'h3', 'a3', 'nobody' ) );
+		$this->register_all( $open, array( 'h3' ) );
+		$this->cancel( $first );
+		$this->cancel( $second );
 		wp_unschedule_hook( Events::CANCELLATION_HOOK );
+		$this->db->query( "UPDATE {$this->db->table( 'audit_log' )} SET created_at = %s WHERE entity = 'event' AND entity_id = %d AND action = 'cancelled'", array( gmdate( 'Y-m-d H:i:s', time() - HOUR_IN_SECONDS ), $first ) );
 
 		Events::catch_up_cancellations();
+
+		self::assertSame( array(), $this->mails, 'der stündliche Lauf versendet selbst nichts' );
+		self::assertSame( array( array( $first, 0 ), array( $second, 0 ) ), $this->scheduled(), 'ein Schritt pro Anlass, die ältere Absage zuerst' );
+		self::assertSame( MINUTE_IN_SECONDS, wp_next_scheduled( Events::CANCELLATION_HOOK, array( $second, 0 ) ) - wp_next_scheduled( Events::CANCELLATION_HOOK, array( $first, 0 ) ), 'im Abstand von einer Minute' );
+
+		$this->run_next();
 
 		self::assertSame(
 			array(
@@ -187,8 +202,67 @@ final class CancellationTest extends EventsTestCase {
 			$this->subjects()
 		);
 
+		$this->run_next();
 		Events::catch_up_cancellations();
-		self::assertCount( 2, $this->mails, 'der nächste stündliche Lauf versendet nichts doppelt' );
+
+		self::assertCount( 5, $this->mails );
+		self::assertSame( array(), $this->scheduled(), 'nach vollständigem Versand plant der nächste Lauf nichts mehr' );
+	}
+
+	/**
+	 * Wartet für den Anlass schon ein Schritt, plant der stündliche Lauf keinen zweiten: weder
+	 * neben dem ersten Schritt noch neben einem Folgeschritt mit anderem Startpunkt.
+	 */
+	public function test_the_hourly_run_does_not_schedule_a_second_step_for_an_event(): void {
+		$event = $this->event();
+		$this->register_all( $event, array( 'h1', 'a1' ) );
+		$this->cancel( $event );
+		self::assertSame( array( array( $event, 0 ) ), $this->scheduled() );
+
+		Events::catch_up_cancellations();
+
+		self::assertSame( array( array( $event, 0 ) ), $this->scheduled(), 'der Schritt nach der Absage wartet noch' );
+
+		wp_unschedule_hook( Events::CANCELLATION_HOOK );
+		wp_schedule_single_event( time() + 30, Events::CANCELLATION_HOOK, array( $event, $this->person['h1'] ) );
+
+		Events::catch_up_cancellations();
+
+		self::assertSame( array( array( $event, $this->person['h1'] ) ), $this->scheduled(), 'ein Folgeschritt wartet: kein Durchgang von vorn daneben' );
+		self::assertTrue( Events::cancellations_scheduled( $event ) );
+		self::assertFalse( Events::cancellations_scheduled( $event + 1 ) );
+	}
+
+	/**
+	 * Zwei Anlässe mehr als die Obergrenze: Der erste Lauf plant die ältesten ein, der nächste die
+	 * übrigen (die schon eingeplanten zählen dann nicht mit).
+	 */
+	public function test_the_hourly_run_schedules_a_limited_number_of_events_oldest_first(): void {
+		$limit  = EventNotifications::CANCEL_CATCH_UP_EVENTS;
+		$events = array();
+		for ( $i = 0; $i < $limit + 2; $i++ ) {
+			$event = $this->event( array( 'title' => 'Anlass ' . $i ) );
+			$this->register_all( $event, array( 'h1' ) );
+			$this->cancel( $event );
+			// Die zuletzt abgesagten Anlässe sind die ältesten Absagen: Die Reihenfolge folgt nicht der ID.
+			$this->db->query(
+				"UPDATE {$this->db->table( 'audit_log' )} SET created_at = %s WHERE entity = 'event' AND entity_id = %d AND action = 'cancelled'",
+				array( gmdate( 'Y-m-d H:i:s', time() - ( $i + 1 ) * HOUR_IN_SECONDS ), $event )
+			);
+			$events[] = $event;
+		}
+		wp_unschedule_hook( Events::CANCELLATION_HOOK );
+		$oldest_first = array_reverse( $events );
+
+		Events::catch_up_cancellations();
+
+		self::assertSame( array_slice( $oldest_first, 0, $limit ), array_column( $this->scheduled(), 0 ), 'höchstens die Obergrenze, die ältesten Absagen zuerst' );
+		self::assertSame( array(), $this->mails );
+
+		Events::catch_up_cancellations();
+
+		self::assertCount( $limit + 2, $this->scheduled(), 'der nächste Lauf plant die übrigen ein' );
+		self::assertEqualsCanonicalizing( $events, array_column( $this->scheduled(), 0 ) );
 	}
 
 	public function test_the_hourly_run_leaves_cancellations_older_than_seven_days(): void {
@@ -203,10 +277,11 @@ final class CancellationTest extends EventsTestCase {
 
 		Events::catch_up_cancellations();
 
+		self::assertSame( array(), $this->scheduled() );
 		self::assertSame( array(), $this->mails );
 	}
 
-	public function test_a_failing_mail_is_retried_by_the_hourly_run_and_does_not_stop_the_others(): void {
+	public function test_a_failing_mail_is_retried_after_the_hourly_run_and_does_not_stop_the_others(): void {
 		$event = $this->event();
 		$this->register_all( $event, array( 'h1', 'a1' ) );
 		$this->cancel( $event );
@@ -217,11 +292,68 @@ final class CancellationTest extends EventsTestCase {
 
 		self::assertSame( '1', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'notification_log' )} WHERE event_type = 'event_cancelled' AND status = 'sent' AND person_id = %d", array( $this->person['a1'] ) ), 'die andere Person hat die Mitteilung' );
 		self::assertSame( '0', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'notification_log' )} WHERE event_type = 'event_cancelled' AND person_id = %d", array( $this->person['h1'] ) ) );
+		self::assertSame( array(), $this->scheduled() );
 
 		remove_filter( 'pre_wp_mail', $fail, 10 );
 		$this->mails = array();
 		Events::catch_up_cancellations();
+		self::assertSame( array( array( $event, 0 ) ), $this->scheduled(), 'die gescheiterte Zustellung steht aus' );
+		$this->run_next();
 
 		self::assertSame( array( 'h1@example.invalid' => array( 'Abgesagt: Plauschturnier' ) ), $this->subjects(), 'nachgeholt, ohne die andere Person erneut anzuschreiben' );
+	}
+
+	/**
+	 * Das Einplanen scheitert (hier über den Filter von WordPress): Der Fehler wird gemeldet, die
+	 * Absage und die Rückmeldung an die TK bleiben; der stündliche Lauf plant später neu ein.
+	 */
+	public function test_a_failed_scheduling_is_reported(): void {
+		$event  = $this->event();
+		$errors = array();
+		$this->register_all( $event, array( 'h1' ) );
+		add_action(
+			'ttleague_notification_error',
+			static function ( \Throwable $error, string $context ) use ( &$errors ): void {
+				$errors[] = $error->getMessage() . ' | ' . $context;
+			},
+			10,
+			2
+		);
+		$refuse = static fn() => new \WP_Error( 'kein_cron', 'Cron ist gesperrt.' );
+		add_filter( 'pre_schedule_event', $refuse );
+
+		$log = $this->error_log_of( fn() => $this->cancel( $event ) );
+
+		self::assertSame( 'cancelled', $this->db->get_var( "SELECT status FROM {$this->db->table( 'event' )} WHERE id = %d", array( $event ) ) );
+		self::assertSame( array(), $this->scheduled() );
+		self::assertSame( array( 'Versand der Absagemitteilungen liess sich nicht einplanen (kein_cron: Cron ist gesperrt.). | Anlass ' . $event ), $errors );
+		self::assertStringContainsString( 'Versand der Absagemitteilungen liess sich nicht einplanen', $log );
+		self::assertSame( 'Anlass abgesagt. Die Mitteilung an 1 angemeldete Person wird in den nächsten Minuten versendet.', Flash::take( Tk::FLASH, $this->user['tk'] )['message'] );
+
+		$errors = array();
+		$this->error_log_of( array( Events::class, 'catch_up_cancellations' ) );
+		self::assertCount( 1, $errors, 'auch der stündliche Lauf meldet es' );
+
+		remove_filter( 'pre_schedule_event', $refuse );
+		Events::catch_up_cancellations();
+		self::assertSame( array( array( $event, 0 ) ), $this->scheduled(), 'sobald es wieder geht, plant der stündliche Lauf neu ein' );
+	}
+
+	public function test_a_step_that_is_already_scheduled_is_not_reported_as_an_error(): void {
+		$event  = $this->event();
+		$errors = 0;
+		$this->register_all( $event, array( 'h1' ) );
+		add_action(
+			'ttleague_notification_error',
+			static function () use ( &$errors ): void {
+				++$errors;
+			}
+		);
+
+		$this->cancel( $event );
+		Events::on_cancelled( $event, $this->user['tk'] );
+
+		self::assertSame( array( array( $event, 0 ) ), $this->scheduled() );
+		self::assertSame( 0, $errors );
 	}
 }

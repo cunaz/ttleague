@@ -110,7 +110,8 @@ final class Events {
 	 * begrenzten Schritten (send_cancellations()), damit die Anfrage der TK nicht am Zeitlimit
 	 * scheitert. Das Ereignis ist sofort fällig; WP-Cron startet es mit der nächsten Anfrage
 	 * (schon mit der Weiterleitung nach dem Formular), mit DISABLE_WP_CRON der Cron des Servers.
-	 * Geht es verloren, holt der stündliche Lauf den Versand nach (catch_up_cancellations()).
+	 * Geht es verloren oder lässt es sich nicht einplanen, plant der stündliche Lauf den Versand
+	 * erneut ein (catch_up_cancellations()).
 	 * Das Konto, das abgesagt hat, steht im Änderungsprotokoll der Absage.
 	 */
 	public static function on_cancelled( int $event_id, int $user_id ): void {
@@ -138,24 +139,66 @@ final class Events {
 	}
 
 	/**
-	 * Stündlicher Lauf der Benachrichtigungen: ausstehende Absagemitteilungen der kürzlich
-	 * abgesagten Anlässe nachholen, je Anlass ein Schritt (derselbe wie im einmaligen Ereignis).
+	 * Stündlicher Lauf der Benachrichtigungen: Auffangnetz für Absagemitteilungen. Der Lauf
+	 * versendet selbst nichts. Für kürzlich abgesagte Anlässe mit ausstehenden Mitteilungen plant
+	 * er nur den Versandschritt neu ein (dasselbe einmalige Ereignis wie nach der Absage), sofern
+	 * für den Anlass nicht schon ein Schritt wartet. So bleibt jede Anfrage auf einen Stapel
+	 * begrenzt. Pro Lauf höchstens EventNotifications::CANCEL_CATCH_UP_EVENTS Anlässe, die älteste
+	 * Absage zuerst, im Abstand von einer Minute; die übrigen folgen im nächsten Lauf.
 	 * Fängt ein verlorenes Ereignis, einen abgebrochenen Lauf und gescheiterte Zustellungen auf.
 	 */
 	public static function catch_up_cancellations(): void {
-		$events = array();
 		self::guard(
-			static function () use ( &$events ): void {
-				$events = self::notifications()->recently_cancelled( Services::clock()->now() );
+			static function (): void {
+				$planned = 0;
+				foreach ( self::notifications()->cancellations_to_catch_up( Services::clock()->now() ) as $event_id ) {
+					if ( $planned >= EventNotifications::CANCEL_CATCH_UP_EVENTS ) {
+						break;
+					}
+					if ( self::cancellations_scheduled( $event_id ) ) {
+						continue;
+					}
+					if ( self::schedule_cancellations( $event_id, 0, $planned * MINUTE_IN_SECONDS ) ) {
+						++$planned;
+					}
+				}
 			}
 		);
-		foreach ( $events as $event_id ) {
-			self::send_cancellations( $event_id, 0 );
-		}
 	}
 
-	private static function schedule_cancellations( int $event_id, int $after_person ): void {
-		wp_schedule_single_event( time(), self::CANCELLATION_HOOK, array( $event_id, $after_person ) );
+	/**
+	 * Wartet für den Anlass schon ein Versandschritt, gleich ab welcher Person?
+	 */
+	public static function cancellations_scheduled( int $event_id ): bool {
+		$crons = _get_cron_array();
+		foreach ( is_array( $crons ) ? $crons : array() as $hooks ) {
+			foreach ( $hooks[ self::CANCELLATION_HOOK ] ?? array() as $event ) {
+				if ( (int) ( $event['args'][0] ?? 0 ) === $event_id ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Versandschritt einplanen. Scheitert das, wird es gemeldet; der stündliche Lauf plant den
+	 * Anlass dann erneut ein. Ein schon gleich eingeplanter Schritt ist kein Fehler.
+	 *
+	 * @param int $delay Sekunden bis zur Fälligkeit.
+	 * @return bool Ob der Schritt eingeplant ist.
+	 */
+	private static function schedule_cancellations( int $event_id, int $after_person, int $delay = 0 ): bool {
+		$result = wp_schedule_single_event( time() + $delay, self::CANCELLATION_HOOK, array( $event_id, $after_person ), true );
+		if ( true === $result ) {
+			return true;
+		}
+		if ( is_wp_error( $result ) && 'duplicate_event' === $result->get_error_code() ) {
+			return false;
+		}
+		$reason = is_wp_error( $result ) ? $result->get_error_code() . ': ' . $result->get_error_message() : 'wp_schedule_single_event() lieferte false';
+		Notifications::report_error( new \RuntimeException( 'Versand der Absagemitteilungen liess sich nicht einplanen (' . $reason . ').' ), 'Anlass ' . $event_id );
+		return false;
 	}
 
 	/**
