@@ -35,20 +35,24 @@ final class RankingView extends View {
 		foreach ( $rl['rounds'] as $round ) {
 			$nav[] = '<li>' . Html::link( '#ttl-runde-' . $round['round_no'], $this->round_label( $round ) ) . '</li>';
 		}
-		$nav[] = '<li>' . Html::link( '#ttl-gesamt', __( 'Gesamtrangliste', 'ttleague' ) ) . '</li>';
+		// Html::section() setzt die ID auf den Titel des Abschnitts.
+		$nav[] = '<li>' . Html::link( '#ttl-gesamt-title', __( 'Gesamtrangliste', 'ttleague' ) ) . '</li>';
 		$out   = '<nav class="ttl-tabs" aria-label="' . esc_attr__( 'Runden', 'ttleague' ) . '"><ul>' . implode( '', $nav ) . '</ul></nav>';
 
 		$regular       = $rl['regular_rounds'];
 		$overall_html  = $this->overall( $rl['overall'], $rl['finalists'], $only, $regular );
 		$overall_title = $this->overall_title( count( $regular ) );
 		$open          = $this->current_round( $rl['rounds'] );
+		$shown         = false;
 		foreach ( $rl['rounds'] as $round ) {
-			if ( $round['is_final'] ) {
-				$out .= Html::section( $overall_title, $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
+			// Die Gesamtrangliste steht vor der Finalrunde, sonst am Schluss: genau einmal.
+			if ( $round['is_final'] && ! $shown ) {
+				$out  .= Html::section( $overall_title, $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
+				$shown = true;
 			}
 			$out .= $this->round( $round, $only, $round['round_no'] === $open );
 		}
-		if ( ! str_contains( $out, 'id="ttl-gesamt"' ) ) {
+		if ( ! $shown ) {
 			$out .= Html::section( $overall_title, $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
 		}
 		return $out;

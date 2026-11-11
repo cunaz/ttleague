@@ -146,6 +146,8 @@ final class RankingRoundStatusTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'Finalrunde', $html );
 		// Die Gesamtrangliste steht vor der Finalrunde.
 		self::assertLessThan( strpos( $html, 'id="ttl-runde-4"' ), strpos( $html, 'id="ttl-gesamt-title"' ) );
+		self::assertSame( 1, substr_count( $html, 'id="ttl-gesamt-title"' ), 'die Gesamtrangliste steht genau einmal' );
+		self::assertStringContainsString( 'href="#ttl-gesamt-title"', $html, 'der Sprunglink hat ein Ziel' );
 	}
 
 	public function test_season_in_progress_shows_all_columns_of_the_regulations(): void {
