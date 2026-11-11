@@ -33,6 +33,7 @@ final class Actions {
 	public const REQUEST        = 'ttleague_reg_request';
 	public const REQUEST_CANCEL = 'ttleague_reg_request_cancel';
 	public const TEAM_ADD       = 'ttleague_reg_team_add';
+	public const TEAM_COPY      = 'ttleague_reg_team_copy';
 	public const TEAM_REMOVE    = 'ttleague_reg_team_remove';
 	public const TEAM_SAVE      = 'ttleague_reg_team_save';
 	public const CAPTAIN        = 'ttleague_reg_captain';
@@ -57,6 +58,7 @@ final class Actions {
 		self::REQUEST         => 'request',
 		self::REQUEST_CANCEL  => 'request_cancel',
 		self::TEAM_ADD        => 'team_add',
+		self::TEAM_COPY       => 'team_copy',
 		self::TEAM_REMOVE     => 'team_remove',
 		self::TEAM_SAVE       => 'team_save',
 		self::CAPTAIN         => 'captain',
@@ -180,6 +182,22 @@ final class Actions {
 			static function ( Actor $actor ) use ( $club, $season ): string {
 				Registration::registration()->add_team( $actor, $season, $club );
 				return __( 'Mannschaft hinzugefügt. Wähle jetzt Stammspieler, Lokal, Anspielzeit und Captain.', 'ttleague' );
+			}
+		);
+	}
+
+	/**
+	 * Mannschaften der aktiven Saison in die noch leere Meldung der geplanten Saison übernehmen.
+	 */
+	public static function team_copy(): void {
+		[ $club, $season ] = self::club_request( self::TEAM_COPY );
+		self::finish(
+			$club,
+			$season,
+			static function ( Actor $actor ) use ( $club, $season ): string {
+				$count = Registration::registration()->copy_teams( $actor, $season, $club );
+				/* translators: %d: Anzahl */
+				return sprintf( _n( '%d Mannschaft übernommen. Bitte prüfe Stammspieler, Lokal, Anspielzeit und Captain.', '%d Mannschaften übernommen. Bitte prüfe Stammspieler, Lokal, Anspielzeit und Captain.', $count, 'ttleague' ), $count );
 			}
 		);
 	}

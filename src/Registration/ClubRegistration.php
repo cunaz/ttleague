@@ -55,17 +55,19 @@ final class ClubRegistration {
 	 * Alles für die Ansicht der Meldung: Stand, Rechte, Spieler, Vorjahresspieler, Neumeldungen,
 	 * Mannschaften, Lokale und offene Verstösse.
 	 *
-	 * @return array{context:RegistrationContext,players:list<array<string,mixed>>,candidates:list<array<string,mixed>>,requests:list<array<string,mixed>>,teams:list<array<string,mixed>>,venues:list<array<string,mixed>>,captain_candidates:list<array<string,mixed>>,violations:list<array{code:string,field:string,message:string}>}
+	 * @return array{context:RegistrationContext,players:list<array<string,mixed>>,candidates:list<array<string,mixed>>,requests:list<array<string,mixed>>,teams:list<array<string,mixed>>,copyable_teams:int,venues:list<array<string,mixed>>,captain_candidates:list<array<string,mixed>>,violations:list<array{code:string,field:string,message:string}>}
 	 * @throws RegistrationException Ohne Recht oder ohne Meldung.
 	 */
 	public function state( Actor $actor, int $season_id, int $club_id ): array {
-		$ctx = $this->access->context( $actor, $season_id, $club_id );
+		$ctx   = $this->access->context( $actor, $season_id, $club_id );
+		$teams = $this->repo->teams( $season_id, $club_id );
 		return array(
 			'context'            => $ctx,
 			'players'            => $this->repo->players( $season_id, $club_id ),
 			'candidates'         => $this->repo->candidates( $ctx->season, $club_id ),
 			'requests'           => $this->repo->requests( $season_id, $club_id ),
-			'teams'              => $this->repo->teams( $season_id, $club_id ),
+			'teams'              => $teams,
+			'copyable_teams'     => $ctx->is_planned() && array() === $teams ? count( $this->previous_teams( $club_id ) ) : 0,
 			'venues'             => $this->repo->venues( $club_id, $ctx->today ),
 			'captain_candidates' => $this->repo->captain_candidates( $season_id, $club_id, $this->active_season_id() ),
 			'violations'         => $this->violations( $season_id, $club_id ),
@@ -269,6 +271,64 @@ final class ClubRegistration {
 				return $id;
 			}
 		);
+	}
+
+	/**
+	 * Mannschaften der aktiven Saison in die geplante übernehmen, solange der Club dort noch keine
+	 * hat: gleiche Nummer und gleicher Name, Heimlokal (sofern noch in Gebrauch) und Anspielzeit,
+	 * ohne Kategorie und Gruppe. Stammspieler kommen mit, soweit sie in der geplanten Saison für
+	 * den Club gemeldet sind; der Captain, wenn er die Regeln für Captains noch erfüllt. Was fehlt,
+	 * zeigen die Verstösse. Zurückgezogene Mannschaften (team.status) bleiben weg.
+	 *
+	 * @return int Anzahl übernommener Mannschaften.
+	 * @throws RegistrationException Ohne Recht (wie add_team()), wenn der Club in der geplanten
+	 *                               Saison schon Mannschaften hat oder in der aktiven keine.
+	 */
+	public function copy_teams( Actor $actor, int $season_id, int $club_id ): int {
+		$count = $this->write(
+			$actor,
+			$season_id,
+			$club_id,
+			function ( RegistrationContext $ctx ) use ( $actor ): int {
+				$ctx->require( RegistrationAccess::STRUCTURE );
+				if ( array() !== $this->repo->teams( $ctx->season_id(), $ctx->club_id() ) ) {
+					throw RegistrationException::conflict( __( 'Der Club hat für diese Saison schon Mannschaften gemeldet. Übernehmen lässt sich nur in eine leere Meldung.', 'ttleague' ) );
+				}
+				$previous = $this->previous_teams( $ctx->club_id() );
+				if ( array() === $previous ) {
+					throw RegistrationException::conflict( __( 'In der laufenden Saison hat der Club keine Mannschaft, die sich übernehmen liesse.', 'ttleague' ) );
+				}
+				$registered = array_column( $this->repo->players( $ctx->season_id(), $ctx->club_id() ), 'player_id' );
+				foreach ( $previous as $source ) {
+					$venue = null === $source['home_venue_id'] ? null : $this->repo->venue( $source['home_venue_id'] );
+					$row   = array(
+						'season_id'          => $ctx->season_id(),
+						'club_id'            => $ctx->club_id(),
+						'number'             => $source['number'],
+						'name'               => $source['name'],
+						'competition_id'     => null,
+						'home_venue_id'      => null !== $venue && $venue['club_id'] === $ctx->club_id() && $venue['active'] ? $venue['id'] : null,
+						'default_start_time' => $source['start_time'],
+						'status'             => 'active',
+					);
+					$id    = $this->db->insert( 'team', $row );
+					$this->repo->replace_stamm( $id, array_values( array_intersect( $source['players'], $registered ) ) );
+					$captain = null;
+					if ( null !== $source['captain'] ) {
+						try {
+							$captain = $this->captain( $ctx, $actor, $id, $source['captain']['person_id'] );
+						} catch ( RegistrationException $e ) {
+							$captain = null;
+						}
+					}
+					$this->repo->replace_captain( $ctx->season_id(), $ctx->club_id(), $id, $captain );
+					$this->audit->record( 'team', $id, 'created', $actor->user_id, null, array( 'copied_from' => $source['id'] ) + (array) $this->repo->team( $id ) );
+				}
+				return count( $previous );
+			}
+		);
+		$this->access->forget_roles();
+		return $count;
 	}
 
 	/**
@@ -574,6 +634,19 @@ final class ClubRegistration {
 			throw RegistrationException::not_found( __( 'Diese Mannschaft gibt es nicht.', 'ttleague' ) );
 		}
 		return $team;
+	}
+
+	/**
+	 * Mannschaften des Clubs in der aktiven Saison, ohne zurückgezogene: die Vorlage für copy_teams().
+	 *
+	 * @return list<array{id:int,season_id:int,club_id:int,number:int,name:string,competition_id:int|null,home_venue_id:int|null,start_time:string|null,status:string,players:list<int>,captain:array{person_id:int,name:string,email:string|null}|null}>
+	 */
+	private function previous_teams( int $club_id ): array {
+		$active = $this->active_season_id();
+		if ( null === $active ) {
+			return array();
+		}
+		return array_values( array_filter( $this->repo->teams( $active, $club_id ), static fn( array $team ): bool => 'active' === $team['status'] ) );
 	}
 
 	private function active_season_id(): ?int {

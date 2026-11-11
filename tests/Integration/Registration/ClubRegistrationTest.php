@@ -244,6 +244,140 @@ final class ClubRegistrationTest extends RegistrationTestCase {
 		self::assertSame( 0, $this->rows( 'team', 'season_id = ' . $this->id['next'] ) );
 	}
 
+	/**
+	 * Alle vier Spieler von Seefeld für die geplante Saison bestätigen, ausser den genannten.
+	 *
+	 * @param list<string> $except Schlüssel der Spieler, die nicht bestätigt werden.
+	 */
+	private function confirm_home_players( array $except = array() ): void {
+		foreach ( array_diff( array( 'muster', 'beispiel', 'probe', 'vorlage' ), $except ) as $key ) {
+			$this->registration->confirm_player( $this->actor['chef'], $this->id['next'], $this->id['home'], $this->id[ 'p_' . $key ] );
+		}
+	}
+
+	public function test_teams_of_the_running_season_are_copied_with_roster_venue_time_and_captain(): void {
+		$this->confirm_home_players();
+		self::assertSame( 1, $this->registration->state( $this->actor['chef'], $this->id['next'], $this->id['home'] )['copyable_teams'] );
+		$this->events->changed = array();
+
+		$count = $this->registration->copy_teams( $this->actor['chef'], $this->id['next'], $this->id['home'] );
+
+		self::assertSame( 1, $count );
+		$state = $this->registration->state( $this->actor['chef'], $this->id['next'], $this->id['home'] );
+		self::assertCount( 1, $state['teams'] );
+		$team = $state['teams'][0];
+		self::assertNotSame( $this->id['team'], $team['id'] );
+		self::assertSame( 1, $team['number'] );
+		self::assertSame( 'Seefeld 1', $team['name'] );
+		self::assertNull( $team['competition_id'], 'Kategorie und Gruppe legt die TK fest' );
+		self::assertSame( $this->id['venue'], $team['home_venue_id'] );
+		self::assertSame( '20:00:00', $team['start_time'] );
+		self::assertSame( array( $this->id['p_muster'], $this->id['p_beispiel'], $this->id['p_probe'] ), $team['players'] );
+		self::assertSame( $this->id['person_heim'], $team['captain']['person_id'] ?? null );
+		self::assertSame( array(), $state['violations'] );
+		self::assertSame( 0, $state['copyable_teams'] );
+		self::assertSame( array( array( $this->id['next'], $this->id['home'] ) ), $this->events->changed );
+		self::assertSame( 1, $this->rows( 'audit_log', "entity = 'team' AND action = 'created' AND entity_id = {$team['id']} AND user_id = 301" ) );
+		self::assertStringContainsString( '"copied_from":' . $this->id['team'], (string) $this->db->get_var( "SELECT after_json FROM {$this->db->table( 'audit_log' )} WHERE entity = 'team' AND entity_id = %d", array( $team['id'] ) ) );
+
+		// Die aktive Saison bleibt, wie sie ist.
+		self::assertSame( 3, $this->rows( 'team_roster', "team_id = {$this->id['team']}" ) );
+		self::assertSame( 1, $this->rows( 'club_role', "role = 'captain' AND team_id = {$this->id['team']}" ) );
+		$this->registration->submit( $this->actor['chef'], $this->id['next'], $this->id['home'] );
+		self::assertSame( 'submitted', $this->registration_status( $this->id['home'] ) );
+	}
+
+	public function test_copied_teams_only_take_what_is_still_valid(): void {
+		$now      = $this->id['now'];
+		$home     = $this->id['home'];
+		$old_hall = $this->seed->venue( $home, 'Alte Halle', array( 'active' => 0 ) );
+		$group    = (int) $this->db->get_var( "SELECT competition_id FROM {$this->db->table( 'team' )} WHERE id = %d", array( $this->id['team'] ) );
+		$second   = $this->seed->team( $now, $home, 2, 'Seefeld 2', $group, $old_hall, '19:30:00' );
+		$third    = $this->seed->team( $now, $home, 3, 'Seefeld 3', $group, $this->id['venue'] );
+		$this->db->update( 'team', array( 'status' => 'withdrawn' ), array( 'id' => $third ) );
+		$this->seed->roster( $second, array( $this->id['p_vorlage'] ) );
+		$this->seed->roster( $second, array( $this->id['p_gast'] ), 'bound' );
+		$this->seed->role( $now, $home, $this->seed->person_of( $this->id['p_vorlage'] ), 'captain', $second );
+		$this->confirm_home_players( array( 'probe' ) );
+
+		self::assertSame( 2, $this->registration->copy_teams( $this->actor['chef'], $this->id['next'], $home ) );
+
+		$state = $this->registration->state( $this->actor['chef'], $this->id['next'], $home );
+		$teams = array_column( $state['teams'], null, 'name' );
+		self::assertSame( array( 'Seefeld 1', 'Seefeld 2' ), array_keys( $teams ), 'die zurückgezogene Mannschaft bleibt weg' );
+		self::assertSame( array( $this->id['p_muster'], $this->id['p_beispiel'] ), $teams['Seefeld 1']['players'], 'Paul Probe ist nicht bestätigt' );
+		self::assertSame( array( $this->id['p_vorlage'] ), $teams['Seefeld 2']['players'], 'Bindungen kommen nicht mit' );
+		self::assertSame( 0, $this->rows( 'team_roster', "team_id = {$teams['Seefeld 2']['id']} AND kind = 'bound'" ) );
+		self::assertNull( $teams['Seefeld 2']['home_venue_id'], 'das Lokal ist nicht mehr in Gebrauch' );
+		self::assertSame( '19:30:00', $teams['Seefeld 2']['start_time'] );
+		self::assertNull( $teams['Seefeld 2']['captain'], 'Vera Vorlage hat keine E-Mail-Adresse' );
+		self::assertNull( $teams['Seefeld 1']['competition_id'] );
+
+		$by_field = array();
+		foreach ( $state['violations'] as $violation ) {
+			$by_field[ $violation['field'] ][] = $violation['code'];
+		}
+		self::assertSame(
+			array(
+				'team.' . $teams['Seefeld 1']['id'] . '.players' => array( 'stamm_count' ),
+				'team.' . $teams['Seefeld 2']['id'] . '.players' => array( 'stamm_count' ),
+				'team.' . $teams['Seefeld 2']['id'] . '.venue'   => array( 'venue_missing' ),
+				'team.' . $teams['Seefeld 2']['id'] . '.captain' => array( 'captain_missing' ),
+			),
+			$by_field
+		);
+		$this->refused( fn() => $this->registration->submit( $this->actor['chef'], $this->id['next'], $home ), Refusal::INVALID );
+	}
+
+	public function test_teams_are_copied_only_into_an_empty_registration(): void {
+		$this->confirm_home_players();
+		$this->registration->copy_teams( $this->actor['chef'], $this->id['next'], $this->id['home'] );
+
+		$e = $this->refused( fn() => $this->registration->copy_teams( $this->actor['chef'], $this->id['next'], $this->id['home'] ), Refusal::CONFLICT );
+		self::assertStringContainsString( 'schon Mannschaften gemeldet', $e->getMessage() );
+		self::assertSame( 1, $this->rows( 'team', 'season_id = ' . $this->id['next'] ) );
+
+		// Wollishofen hat in der aktiven Saison keine Mannschaft.
+		self::assertSame( 0, $this->registration->state( $this->actor['wolli'], $this->id['next'], $this->id['away'] )['copyable_teams'] );
+		$e = $this->refused( fn() => $this->registration->copy_teams( $this->actor['wolli'], $this->id['next'], $this->id['away'] ), Refusal::CONFLICT );
+		self::assertStringContainsString( 'keine Mannschaft', $e->getMessage() );
+
+		// Eine von Hand angelegte Mannschaft zählt auch.
+		$this->registration->add_team( $this->actor['wolli'], $this->id['next'], $this->id['away'] );
+		$this->seed->team( $this->id['now'], $this->id['away'], 1, 'Wollishofen 1', null );
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['wolli'], $this->id['next'], $this->id['away'] ), Refusal::CONFLICT );
+		self::assertSame( 1, $this->rows( 'team', "season_id = {$this->id['next']} AND club_id = {$this->id['away']}" ) );
+	}
+
+	public function test_copying_teams_follows_the_rights_window_and_state_of_the_registration(): void {
+		$next = $this->id['next'];
+		$home = $this->id['home'];
+		$this->confirm_home_players();
+
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['wolli'], $next, $home ), Refusal::FORBIDDEN );
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['niemand'], $next, $home ), Refusal::FORBIDDEN );
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['alt'], $next, $home ), Refusal::FORBIDDEN );
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['chef'], $this->id['now'], $home ), Refusal::FORBIDDEN );
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['tk'], $this->id['now'], $home ), Refusal::FORBIDDEN );
+
+		$this->registration->submit( $this->actor['chef'], $next, $home );
+		$e = $this->refused( fn() => $this->registration->copy_teams( $this->actor['chef'], $next, $home ), Refusal::FORBIDDEN );
+		self::assertStringContainsString( 'eingereicht', $e->getMessage() );
+		$this->db->update( 'club_season', array( 'status' => 'open' ), array( 'club_id' => $home ) );
+
+		$this->at( '2027-04-30 21:59:00' );
+		$e = $this->refused( fn() => $this->registration->copy_teams( $this->actor['chef'], $next, $home ), Refusal::FORBIDDEN );
+		self::assertStringContainsString( 'Meldefenster', $e->getMessage() );
+		$this->at( '2027-05-31 22:00:00' );
+		$this->refused( fn() => $this->registration->copy_teams( $this->actor['chef'], $next, $home ), Refusal::FORBIDDEN );
+		self::assertSame( 0, $this->rows( 'team', "season_id = {$next}" ) );
+		self::assertSame( 1, $this->rows( 'team', "season_id = {$this->id['now']}" ), 'in der aktiven Saison entsteht nichts' );
+
+		// Die TK übernimmt auch nach Ablauf des Fensters.
+		self::assertSame( 1, $this->registration->copy_teams( $this->actor['tk'], $next, $home ) );
+		self::assertSame( 1, $this->rows( 'team', "season_id = {$next}" ) );
+	}
+
 	public function test_saving_a_team_stores_roster_venue_time_and_captain(): void {
 		$team = $this->complete_registration();
 

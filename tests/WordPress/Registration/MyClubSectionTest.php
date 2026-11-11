@@ -300,6 +300,50 @@ final class MyClubSectionTest extends RegistrationWpTestCase {
 		self::assertNotNull( $this->player_season( $next, $this->id['h1'] ), 'der Dienst sperrt auch ein nachgebautes Formular' );
 	}
 
+	public function test_teams_of_the_previous_season_are_copied_with_one_button(): void {
+		wp_set_current_user( $this->user['chef'] );
+		$next   = $this->id['next'];
+		$button = 'name="action" value="' . Actions::TEAM_COPY . '"';
+
+		$html = $this->section( 'chef' );
+		self::assertStringContainsString( $button, $html );
+		self::assertStringContainsString( 'Mannschaften des Vorjahrs übernehmen (1)', $html );
+		self::assertStringContainsString( 'Bestätige zuerst die Spielerinnen und Spieler: Nur gemeldete Stammspieler kommen mit.', $html );
+		self::assertStringContainsString( 'name="_wpnonce" value="' . wp_create_nonce( Actions::TEAM_COPY . '_' . $this->id['club_home'] ) . '"', $html );
+		self::assertSame( 1, substr_count( $html, $button ), 'nur in der Meldung der geplanten Saison' );
+
+		// Ohne Nonce und für einen fremden Club geschieht nichts.
+		$this->denied( Actions::TEAM_COPY, $this->home(), 'falsch' );
+		wp_set_current_user( $this->user['wolli'] );
+		$this->denied( Actions::TEAM_COPY, $this->home() );
+		self::assertSame( 0, (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'team' )} WHERE season_id = %d", array( $next ) ) );
+
+		// Zwei von drei Stammspielern sind bestätigt: Die Mannschaft kommt mit ihnen und mit einem offenen Punkt.
+		wp_set_current_user( $this->user['chef'] );
+		$this->post( Actions::CONFIRM, $this->home( array( 'player' => (string) $this->id['h1'] ) ) );
+		$this->post( Actions::CONFIRM, $this->home( array( 'player' => (string) $this->id['h2'] ) ) );
+		$target = $this->post( Actions::TEAM_COPY, $this->home() );
+
+		self::assertSame( LoginFlow::my_area_url() . '#ttl-meldung-' . $this->id['club_home'], $target );
+		$team = $this->db->get_row( "SELECT * FROM {$this->db->table( 'team' )} WHERE season_id = %d", array( $next ) );
+		self::assertSame( 'Seefeld 1', $team['name'] ?? null );
+		self::assertSame( '1', $team['number'] );
+		self::assertNull( $team['competition_id'] );
+		self::assertSame( '20:00:00', $team['default_start_time'] );
+		self::assertSame(
+			array( (string) $this->id['h1'], (string) $this->id['h2'] ),
+			$this->db->get_col( "SELECT player_id FROM {$this->db->table( 'team_roster' )} WHERE team_id = %d AND kind = 'stamm' ORDER BY player_id", array( (int) $team['id'] ) )
+		);
+		$html = $this->section( 'chef' );
+		self::assertStringContainsString( '1 Mannschaft übernommen.', $html );
+		self::assertStringContainsString( 'Seefeld 1: Es braucht genau 3 Stammspieler, gemeldet sind 2.', $html );
+		self::assertFalse( str_contains( $html, $button ), 'mit einer Mannschaft gibt es den Knopf nicht mehr' );
+
+		$this->post( Actions::TEAM_COPY, $this->home() );
+		self::assertSame( 1, (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'team' )} WHERE season_id = %d", array( $next ) ), 'ein nachgebautes Formular übernimmt nicht doppelt' );
+		self::assertStringContainsString( 'ttl-notice--error', $this->section( 'chef' ) );
+	}
+
 	public function test_venue_closure_and_captain_of_the_running_season(): void {
 		wp_set_current_user( $this->user['chef'] );
 		$now = $this->id['season'];

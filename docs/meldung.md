@@ -33,11 +33,23 @@ Eine archivierte Saison ändert niemand, auch die TK nicht.
 | Spieler des Vorjahrs | Bestätigen (einzeln oder alle) oder abmelden. Bestätigte erhalten `player_season` in der Saison der Meldung, Status `provisional` bis zur Freigabe. Wer nicht bestätigt wird, ist nicht gemeldet; dafür gibt es keinen eigenen Eintrag. | Ein Spieler ist pro Saison nur für einen Club gemeldet (Art. 27.2). Wechselt er den Club, meldet ihn der neue Club mit der Lizenznummer; der bisherige Club sieht ihn dann als «gemeldet für …», und die TK sieht den Wechsel in der Prüfung. |
 | Spieler mit Lizenznummer | Bestehende Spieler, die im Vorjahr nicht für den Club gemeldet waren (Pause, Clubwechsel). | wie oben |
 | Neue Spieler | Name, E-Mail (freiwillig), Klassierung des Clubs, STT-Lizenz falls vorhanden. Entsteht als `player_request`; Person und Spieler gibt es erst nach der Freigabe. | Klassierung gilt als provisorisch; die TK legt sie bei der Freigabe fest (Art. 28.2, 28.3). Spielberechtigt erst nach Freigabe mit Lizenznummer (Art. 26.2, 29.1). Ein neuer Spieler kann deshalb erst nach der Freigabe Stammspieler werden; die TK gibt Neumeldungen unabhängig vom Stand der Meldung frei. |
-| Mannschaften | Anzahl (fortlaufende Nummern, Name «Kurzname Nummer»), je drei Stammspieler (`team_roster.kind = stamm`), Heimlokal, Anspielzeit, ein Captain (`club_role`). Entfernt wird immer die Mannschaft mit der höchsten Nummer. | Genau drei Stammspieler. Niemand ist Stammspieler in zwei Mannschaften (Art. 12.2). Stammspieler müssen für den Club gemeldet sein. Heimlokal, Anspielzeit und Captain müssen gesetzt sein. Der Captain braucht eine E-Mail-Adresse und gehört zum Club (gemeldeter Spieler oder Person mit Funktion im Club). |
+| Mannschaften | Anzahl (fortlaufende Nummern, Name «Kurzname Nummer»), je drei Stammspieler (`team_roster.kind = stamm`), Heimlokal, Anspielzeit, ein Captain (`club_role`). Entfernt wird immer die Mannschaft mit der höchsten Nummer. Zu Beginn lassen sich die Mannschaften des Vorjahrs übernehmen (siehe unten). | Genau drei Stammspieler. Niemand ist Stammspieler in zwei Mannschaften (Art. 12.2). Stammspieler müssen für den Club gemeldet sein. Heimlokal, Anspielzeit und Captain müssen gesetzt sein. Der Captain braucht eine E-Mail-Adresse und gehört zum Club (gemeldeter Spieler oder Person mit Funktion im Club). |
 | Lokale | Name, Adresse, Telefon, Spieltag, Öffnungszeit, Anzahl Tische. Lokale gehören zum Club, nicht zu einer Saison; sie werden nicht gelöscht, sondern als «nicht mehr in Gebrauch» markiert. | Name, Spieltag Montag bis Freitag und Anzahl Tische (mindestens 1) sind Pflicht. Ein Lokal, in dem eine Mannschaft der aktiven oder geplanten Saison spielt, bleibt in Gebrauch. |
 | Hallensperren | Lokal, von, bis, Grund (`venue_closure`). | `bis` nicht vor `von`; ein einzelner Tag ist erlaubt. |
 
 Kategorie und Gruppe einer Mannschaft legt die TK fest, nicht der Club: Neue Mannschaften haben `competition_id` NULL. Hat die TK eine Mannschaft schon eingeteilt, entfernt sie nur noch die TK, und nur solange keine Begegnung angesetzt ist.
+
+### Mannschaften des Vorjahrs übernehmen
+
+Solange der Club in der geplanten Saison noch keine Mannschaft hat und in der aktiven mindestens eine, bietet die Meldung den Knopf «Mannschaften des Vorjahrs übernehmen (N)» (`ClubRegistration::copy_teams()`, Aktion `ttleague_reg_team_copy`). Es gelten dieselben Rechte, dasselbe Fenster und derselbe Meldestand wie für «Mannschaft hinzufügen».
+
+- Übernommen werden die Mannschaften der aktiven Saison mit gleicher Nummer und gleichem Namen, ohne zurückgezogene (`team.status`). `competition_id` bleibt NULL.
+- Heimlokal, sofern es noch ein Lokal des Clubs in Gebrauch ist, und Anspielzeit.
+- Stammspieler, soweit sie in der geplanten Saison für den Club gemeldet sind (Status egal). Deshalb zuerst die Spieler bestätigen; Bindungen (`bound`) kommen nicht mit.
+- Der Captain, wenn er die Regeln für Captains noch erfüllt (gehört zum Club, hat eine E-Mail-Adresse).
+- Was danach fehlt, steht wie sonst als offener Punkt bei der Mannschaft. Jede Mannschaft steht mit ihrer Vorlage (`copied_from`) im `audit_log`.
+
+Hat der Club schon eine Mannschaft gemeldet, lehnt der Dienst ab; es wird nichts zusammengeführt.
 
 ### Klassierung bestehender Spieler
 
@@ -101,8 +113,8 @@ Im Backend als Knöpfe auf der Seite «Meldungen», dazu `wp ttleague export reg
 ## Tests
 
 - Regeln (`tests/Unit/Domain/RegistrationRulesTest.php`): drei Stammspieler, doppelter Stammspieler, nicht gemeldeter Stammspieler, Lokal, Anspielzeit und Captain, Spieler in zwei Clubs, Meldefenster und Frist der Nachmeldung an den Grenzen, Lokaldaten, Hallensperren, Neumeldung, Einreichen mit Verstoss, Stufen der Erinnerung.
-- Dienste gegen MariaDB (`tests/Integration/Registration/`): Vorjahresspieler bestätigen und abmelden, Klassierung vor und nach dem Abschluss, Clubwechsel, Neumeldung bis zur Freigabe (kein `player` vorher), Freigabe mit bestehender Person mit und ohne Lizenz, vergebene Lizenznummer und E-Mail-Adresse, Rückgabe, Sperre nach dem Einreichen, Fenster und Frist auf die Stunde genau in Ortszeit, Rechte der geplanten und der aktiven Saison, archivierte Saison, Lokale und Sperren, Empfänger und Dedupe der Benachrichtigungen, provisorische Spieler in den öffentlichen Listen.
-- WordPress (`tests/WordPress/Registration/`): Abschnitt in «Mein Bereich» mit Escaping und eindeutigen IDs, Formulare mit Nonce und Rechten (fremder Club, fremde Datensätze, Entscheide der TK), ganze Meldung über die Formulare, Seite «Meldungen» mit Entscheiden, Listen der Übersicht, E-Mail an den TK-Chef, Erinnerungen, CSV nur mit `ttl_tk`.
+- Dienste gegen MariaDB (`tests/Integration/Registration/`): Vorjahresspieler bestätigen und abmelden, Klassierung vor und nach dem Abschluss, Clubwechsel, Mannschaften des Vorjahrs übernehmen (vollständig, mit fehlendem Stammspieler, zweiter Aufruf, Rechte, Fenster, eingereichte Meldung), Neumeldung bis zur Freigabe (kein `player` vorher), Freigabe mit bestehender Person mit und ohne Lizenz, vergebene Lizenznummer und E-Mail-Adresse, Rückgabe, Sperre nach dem Einreichen, Fenster und Frist auf die Stunde genau in Ortszeit, Rechte der geplanten und der aktiven Saison, archivierte Saison, Lokale und Sperren, Empfänger und Dedupe der Benachrichtigungen, provisorische Spieler in den öffentlichen Listen.
+- WordPress (`tests/WordPress/Registration/`): Abschnitt in «Mein Bereich» mit Escaping und eindeutigen IDs, Formulare mit Nonce und Rechten (fremder Club, fremde Datensätze, Entscheide der TK), ganze Meldung über die Formulare, Knopf und Aktion «Mannschaften des Vorjahrs übernehmen», Seite «Meldungen» mit Entscheiden, Listen der Übersicht, E-Mail an den TK-Chef, Erinnerungen, CSV nur mit `ttl_tk`.
 
 ## Offen
 

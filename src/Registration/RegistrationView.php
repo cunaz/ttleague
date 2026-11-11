@@ -63,7 +63,7 @@ final class RegistrationView {
 	private string $prefix;
 
 	/**
-	 * @param array{context:RegistrationContext,players:list<array<string,mixed>>,candidates:list<array<string,mixed>>,requests:list<array<string,mixed>>,teams:list<array<string,mixed>>,venues:list<array<string,mixed>>,captain_candidates:list<array<string,mixed>>,violations:list<array{code:string,field:string,message:string}>} $state       Aus ClubRegistration::state().
+	 * @param array{context:RegistrationContext,players:list<array<string,mixed>>,candidates:list<array<string,mixed>>,requests:list<array<string,mixed>>,teams:list<array<string,mixed>>,copyable_teams:int,venues:list<array<string,mixed>>,captain_candidates:list<array<string,mixed>>,violations:list<array{code:string,field:string,message:string}>} $state       Aus ClubRegistration::state().
 	 * @param string                                                                                                                                                                                                                                                                                                 $skin        SITE oder ADMIN.
 	 * @param int                                                                                                                                                                                                                                                                                                    $stamm_size  Stammspieler pro Mannschaft.
 	 * @param array<int,array{license_no:int,persons:list<array<string,mixed>>}>                                                                                                                                                                                                                                 $suggestions Nur ADMIN: Vorschläge je offener Neumeldung (Review::suggestions()).
@@ -391,8 +391,14 @@ final class RegistrationView {
 			}
 			$out .= '</div>';
 		}
+		$copyable = (int) ( $this->state['copyable_teams'] ?? 0 );
+		if ( $ctx->can( RegistrationAccess::STRUCTURE ) && array() === $teams && $copyable > 0 ) {
+			/* translators: %d: Anzahl */
+			$out .= $this->button_form( Actions::TEAM_COPY, sprintf( __( 'Mannschaften des Vorjahrs übernehmen (%d)', 'ttleague' ), $copyable ), array(), '', true )
+				. '<p class="' . esc_attr( $this->css['muted'] ) . '">' . esc_html__( 'Bestätige zuerst die Spielerinnen und Spieler: Nur gemeldete Stammspieler kommen mit. Lokal, Anspielzeit und Captain werden übernommen und lassen sich danach ändern.', 'ttleague' ) . '</p>';
+		}
 		if ( $ctx->can( RegistrationAccess::STRUCTURE ) ) {
-			$out .= $this->button_form( Actions::TEAM_ADD, __( 'Mannschaft hinzufügen', 'ttleague' ), array(), '', true )
+			$out .= $this->button_form( Actions::TEAM_ADD, __( 'Mannschaft hinzufügen', 'ttleague' ), array(), '', array() !== $teams || 0 === $copyable )
 				. '<p class="' . esc_attr( $this->css['muted'] ) . '">' . esc_html__( 'Kategorie und Gruppe legt die TK fest.', 'ttleague' ) . '</p>';
 		}
 		return $out;
