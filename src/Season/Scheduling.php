@@ -529,6 +529,9 @@ final class Scheduling {
 					$teams[ $side ] = $this->db->get_row( "SELECT id, home_venue_id, status FROM {$this->db->table( 'team' )} WHERE id = %d AND competition_id = %d", array( $team_id, $competition_id ) );
 					if ( null === $teams[ $side ] ) {
 						$errors[] = self::error( $side, __( 'Die Mannschaft gehört nicht zu dieser Gruppe.', 'ttleague' ) );
+					} elseif ( 'active' !== $teams[ $side ]['status'] ) {
+						// Sonst bliebe die Begegnung angesetzt und hielte den Abschluss der Saison auf.
+						$errors[] = self::error( $side, __( 'Die Mannschaft ist zurückgezogen.', 'ttleague' ) );
 					}
 				}
 				if ( $home_team_id === $away_team_id ) {

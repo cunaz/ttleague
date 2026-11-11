@@ -590,6 +590,18 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 		self::assertSame( 2, $this->rows( 'fixture' ) );
 	}
 
+	public function test_a_withdrawn_team_gets_no_new_fixture(): void {
+		$this->league();
+		$this->db->update( 'team', array( 'status' => 'withdrawn' ), array( 'id' => $this->id['oerlikon_1'] ) );
+
+		$as_away = $this->refused( fn() => $this->scheduling->add_fixture( $this->tk, $this->id['group_a'], $this->id['seefeld_1'], $this->id['oerlikon_1'], '2027-05-11', '20:00' ), Refusal::INVALID );
+		self::assertSame( array( 'away' ), array_column( $as_away->errors, 'field' ) );
+		self::assertSame( 'Die Mannschaft ist zurückgezogen.', $as_away->errors[0]['message'] );
+		$as_home = $this->refused( fn() => $this->scheduling->add_fixture( $this->tk, $this->id['group_a'], $this->id['oerlikon_1'], $this->id['seefeld_1'], '2027-05-11', '20:00' ), Refusal::INVALID );
+		self::assertSame( array( 'home' ), array_column( $as_home->errors, 'field' ) );
+		self::assertSame( 0, $this->rows( 'fixture' ) );
+	}
+
 	public function test_single_fixtures_are_not_added_to_the_draft_or_to_an_archived_season(): void {
 		$this->league();
 		$next = $this->scheduled();

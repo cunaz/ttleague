@@ -95,7 +95,7 @@ final class Lifecycle {
 		$error    = $schedule['error'];
 		if ( null === $error && $schedule['unscheduled'] > 0 ) {
 			/* translators: %d: Anzahl */
-			$error = sprintf( __( '%d Begegnungen haben keinen Termin oder kein Lokal.', 'ttleague' ), $schedule['unscheduled'] );
+			$error = sprintf( _n( '%d Begegnung hat keinen Termin oder kein Lokal.', '%d Begegnungen haben keinen Termin oder kein Lokal.', $schedule['unscheduled'], 'ttleague' ), $schedule['unscheduled'] );
 		}
 		$active = $this->seasons->active();
 		if ( null !== $active && $active['id'] === $season['id'] ) {

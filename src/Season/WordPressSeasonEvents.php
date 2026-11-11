@@ -31,7 +31,11 @@ final class WordPressSeasonEvents implements SeasonEvents {
 		// Rechte hängen an der aktiven Saison: gemerkte Rollen dieser Anfrage verwerfen.
 		Capabilities::use_policy( null );
 		// Die Mitteilungen an Captains und TK-Chefs gehen nie in dieser Anfrage hinaus, sondern in Schritten über WP-Cron.
-		SeasonAdmin::on_published( $season_id );
+		try {
+			SeasonAdmin::on_published( $season_id );
+		} catch ( \Throwable $e ) {
+			Notifications::report_error( $e, 'season_published schedule' );
+		}
 		try {
 			/**
 			 * Saison freigegeben: Sie ist jetzt aktiv, die bisher aktive archiviert.
@@ -50,7 +54,11 @@ final class WordPressSeasonEvents implements SeasonEvents {
 	public function team_withdrawn( int $season_id, int $team_id ): void {
 		DataVersion::bump();
 		// Die gespielten Begegnungen der Mannschaft sind forfait gewertet: Ihre Spiele zählen nicht mehr.
-		Results::schedule_rating_recalc();
+		try {
+			Results::schedule_rating_recalc();
+		} catch ( \Throwable $e ) {
+			Notifications::report_error( $e, 'rating_recalc schedule' );
+		}
 		try {
 			/**
 			 * Mannschaft zurückgezogen (Art. 13.3).

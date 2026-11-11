@@ -199,6 +199,19 @@ final class SeasonLifecycleTest extends SeasonTestCase {
 		self::assertSame( 0, $this->rows( 'audit_log', "action IN ( 'published', 'archived' )" ) );
 	}
 
+	public function test_fixtures_without_date_are_counted_in_singular_and_plural(): void {
+		$this->league();
+		$next = $this->ready();
+		$ids  = $this->db->get_col( "SELECT id FROM {$this->db->table( 'fixture' )} WHERE home_team_id = %d ORDER BY id", array( $this->id['next_oerlikon_1'] ) );
+		self::assertGreaterThanOrEqual( 2, count( $ids ) );
+
+		$this->db->update( 'fixture', array( 'scheduled_at' => null ), array( 'id' => (int) $ids[0] ) );
+		self::assertSame( '1 Begegnung hat keinen Termin oder kein Lokal.', $this->lifecycle->readiness( $next )['facts']['schedule_error'] );
+
+		$this->db->update( 'fixture', array( 'venue_id' => null ), array( 'id' => (int) $ids[1] ) );
+		self::assertSame( '2 Begegnungen haben keinen Termin oder kein Lokal.', $this->lifecycle->readiness( $next )['facts']['schedule_error'] );
+	}
+
 	public function test_the_list_names_what_is_missing(): void {
 		$this->league();
 		$next = $this->plan();

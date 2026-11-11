@@ -59,7 +59,7 @@ Voraussetzungen (`Domain\Season\LifecycleRules::publish_blockers()`), als Liste 
 | keine harte Kollision | beheben oder ausdrücklich bestätigen |
 | aktive Saison ohne offene Begegnungen und mit abgeschlossener Klassierung | beheben oder ausdrücklich bestätigen |
 
-Die letzte Zeile steht nicht im ersten Entwurf: Die Klassierung arbeitet nur auf der aktiven Saison. Wird diese mit der Freigabe archiviert, bevor die Klassierung abgeschlossen ist, lässt sie sich über die Oberfläche nicht mehr abschliessen. Die TK muss das deshalb wissen und bestätigen.
+Zur letzten Zeile: Die Klassierung arbeitet nur auf der aktiven Saison. Wird diese mit der Freigabe archiviert, bevor die Klassierung abgeschlossen ist, lässt sie sich über die Oberfläche nicht mehr abschliessen. Die TK muss das deshalb wissen und bestätigen.
 
 In einer Transaktion unter der Sperre der Saisons und der teilnehmenden Clubs: Voraussetzungen prüfen, jede bisher aktive Saison `archived`, geplante `active`, beides im `audit_log`. Gemeldete Spieler bleiben, wie sie sind, auch `provisional`. Danach `DataVersion::bump()`, die Aktion `ttleague_season_published` (Saison, archivierte Saison, Konto) und die Mitteilungen. Die Rechte der Captains gelten ab jetzt; die Begegnungen des Entwurfs sind gewöhnliche Begegnungen.
 

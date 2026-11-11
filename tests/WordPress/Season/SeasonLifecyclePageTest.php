@@ -383,6 +383,30 @@ final class SeasonLifecyclePageTest extends SeasonWpTestCase {
 		self::assertTrue( SeasonAdmin::published_scheduled( $next ), 'Der stündliche Lauf plant nach.' );
 	}
 
+	public function test_an_exception_while_scheduling_does_not_escape_the_publication(): void {
+		$next  = $this->ready();
+		$throw = static function (): void {
+			throw new \RuntimeException( 'Planung gestört' );
+		};
+		add_filter( 'pre_schedule_event', $throw );
+		$log      = (string) tempnam( get_temp_dir(), 'ttl-log' );
+		$previous = ini_set( 'error_log', $log ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- Fehlerprotokoll im Test umleiten.
+
+		try {
+			SeasonAdmin::lifecycle()->publish( $this->tk(), $next, '2027/28', array( 'conflicts' ) );
+		} finally {
+			ini_set( 'error_log', false === $previous ? '' : $previous ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- siehe oben.
+			remove_filter( 'pre_schedule_event', $throw );
+			wp_delete_file( $log );
+		}
+
+		self::assertSame( 'active', $this->season_status( $next ), 'Die Freigabe ist gespeichert, die Ausnahme bleibt beim Protokoll.' );
+		self::assertCount( 1, $this->errors );
+		self::assertStringContainsString( 'Planung gestört', $this->errors[0] );
+		SeasonAdmin::catch_up_published();
+		self::assertTrue( SeasonAdmin::published_scheduled( $next ), 'Der stündliche Lauf plant nach.' );
+	}
+
 	public function test_captains_of_the_new_season_get_their_rights_with_the_publication(): void {
 		$next    = $this->ready();
 		$person  = $this->new_captain( 'wollishofen_1' );

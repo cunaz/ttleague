@@ -298,6 +298,8 @@ final class SeasonPageTest extends SeasonWpTestCase {
 		$html = $this->page( SeasonPage::GROUPS );
 		self::assertStringContainsString( 'Die Gruppe 1 der Kategorie C gibt es schon.', $html );
 		self::assertStringContainsString( 'value="Doppelt"', $html );
+		// Der Fehler ist mit seinem Feld verknüpft.
+		self::assertSame( 1, preg_match( '#<input [^>]*id="(ttl-group-[a-z-]+)"[^>]*aria-invalid="true" aria-describedby="\\1-error"[^>]*><span class="ttl-season-error" id="\\1-error">Die Gruppe 1 der Kategorie C gibt es schon\\.</span>#', $html ) );
 
 		$this->post(
 			SeasonActions::GROUP_RENAME,

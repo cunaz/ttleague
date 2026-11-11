@@ -303,15 +303,16 @@ final class SeasonSteps {
 			$out .= '<p>' . esc_html__( 'Noch keine Gruppe.', 'ttleague' ) . '</p>';
 		}
 		$memory = SeasonActions::recall( 'group' );
-		$error  = static fn( string $field ): string => isset( $memory['errors'][ $field ] ) ? '<span class="ttl-season-error">' . esc_html( $memory['errors'][ $field ] ) . '</span>' : '';
+		$error  = static fn( string $field, string $id ): string => isset( $memory['errors'][ $field ] ) ? '<span class="ttl-season-error" id="' . esc_attr( $id ) . '-error">' . esc_html( $memory['errors'][ $field ] ) . '</span>' : '';
+		$aria   = static fn( string $field, string $id ): string => isset( $memory['errors'][ $field ] ) ? ' aria-invalid="true" aria-describedby="' . esc_attr( $id ) . '-error"' : '';
 		$out   .= '<details' . ( array() === $memory['errors'] ? '' : ' open' ) . '><summary class="button">' . esc_html__( 'Neue Gruppe', 'ttleague' ) . '</summary>'
 			. SeasonPage::form( SeasonActions::GROUP_CREATE, $season_id, $hidden )
 			. '<label for="ttl-group-category">' . esc_html__( 'Kategorie (Buchstabe)', 'ttleague' ) . '</label>'
-			. '<input type="text" id="ttl-group-category" name="category" maxlength="1" size="3" required value="' . esc_attr( $memory['values']['category'] ?? '' ) . '">' . $error( 'category' )
+			. '<input type="text" id="ttl-group-category" name="category" maxlength="1" size="3" required value="' . esc_attr( $memory['values']['category'] ?? '' ) . '"' . $aria( 'category', 'ttl-group-category' ) . '>' . $error( 'category', 'ttl-group-category' )
 			. '<label for="ttl-group-no">' . esc_html__( 'Gruppennummer', 'ttleague' ) . '</label>'
-			. '<input type="number" id="ttl-group-no" name="group_no" min="1" max="99" value="' . esc_attr( $memory['values']['group_no'] ?? '1' ) . '">' . $error( 'group_no' )
+			. '<input type="number" id="ttl-group-no" name="group_no" min="1" max="99" value="' . esc_attr( $memory['values']['group_no'] ?? '1' ) . '"' . $aria( 'group_no', 'ttl-group-no' ) . '>' . $error( 'group_no', 'ttl-group-no' )
 			. '<label for="ttl-group-new-name">' . esc_html__( 'Name (leer: «Gruppe A»)', 'ttleague' ) . '</label>'
-			. '<input type="text" id="ttl-group-new-name" name="name" maxlength="80" value="' . esc_attr( $memory['values']['name'] ?? '' ) . '">' . $error( 'name' )
+			. '<input type="text" id="ttl-group-new-name" name="name" maxlength="80" value="' . esc_attr( $memory['values']['name'] ?? '' ) . '"' . $aria( 'name', 'ttl-group-new-name' ) . '>' . $error( 'name', 'ttl-group-new-name' )
 			. '<button type="submit" class="button">' . esc_html__( 'Gruppe anlegen', 'ttleague' ) . '</button></form></details>';
 
 		$out .= '<h3>' . esc_html__( 'Einteilung der Mannschaften', 'ttleague' ) . '</h3>';
@@ -701,10 +702,12 @@ final class SeasonSteps {
 				'ttl-tk-inline'
 			)
 			. '<label for="ttl-season-late-active">' . esc_html__( 'Nachmeldungen bis', 'ttleague' ) . '</label> '
-			. '<input type="date" id="ttl-season-late-active" name="late_registration_until" value="' . esc_attr( $memory['values']['late_registration_until'] ?? (string) $active['late_registration_until'] ) . '">'
+			. '<input type="date" id="ttl-season-late-active" name="late_registration_until" value="' . esc_attr( $memory['values']['late_registration_until'] ?? (string) $active['late_registration_until'] ) . '"'
+			. ( isset( $memory['errors']['late_registration_until'] ) ? ' aria-invalid="true" aria-describedby="ttl-season-late-active-error"' : '' ) . '>'
 			. '<button type="submit" class="button">' . esc_html__( 'Speichern', 'ttleague' ) . '</button>'
-			. '<span class="ttl-tk-muted">' . esc_html__( 'Ohne Datum gilt der 31. Januar.', 'ttleague' ) . '</span></form>'
-			. ( isset( $memory['errors']['late_registration_until'] ) ? '<span class="ttl-season-error">' . esc_html( $memory['errors']['late_registration_until'] ) . '</span>' : '' );
+			. '<span class="ttl-tk-muted">' . esc_html__( 'Ohne Datum gilt der 31. Januar.', 'ttleague' ) . '</span>'
+			. ( isset( $memory['errors']['late_registration_until'] ) ? '<span class="ttl-season-error" id="ttl-season-late-active-error">' . esc_html( $memory['errors']['late_registration_until'] ) . '</span>' : '' )
+			. '</form>';
 
 		$db        = Services::db();
 		$options   = '';
