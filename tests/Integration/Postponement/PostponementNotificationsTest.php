@@ -322,8 +322,8 @@ final class PostponementNotificationsTest extends PostponementTestCase {
 
 	public function test_a_failing_request_is_reported_and_does_not_stop_the_run(): void {
 		$this->request_f1();
-		$errors        = array();
-		$notifications = $this->postponement_notifications(
+		$errors            = array();
+		$notifications     = $this->postponement_notifications(
 			array(
 				'from_hour'  => 0,
 				'until_hour' => 24,
