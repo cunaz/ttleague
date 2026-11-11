@@ -21,7 +21,8 @@ final class Players {
 
 	/**
 	 * Gemeldete Spieler einer Saison mit Club, Klassierung und aktueller Wertungszahl,
-	 * sortiert nach Nachname und Vorname.
+	 * sortiert nach Nachname und Vorname. Provisorisch gemeldete (Nachmeldung, die die TK noch
+	 * nicht freigegeben hat, docs/meldung.md) gelten öffentlich noch nicht als gemeldet.
 	 *
 	 * @return list<array{player:array<string,mixed>,classification:int,status:string,club_id:int,club_short:string,club_slug:string,rating:?float,rating_games:int}>
 	 */
@@ -38,7 +39,7 @@ final class Players {
 					JOIN {$this->db->table( 'person' )} pe ON pe.id = p.person_id
 					JOIN {$this->db->table( 'club' )} c ON c.id = ps.club_id
 					LEFT JOIN {$this->db->table( 'player_rating' )} r ON r.player_id = p.id
-					WHERE ps.season_id = %d",
+					WHERE ps.season_id = %d AND ps.status <> 'provisional'",
 					array( $season_id )
 				);
 				$list = array();
