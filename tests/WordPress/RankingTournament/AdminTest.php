@@ -188,12 +188,19 @@ final class AdminTest extends RlTestCase {
 		);
 		self::assertCount( 4, RankingTournament::repository()->group( $one['id'] )['members'] );
 
-		// Freigeben: Aufgebot per E-Mail an alle sechs.
+		// Freigeben: Die Anfrage der TK versendet nichts, sie merkt den Versand vor.
 		$this->mails = array();
 		$this->submit( 'publish', $round, array( 'round' => (string) $round ) );
 		self::assertSame( 'published', RankingTournament::repository()->round( $round )['status'] );
+		self::assertSame( array(), $this->mails );
+		self::assertSame( array( array( $round, 0 ) ), $this->waiting_callup_events() );
+		$flash = \TTLeague\Infrastructure\Flash::take( \TTLeague\Tk\Tk::FLASH, $this->users['tk'] );
+		self::assertSame( 'Runde freigegeben. Die Gruppen sind öffentlich, die Aufgebote werden jetzt versendet.', $flash['message'] );
+		// WP-Cron führt den Schritt aus: Aufgebot per E-Mail an alle sechs.
+		$this->run_callup_events();
 		self::assertCount( 6, $this->mails );
 		self::assertStringContainsString( 'Aufgebot Ranglistenturnier: 1. Runde, Kategorie', $this->mails[0]->subject );
+		self::assertSame( array(), $this->waiting_callup_events() );
 
 		// Abschliessen geht erst mit Gruppenzetteln oder ausdrücklich ohne.
 		$this->submit( 'close', $round, array( 'round' => (string) $round ) );

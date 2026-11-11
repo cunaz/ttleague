@@ -19,10 +19,12 @@ use TTLeague\Notifications\Notifier;
 use TTLeague\Notifications\RecipientResolver;
 
 /**
- * - rl_callup: Aufgebot an die Aufgebotenen einer Gruppe (nicht an Abgemeldete) beim Freigeben
- *   der Runde und nach jeder Änderung der Gruppe. Bezug ist die Gruppe, der Zusatz eine Kennung
- *   aus Inhalt und letzter Änderung: Dasselbe Aufgebot geht nie doppelt hinaus, ein geändertes
- *   immer.
+ * - rl_callup: Aufgebot an die Aufgebotenen einer Gruppe (nicht an Abgemeldete) nach dem
+ *   Freigeben der Runde und nach jeder Änderung der Gruppe. Nicht im Aufruf der Freigabe, sondern
+ *   danach in begrenzten Schritten (send_callups()): Bei vielen Empfängern und langsamem Versand
+ *   bräche sonst das Zeitlimit der Anfrage ab, und der Rest erhielte nichts. Bezug ist die Gruppe,
+ *   der Zusatz eine Kennung aus Inhalt und letzter Änderung (callup_key()): Dasselbe Aufgebot
+ *   geht nie doppelt hinaus, ein geändertes immer.
  * - rl_reminder: Angemeldete ohne gemeldete Sperrdaten für die nächste Runde in Planung, in den
  *   Tagen vor dem Anmeldeschluss (format_json reminder_days, Standard 3) und vor jeder Runde, die
  *   noch nicht eingeteilt ist (blocked_reminder_days vor Beginn der Rundenwoche, Standard 10).
@@ -33,6 +35,12 @@ final class Notices {
 	public const CALLUP   = 'rl_callup';
 	public const REMINDER = 'rl_reminder';
 
+	/** Bezug des Aufgebots im Versandprotokoll: die Gruppe. */
+	public const REF_GROUP = 'rl_group';
+
+	/** Höchstzahl der Empfänger, an die ein Schritt Aufgebote versendet. */
+	public const CALLUP_BATCH = 25;
+
 	/** Tage vor dem Anmeldeschluss, ab denen erinnert wird (format_json reminder_days). */
 	public const REMINDER_DAYS = 3;
 
@@ -41,6 +49,12 @@ final class Notices {
 
 	private Repository $repo;
 
+	/** @var callable(\Throwable,string):void */
+	private $on_error;
+
+	/**
+	 * @param callable(\Throwable,string):void|null $on_error Fehler bei einem Empfänger melden.
+	 */
 	public function __construct(
 		private readonly Db $db,
 		private readonly Clock $clock,
@@ -48,22 +62,118 @@ final class Notices {
 		private readonly RecipientResolver $recipients,
 		private readonly Notifier $notifier,
 		private readonly Links $links,
+		?callable $on_error = null,
 	) {
-		$this->repo = new Repository( $db );
+		$this->repo     = new Repository( $db );
+		$this->on_error = $on_error ?? static function (): void {};
 	}
 
 	/**
-	 * Aufgebot an die Mitglieder der Gruppen.
+	 * Ein Schritt des Versands der Aufgebote einer freigegebenen Runde: an höchstens $limit
+	 * Aufgebotene, denen laut Versandprotokoll das aktuelle Aufgebot ihrer Gruppe fehlt, in der
+	 * Reihenfolge der Person-ID ab der Person nach $after_person. Beliebig oft wiederholbar: Wer
+	 * das aktuelle Aufgebot hat, erhält es nicht noch einmal (NotificationLog). Wer schon ein
+	 * früheres Aufgebot dieser Runde hat, erhält es als «geändertes Aufgebot».
 	 *
-	 * @param list<int> $group_ids Gruppen.
-	 * @param bool      $changed   Änderung nach der Freigabe.
-	 * @return list<array{event:string,ref:int,deliveries:list<array{recipient:string,channel:string,status:string}>}>
+	 * Ein Fehler bei einem Empfänger wird gemeldet und hält die übrigen nicht auf; er zählt zum
+	 * Schritt, damit jeder Lauf begrenzt bleibt. Personen ohne Kanal (inaktiv, keine gültige
+	 * Adresse, Benachrichtigung abgewählt) kosten keinen Versand und zählen nicht.
+	 *
+	 * @return array{sent:int,failed:int,next:int|null} Empfänger mit versendetem Aufgebot,
+	 *         Empfänger mit gescheitertem Versand und die Person, nach der der nächste Schritt
+	 *         weitermacht (null, wenn dieser Durchgang alle besucht hat).
 	 */
-	public function callup( array $group_ids, bool $changed ): array {
-		$report = array();
-		foreach ( $group_ids as $group_id ) {
-			$group = $this->repo->group( (int) $group_id );
-			if ( null === $group || Rounds::PUBLISHED !== $group['round_status'] ) {
+	public function send_callups( int $round_id, int $after_person = 0, int $limit = self::CALLUP_BATCH ): array {
+		$result = array(
+			'sent'   => 0,
+			'failed' => 0,
+			'next'   => null,
+		);
+		$round  = $this->repo->round( $round_id );
+		if ( null === $round || Rounds::PUBLISHED !== $round['status'] ) {
+			return $result;
+		}
+		$pending = array_values( array_filter( $this->pending_callups( $round['id'] ), static fn( array $entry ): bool => $entry['person_id'] > $after_person ) );
+		if ( array() === $pending ) {
+			return $result;
+		}
+		$recipients = array();
+		foreach ( $this->recipients->persons( array_column( $pending, 'person_id' ) ) as $recipient ) {
+			$recipients[ (int) $recipient->person_id ] = $recipient;
+		}
+		$informed = $this->repo->notified( array_column( $pending, 'person_id' ), self::CALLUP, self::REF_GROUP, array_column( $this->repo->groups( $round['id'] ), 'id' ) );
+		$messages = array();
+		$attempts = 0;
+		$last     = $after_person;
+		foreach ( $pending as $entry ) {
+			$person_id = $entry['person_id'];
+			if ( $attempts >= $limit ) {
+				$result['next'] = $last;
+				break;
+			}
+			$last = $person_id;
+			if ( ! isset( $recipients[ $person_id ] ) ) {
+				continue;
+			}
+			$changed = in_array( $person_id, $informed, true );
+			$cache   = $entry['group']['id'] . ( $changed ? ':changed' : ':first' );
+			try {
+				$messages[ $cache ] ??= $this->callup_message( $entry['group'], $changed );
+				$report               = $this->notifier->send( $messages[ $cache ], array( $recipients[ $person_id ] ) );
+			} catch ( \Throwable $e ) {
+				( $this->on_error )( $e, self::CALLUP . ' p' . $person_id );
+				$report = array( array( 'status' => Notifier::FAILED ) );
+			}
+			if ( array() === $report ) {
+				continue;
+			}
+			++$attempts;
+			$statuses = array_column( $report, 'status' );
+			if ( in_array( Notifier::SENT, $statuses, true ) ) {
+				++$result['sent'];
+			} elseif ( in_array( Notifier::FAILED, $statuses, true ) ) {
+				++$result['failed'];
+			}
+		}
+		return $result;
+	}
+
+	/**
+	 * Freigegebene Runden der aktiven Saison, in denen einer erreichbaren Person das aktuelle
+	 * Aufgebot fehlt. Für sie plant der stündliche Lauf einen Schritt ein.
+	 *
+	 * @return list<int>
+	 */
+	public function rounds_with_pending_callups(): array {
+		$season      = $this->repo->active_season_id();
+		$competition = null === $season ? null : $this->repo->competition_of_season( $season );
+		if ( null === $competition ) {
+			return array();
+		}
+		$rounds = array();
+		foreach ( $this->repo->rounds( $competition['id'] ) as $round ) {
+			if ( Rounds::PUBLISHED !== $round['status'] ) {
+				continue;
+			}
+			$pending = array_column( $this->pending_callups( $round['id'] ), 'person_id' );
+			if ( array() !== $pending && array() !== $this->recipients->persons( $pending ) ) {
+				$rounds[] = $round['id'];
+			}
+		}
+		return $rounds;
+	}
+
+	/**
+	 * Aufgebotene einer Runde, denen das aktuelle Aufgebot ihrer Gruppe fehlt, nach Person-ID.
+	 * Abgemeldete erhalten keines, ebenso wenig Gruppen, deren Termin vorbei ist.
+	 *
+	 * @return list<array{person_id:int,group:array<string,mixed>}>
+	 */
+	private function pending_callups( int $round_id ): array {
+		$now     = $this->clock->now()->setTimezone( $this->timezone )->format( 'Y-m-d H:i:s' );
+		$pending = array();
+		foreach ( $this->repo->groups( $round_id ) as $group ) {
+			if ( null !== $group['start_at'] && $group['start_at'] < $now ) {
 				continue;
 			}
 			$persons = array();
@@ -72,14 +182,33 @@ final class Notices {
 					$persons[] = $member['person_id'];
 				}
 			}
-			$notification = $this->callup_message( $group, $changed );
-			$report[]     = array(
-				'event'      => $notification->event,
-				'ref'        => $notification->ref_id,
-				'deliveries' => $this->notifier->send( $notification, $this->recipients->persons( $persons ) ),
-			);
+			$have = $this->repo->notified( $persons, self::CALLUP, self::REF_GROUP, array( $group['id'] ), $this->callup_key( $group ) );
+			foreach ( array_diff( $persons, $have ) as $person_id ) {
+				$pending[] = array(
+					'person_id' => $person_id,
+					'group'     => $group,
+				);
+			}
 		}
-		return $report;
+		usort( $pending, static fn( array $a, array $b ): int => array( $a['person_id'], $a['group']['id'] ) <=> array( $b['person_id'], $b['group']['id'] ) );
+		return $pending;
+	}
+
+	/**
+	 * Kennung des aktuellen Aufgebots einer Gruppe (notification_log.ref_key): Termin, Lokal,
+	 * Platzclub, Gruppenchef, Mitglieder und die letzte Änderung der Gruppe durch die TK. Dasselbe
+	 * Aufgebot geht so nie doppelt hinaus, ein geändertes immer, auch wenn die TK eine Änderung
+	 * wieder zurücknimmt. Meldet sich jemand für die Runde ab, bleibt die Kennung gleich.
+	 *
+	 * @param array<string,mixed> $group Gruppe aus Repository::group().
+	 */
+	private function callup_key( array $group ): string {
+		$stamp   = (string) $this->db->get_var(
+			"SELECT COALESCE(MAX(id), 0) FROM {$this->db->table( 'audit_log' )} WHERE entity = 'rl_group' AND entity_id = %d AND action IN ('created', 'changed')",
+			array( $group['id'] )
+		);
+		$content = implode( '|', array( (string) $group['start_at'], (string) $group['venue_id'], (string) $group['host_club_id'], (string) $group['chief_player_id'], implode( ',', array_column( $group['members'], 'player_id' ) ), $stamp ) );
+		return substr( hash( 'sha256', $content ), 0, 16 );
 	}
 
 	/**
@@ -247,19 +376,12 @@ final class Notices {
 		}
 		$paragraphs[] = __( 'Kannst du nicht spielen, melde dich in «Mein Bereich» für diese Runde ab.', 'ttleague' );
 
-		// Kennung aus Inhalt und letzter Änderung der Gruppe: gleiches Aufgebot nie doppelt, geändertes immer.
-		$stamp   = (string) $this->db->get_var(
-			"SELECT COALESCE(MAX(id), 0) FROM {$this->db->table( 'audit_log' )} WHERE entity = 'rl_group' AND entity_id = %d AND action IN ('created', 'changed')",
-			array( $group['id'] )
-		);
-		$content = implode( '|', array( (string) $group['start_at'], (string) $group['venue_id'], (string) $group['host_club_id'], (string) $group['chief_player_id'], implode( ',', array_column( $group['members'], 'status', 'player_id' ) ), implode( ',', array_column( $group['members'], 'player_id' ) ), $stamp ) );
-
 		return new Notification(
 			EventTypes::RL_CALLUP,
 			self::CALLUP,
-			'rl_group',
+			self::REF_GROUP,
 			(int) $group['id'],
-			substr( hash( 'sha256', $content ), 0, 16 ),
+			$this->callup_key( $group ),
 			$subject,
 			$paragraphs,
 			array(),

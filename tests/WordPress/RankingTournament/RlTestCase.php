@@ -158,6 +158,43 @@ abstract class RlTestCase extends TestCase {
 	}
 
 	/**
+	 * Spielt WP-Cron für die wartenden Schritte des Versands der Aufgebote: Jedes Ereignis wird
+	 * wie im echten Lauf zuerst ausgetragen und dann ausgeführt. Neu eingeplante Schritte
+	 * (Fortsetzung) bleiben für den nächsten Aufruf stehen.
+	 *
+	 * @return list<array<int,mixed>> Argumente der ausgeführten Ereignisse.
+	 */
+	protected function run_callup_events(): array {
+		$run = array();
+		foreach ( (array) _get_cron_array() as $timestamp => $hooks ) {
+			foreach ( $hooks[ RankingTournament::CALLUP_HOOK ] ?? array() as $event ) {
+				wp_unschedule_event( (int) $timestamp, RankingTournament::CALLUP_HOOK, $event['args'] );
+				$run[] = $event['args'];
+			}
+		}
+		self::assertSame( 'ttleague_rl_callups', RankingTournament::CALLUP_HOOK );
+		foreach ( $run as $args ) {
+			do_action_ref_array( 'ttleague_rl_callups', $args );
+		}
+		return $run;
+	}
+
+	/**
+	 * Argumente der wartenden Schritte des Versands der Aufgebote.
+	 *
+	 * @return list<array<int,mixed>>
+	 */
+	protected function waiting_callup_events(): array {
+		$waiting = array();
+		foreach ( (array) _get_cron_array() as $hooks ) {
+			foreach ( $hooks[ RankingTournament::CALLUP_HOOK ] ?? array() as $event ) {
+				$waiting[] = $event['args'];
+			}
+		}
+		return $waiting;
+	}
+
+	/**
 	 * Formulardaten mit gültigem Nonce, wie WordPress sie liefert.
 	 *
 	 * @param array<string,mixed> $fields Felder.

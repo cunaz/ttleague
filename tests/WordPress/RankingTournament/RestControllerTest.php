@@ -110,17 +110,24 @@ final class RestControllerTest extends RlTestCase {
 
 	public function test_invalid_sheet_is_refused_with_422_and_field_errors(): void {
 		wp_set_current_user( $this->users['h1'] );
-		$sheet                       = $this->sheet( $this->group );
-		$sheet['games'][0]['sets_b'] = 3;
-		array_pop( $sheet['games'] );
-		unset( $sheet['players'][ $this->league->id['a2'] ] );
+		$sheet = $this->sheet( $this->group );
+		$a2    = $this->league->id['a2'];
+		unset( $sheet['players'][ $a2 ] );
+		// Ein Unentschieden in der ersten Partie ohne a2.
+		$members = array_column( RankingTournament::repository()->group( $this->group )['members'], 'player_id' );
+		$invalid = null;
+		foreach ( \TTLeague\RankingTournament\Sheet::order( $members ) as $i => $game ) {
+			if ( null === $invalid && ! in_array( $a2, array( $game['a'], $game['b'] ), true ) ) {
+				$invalid                        = $game['sequence'];
+				$sheet['games'][ $i ]['sets_b'] = 3;
+			}
+		}
 
 		$response = $this->request( 'POST', 'result', $sheet );
 
 		$this->assert_error( 422, 'ttl_invalid', $response );
-		$fields = array_column( $response->get_data()['data']['errors'], 'field' );
-		self::assertContains( 'players.' . $this->league->id['a2'], $fields );
-		self::assertContains( 'games.1', $fields );
+		// Genau zwei Fehler: der fehlende Status und das ungültige Resultat; keiner zu den Partien von a2.
+		self::assertSame( array( 'players.' . $a2, 'games.' . $invalid ), array_column( $response->get_data()['data']['errors'], 'field' ) );
 		self::assertNull( RankingTournament::repository()->group( $this->group )['entered_at'] );
 	}
 

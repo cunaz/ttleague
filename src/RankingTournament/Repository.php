@@ -627,6 +627,40 @@ final class Repository {
 	}
 
 	/**
+	 * Personen, denen laut Versandprotokoll eine Nachricht zugestellt ist (Status «sent», gleich
+	 * über welchen Kanal).
+	 *
+	 * @param list<int>   $person_ids Personen.
+	 * @param string      $event      Art der Nachricht (notification_log.event_type).
+	 * @param string      $ref_type   Bezug.
+	 * @param list<int>   $ref_ids    IDs des Bezugs.
+	 * @param string|null $ref_key    Zusatz zum Bezug; null für jeden Zusatz.
+	 * @return list<int>
+	 */
+	public function notified( array $person_ids, string $event, string $ref_type, array $ref_ids, ?string $ref_key = null ): array {
+		$persons = self::ids( $person_ids );
+		$refs    = self::ids( $ref_ids );
+		if ( array() === $persons || array() === $refs ) {
+			return array();
+		}
+		$args = array( $event, $ref_type, \TTLeague\Notifications\NotificationLog::SENT );
+		$key  = '';
+		if ( null !== $ref_key ) {
+			$key    = ' AND ref_key = %s';
+			$args[] = $ref_key;
+		}
+		return array_map(
+			'intval',
+			$this->db->get_col(
+				"SELECT DISTINCT person_id FROM {$this->db->table( 'notification_log' )}
+				WHERE event_type = %s AND ref_type = %s AND status = %s{$key}
+					AND ref_id IN (" . implode( ',', $refs ) . ') AND person_id IN (' . implode( ',', $persons ) . ')', // Nur Ganzzahlen.
+				$args
+			)
+		);
+	}
+
+	/**
 	 * Name zu einem Konto über die verknüpfte Person.
 	 */
 	public function user_name( int $user_id ): ?string {

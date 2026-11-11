@@ -122,7 +122,7 @@ final class AdminActions {
 
 			case 'publish':
 				$rounds->publish( $actor, $id );
-				return array( Outcome::success( __( 'Runde freigegeben. Das Aufgebot ist verschickt, die Gruppen sind öffentlich.', 'ttleague' ) ), null );
+				return array( Outcome::success( __( 'Runde freigegeben. Die Gruppen sind öffentlich, die Aufgebote werden jetzt versendet.', 'ttleague' ) ), null );
 
 			case 'close':
 				$rounds->close( $actor, $id, self::manual(), isset( $_POST['allow_missing'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- in handle() geprüft.
@@ -144,7 +144,15 @@ final class AdminActions {
 					$data['category'] = self::number( 'category' );
 				}
 				$rounds->save_group( $actor, $round, $id > 0 ? $id : null, $data );
-				return array( Outcome::success( __( 'Gruppe gespeichert.', 'ttleague' ) ), null );
+				$current = RankingTournament::repository()->round( $round );
+				return array(
+					Outcome::success(
+						null !== $current && Rounds::PUBLISHED === $current['status']
+							? __( 'Gruppe gespeichert. Hat sich das Aufgebot geändert, wird es den Aufgebotenen der Gruppe neu versendet.', 'ttleague' )
+							: __( 'Gruppe gespeichert.', 'ttleague' )
+					),
+					null,
+				);
 
 			case 'group_delete':
 				$rounds->delete_group( $actor, $id );

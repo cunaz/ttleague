@@ -16,8 +16,8 @@ use TTLeague\Results\Results;
 /**
  * Wie bei der Resultaterfassung: zuerst die Cache-Version, bei geänderten Partien die
  * entprellte Neuberechnung der Wertungszahl (ttleague_rating_recalc), danach die Aktion
- * ttleague_data_changed. Ein Fehler in einem Listener oder beim Versand wird nur protokolliert;
- * die Aktion ist gespeichert.
+ * ttleague_data_changed. Ein Fehler in einem Listener oder beim Vormerken des Versands wird nur
+ * protokolliert; die Aktion ist gespeichert.
  */
 final class WordPressEvents implements Events {
 
@@ -34,11 +34,17 @@ final class WordPressEvents implements Events {
 		}
 	}
 
+	/**
+	 * Das Aufgebot geht nicht in dieser Anfrage hinaus: Der Versand wird nur vorgemerkt und läuft
+	 * danach über WP-Cron in begrenzten Schritten (RankingTournament::send_callups()). Welche
+	 * Gruppen betroffen sind, rechnet der Schritt aus dem Versandprotokoll.
+	 */
 	public function callup( int $round_id, array $group_ids, int $user_id, bool $changed ): void {
+		unset( $group_ids, $user_id, $changed );
 		try {
-			RankingTournament::notices()->callup( $group_ids, $changed );
+			RankingTournament::schedule_callups( $round_id );
 		} catch ( \Throwable $e ) {
-			Notifications::report_error( $e, 'rl_callup' );
+			Notifications::report_error( $e, Notices::CALLUP );
 		}
 	}
 }
