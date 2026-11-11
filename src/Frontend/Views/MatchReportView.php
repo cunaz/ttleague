@@ -34,7 +34,8 @@ final class MatchReportView extends View {
 			return Html::notice( __( 'Dieser Block zeigt die Begegnung aus der Adresse (z. B. /begegnung/123/). Für eine feste Begegnung die Nummer in den Block-Einstellungen angeben.', 'ttleague' ) );
 		}
 
-		return $this->header( $report ) . $this->lineups( $report ) . $this->games( $report );
+		// Kontakt der beiden Seiten nur für angemeldete Funktionärinnen und Funktionäre (sonst leer).
+		return $this->header( $report ) . $this->lineups( $report ) . $this->games( $report ) . ContactBox::fixture_section( (int) $report['id'] );
 	}
 
 	/**
@@ -91,6 +92,13 @@ final class MatchReportView extends View {
 		);
 		if ( null !== $report['note'] && '' !== trim( (string) $report['note'] ) ) {
 			$out .= '<p class="ttl-note">' . esc_html( (string) $report['note'] ) . '</p>';
+		}
+		// «Teilen», sobald ein Resultat vorliegt; für alle Besucher gleich.
+		if ( null !== $report['home_score'] && null !== $report['away_score'] ) {
+			$out .= ShareButton::render(
+				ShareButton::title( (string) $report['home']['name'], (string) $report['away']['name'], (int) $report['home_score'], (int) $report['away_score'] ),
+				$this->urls->fixture( (int) $report['id'] )
+			);
 		}
 		// Nur für angemeldete Personen mit Recht; die Ausgabe für Gäste bleibt gleich (Cache).
 		$out .= EntryLinks::report_button( (int) $report['id'], (string) $report['status'] );

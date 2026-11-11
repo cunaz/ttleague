@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI: Personen von Hand mit WordPress-Konten verknüpfen.
+ * WP-CLI: Personen von Hand mit WordPress-Konten verknüpfen und auf Wunsch anonymisieren.
  *
  * @package TTLeague
  */
@@ -9,11 +9,13 @@ declare(strict_types=1);
 
 namespace TTLeague\Cli;
 
+use TTLeague\Accounts\PersonalData;
+use TTLeague\Accounts\Privacy;
 use TTLeague\Accounts\Services;
 
 /**
  * Verknüpft Personen mit Konten, die nicht automatisch verknüpft werden (z. B. ein
- * Administratorkonto einer Person, die auch spielt).
+ * Administratorkonto einer Person, die auch spielt), und anonymisiert Personen auf deren Wunsch.
  */
 final class AccountCommand {
 
@@ -102,6 +104,64 @@ final class AccountCommand {
 		\WP_CLI::success( sprintf( 'Verknüpfung von Person %d aufgehoben.', $person_id ) );
 		if ( ! \TTLeague\Infrastructure\Database\Installer::ensure_unique_person_user() ) {
 			\WP_CLI::warning( 'Es gibt weiterhin Konten mit mehreren Personen; Verknüpfen bleibt gesperrt.' );
+		}
+	}
+
+	/**
+	 * Anonymisiert eine Person auf deren Wunsch. Nicht umkehrbar.
+	 *
+	 * Ersetzt Vor- und Nachname durch «Ehemaliges Mitglied» mit laufender Nummer, löscht
+	 * E-Mail, Telefon, Einwilligung, Benachrichtigungs-Einstellungen, Push-Abos und
+	 * Anmeldelinks, löst die Verknüpfung zum WordPress-Konto und setzt die Person auf inaktiv.
+	 * Lizenznummer, Meldungen und Resultate bleiben. Das WordPress-Konto selbst bleibt bestehen.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <person>
+	 * : ID der Person (wp_ttl_person.id).
+	 *
+	 * [--yes]
+	 * : Ohne Rückfrage ausführen.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp ttleague account anonymize 42 --yes
+	 *
+	 * @param list<string>         $args       Argumente.
+	 * @param array<string,string> $assoc_args Optionen.
+	 */
+	public function anonymize( array $args, array $assoc_args ): void {
+		$person_id = (int) ( $args[0] ?? 0 );
+		$person    = Services::accounts()->person( $person_id );
+		if ( null === $person ) {
+			\WP_CLI::error( 'Person nicht gefunden.' );
+		}
+		if ( PersonalData::is_anonymized( $person ) ) {
+			\WP_CLI::error( 'Die Person ist bereits anonymisiert.' );
+		}
+		$functions = Privacy::service()->active_functions( $person_id );
+		\WP_CLI::confirm(
+			sprintf( 'Person %d (%s) unwiderruflich anonymisieren?', $person_id, trim( $person['first_name'] . ' ' . $person['last_name'] ) ),
+			$assoc_args
+		);
+		try {
+			$result = Privacy::anonymize( $person_id, self::actor(), 'wp-cli' );
+		} catch ( \RuntimeException $e ) {
+			\WP_CLI::error( $e->getMessage() );
+		}
+		\WP_CLI::success( sprintf( 'Person %d heisst jetzt «%s» und ist inaktiv.', $person_id, $result['name'] ) );
+		if ( null !== $result['user_id'] ) {
+			$user = get_userdata( $result['user_id'] );
+			\WP_CLI::log(
+				sprintf(
+					'Das WordPress-Konto %s ist nicht mehr verknüpft, besteht aber weiter (mit Name und E-Mail-Adresse). Bei Bedarf löschen: wp user delete %d',
+					false === $user ? '#' . $result['user_id'] : $user->user_login,
+					$result['user_id']
+				)
+			);
+		}
+		if ( $functions > 0 ) {
+			\WP_CLI::warning( 'Die Person hat noch eine Funktion in der aktiven Saison. Bitte Captain oder TK-Chef neu besetzen.' );
 		}
 	}
 

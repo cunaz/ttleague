@@ -32,7 +32,7 @@ final class Teams {
 	 *
 	 * @return array{
 	 *   roster:list<array{player:array<string,mixed>,classification:?int,kind:string}>,
-	 *   captains:list<array{name:string,player:?array<string,mixed>}>,
+	 *   captains:list<array{person_id:int,name:string,player:?array<string,mixed>}>,
 	 *   venue:?array{id:int,name:string,street:?string,zip:?string,city:?string,weekday:?int},
 	 *   matrix:array{fixtures:list<array<string,mixed>>,rows:list<array<string,mixed>>}
 	 * }
@@ -136,7 +136,7 @@ final class Teams {
 
 		$captains = array();
 		foreach ( $this->db->get_results(
-			"SELECT pe.first_name, pe.last_name, p.id AS player_id, p.license_no
+			"SELECT cr.person_id, pe.first_name, pe.last_name, p.id AS player_id, p.license_no
 			FROM {$this->db->table( 'club_role' )} cr
 			JOIN {$this->db->table( 'person' )} pe ON pe.id = cr.person_id
 			LEFT JOIN {$this->db->table( 'player' )} p ON p.person_id = pe.id
@@ -144,9 +144,11 @@ final class Teams {
 			ORDER BY pe.last_name, pe.first_name",
 			array( $team_id, $season_id )
 		) as $row ) {
+			// person_id ordnet in der Ansicht die Kontaktdaten zu; diese selbst stehen nie im Cache.
 			$captains[] = array(
-				'name'   => Names::full( $row['first_name'], $row['last_name'] ),
-				'player' => null === $row['player_id'] ? null : Names::player( $row ),
+				'person_id' => (int) $row['person_id'],
+				'name'      => Names::full( $row['first_name'], $row['last_name'] ),
+				'player'    => null === $row['player_id'] ? null : Names::player( $row ),
 			);
 		}
 

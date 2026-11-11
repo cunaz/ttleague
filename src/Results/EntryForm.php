@@ -24,6 +24,8 @@ use TTLeague\Domain\Rules\SeasonRules;
  * walkover), hp/ap (Doppelpaarung als Slots, z. B. «AC»), pts (Satzpunkte als Text).
  * Fehlt ein Spieler, schlägt das Modell «kampflos» für die andere Seite vor, solange das Spiel
  * nicht ausdrücklich erfasst ist; fehlen beide, «nicht gespielt».
+ * Ist noch nichts erfasst, beginnt die Aufstellung mit dem Vorschlag aus dem letzten Spiel
+ * (suggestion); das Modell kennzeichnet eine Seite, solange sie dem Vorschlag entspricht.
  */
 final class EntryForm {
 
@@ -79,6 +81,15 @@ final class EntryForm {
 				'away' => $game['away'],
 			);
 		}
+		$suggestion = array();
+		foreach ( array( 'home', 'away' ) as $side ) {
+			$suggestion[ $side ] = array();
+			foreach ( (array) ( $entry['suggestion'][ $side ] ?? array() ) as $slot => $id ) {
+				if ( in_array( (string) $slot, $rules['slots'][ $side ], true ) && isset( $players[ (string) $id ] ) ) {
+					$suggestion[ $side ][ (string) $slot ] = (string) $id;
+				}
+			}
+		}
 		$sets = (int) $rules['sets_to_win'];
 		$cup  = 'CUP' === $fixture['type'];
 		return array(
@@ -95,6 +106,7 @@ final class EntryForm {
 			),
 			'players'     => $players,
 			'eligibility' => $eligibility,
+			'suggestion'  => $suggestion,
 			'scores'      => self::scores( $sets ),
 			'strings'     => self::strings(),
 		);
@@ -117,7 +129,9 @@ final class EntryForm {
 	}
 
 	/**
-	 * Startzustand: das erfasste Resultat oder ein leeres Formular.
+	 * Startzustand: das erfasste Resultat, sonst ein leeres Formular mit der vorgeschlagenen
+	 * Aufstellung aus dem letzten Spiel (data['suggestion']). Der Vorschlag ist kein Entwurf: Er
+	 * ist der Ausgangszustand, mit dem das Skript Entwürfe im Browser vergleicht.
 	 *
 	 * @param array<string,mixed> $entry Antwort von ResultService::entry().
 	 * @param array<string,mixed> $data  Daten aus data().
@@ -127,13 +141,15 @@ final class EntryForm {
 		$current = $entry['current'];
 		$games   = is_array( $current['games'] ) ? $current['games'] : array();
 		$filled  = array() !== $games;
+		$blank   = ! $filled && array() === (array) $current['lineup']['home'] && array() === (array) $current['lineup']['away'];
 		$lineup  = array();
 		foreach ( array( 'home', 'away' ) as $side ) {
 			$saved           = (array) $current['lineup'][ $side ];
+			$suggested       = $blank ? (array) ( $data['suggestion'][ $side ] ?? array() ) : array();
 			$lineup[ $side ] = array();
 			foreach ( $data['slots'][ $side ] as $slot ) {
 				$id                       = $saved[ $slot ] ?? null;
-				$lineup[ $side ][ $slot ] = null === $id ? ( $filled ? self::MISSING : '' ) : (string) $id;
+				$lineup[ $side ][ $slot ] = null === $id ? ( $filled ? self::MISSING : (string) ( $suggested[ $slot ] ?? '' ) ) : (string) $id;
 			}
 		}
 
@@ -224,10 +240,17 @@ final class EntryForm {
 		);
 
 		foreach ( array( 'home', 'away' ) as $side ) {
+			// Vorschlag aus dem letzten Spiel: gekennzeichnet, solange die Seite ihm genau entspricht.
+			$suggestion = (array) ( $data['suggestion'][ $side ] ?? array() );
+			$suggested  = array() !== $suggestion;
+
 			$view['lineup'][ $side ] = array( 'err' => $errors[ 'lineup.' . $side ] ?? '' );
 			foreach ( $data['slots'][ $side ] as $slot ) {
 				$value = (string) ( $lineup[ $side ][ $slot ] ?? '' );
 				$error = $errors[ 'lineup.' . $side . '.' . $slot ] ?? '';
+				if ( (string) ( $suggestion[ $slot ] ?? '' ) !== $value ) {
+					$suggested = false;
+				}
 
 				$view['lineup'][ $side ][ $slot ] = array(
 					'err'  => $error,
@@ -235,6 +258,8 @@ final class EntryForm {
 					'note' => self::is_player( $value ) ? (string) ( $data['eligibility'][ $side ][ $value ]['note'] ?? '' ) : '',
 				);
 			}
+			$view['lineup'][ $side ]['sug'] = $suggested;
+
 			$view['pairs'][ $side ] = array();
 			$slots                  = $data['slots'][ $side ];
 			$count                  = count( $slots );
