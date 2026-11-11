@@ -488,7 +488,13 @@ final class ClassificationTest extends TestCase {
 		wp_set_current_user( $this->tk );
 
 		// Ein Array ergäbe mit absint() die Zahl 1 und träfe die Zeile mit dieser ID.
-		$this->post( Classification::ACCEPT, array( 'proposal' => array( '7' ), 'proposed' => array( '3' ) ) );
+		$this->post(
+			Classification::ACCEPT,
+			array(
+				'proposal' => array( '7' ),
+				'proposed' => array( '3' ),
+			)
+		);
 		$this->redirect_of( array( Actions::class, 'accept' ) );
 
 		$flash = Flash::take( Tk::FLASH, $this->tk );
