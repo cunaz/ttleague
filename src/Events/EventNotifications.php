@@ -34,7 +34,7 @@ final class EventNotifications implements EventListener {
 	/** So viele Tage nach der Absage holt der stündliche Lauf ausstehende Mitteilungen nach. */
 	public const CANCEL_CATCH_UP_DAYS = 7;
 
-	/** Für höchstens so viele Anlässe plant ein stündlicher Lauf den Versand erneut ein. */
+	/** Für höchstens so viele Anlässe versucht ein stündlicher Lauf, den Versand erneut einzuplanen. */
 	public const CANCEL_CATCH_UP_EVENTS = 10;
 
 	/** @var callable(int):?string */
@@ -136,18 +136,27 @@ final class EventNotifications implements EventListener {
 
 	/**
 	 * Abgesagte Anlässe mit ausstehenden Absagemitteilungen, deren Absage höchstens
-	 * CANCEL_CATCH_UP_DAYS Tage zurückliegt, die älteste Absage zuerst: Für sie plant der
-	 * stündliche Lauf den Versand erneut ein.
+	 * CANCEL_CATCH_UP_DAYS Tage zurückliegt: Für sie plant der stündliche Lauf den Versand erneut
+	 * ein. Die Reihenfolge ist die der Absage, die älteste zuerst, und beginnt nach dem Anlass
+	 * $after_event; die Anlässe bis und mit diesem folgen am Schluss (reihum). So verdrängen
+	 * ältere Anlässe mit dauerhaft ausstehenden Personen die späteren nicht. Liegt $after_event
+	 * nicht mehr im Zeitraum, beginnt die Reihenfolge vorn: Er war älter als alle übrigen.
 	 *
-	 * @param \DateTimeImmutable $now Jetzt (UTC).
+	 * @param \DateTimeImmutable $now         Jetzt (UTC).
+	 * @param int                $after_event Anlass, den der letzte Lauf zuletzt eingeplant hat (0: von vorn).
 	 * @return list<int>
 	 */
-	public function cancellations_to_catch_up( \DateTimeImmutable $now ): array {
-		return $this->repo->cancelled_with_pending_notices(
+	public function cancellations_to_catch_up( \DateTimeImmutable $now, int $after_event = 0 ): array {
+		$events   = $this->repo->cancelled_since(
 			$now->modify( '-' . self::CANCEL_CATCH_UP_DAYS . ' days' )->format( 'Y-m-d H:i:s' ),
 			EventMessages::CANCELLED,
 			EventMessages::REF_EVENT
 		);
+		$position = array_search( $after_event, array_column( $events, 'id' ), true );
+		if ( false !== $position ) {
+			$events = array_merge( array_slice( $events, $position + 1 ), array_slice( $events, 0, $position + 1 ) );
+		}
+		return array_column( array_filter( $events, static fn( array $event ): bool => $event['pending'] ), 'id' );
 	}
 
 	public function registered( int $event_id, int $registration_id, int $person_id, string $status, int $user_id ): void {

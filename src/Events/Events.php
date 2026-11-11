@@ -25,6 +25,15 @@ final class Events {
 	/** Einmaliges Cron-Ereignis: ein Schritt des Versands der Absagemitteilungen (Anlass, Person davor). */
 	public const CANCELLATION_HOOK = 'ttleague_event_cancellation';
 
+	/** Option (nicht automatisch geladen): Anlass, den der stündliche Lauf zuletzt eingeplant hat. */
+	public const CATCH_UP_OPTION = 'ttleague_event_cancellation_cursor';
+
+	/** Sekunden, um die ein Versandschritt verschoben wird, wenn in der Anfrage schon einer lief. */
+	public const DEFER_SECONDS = 60;
+
+	/** Lief in dieser Anfrage (diesem PHP-Prozess) schon ein Versandschritt? */
+	private static bool $batch_ran = false;
+
 	public static function register(): void {
 		add_filter( 'ttleague_tk_pages', array( AdminPage::class, 'pages' ) );
 		add_filter( 'ttleague_notification_types', array( self::class, 'notification_types' ) );
@@ -54,6 +63,7 @@ final class Events {
 
 	public static function deactivate(): void {
 		wp_unschedule_hook( self::CANCELLATION_HOOK );
+		delete_option( self::CATCH_UP_OPTION );
 	}
 
 	public static function repository(): EventRepository {
@@ -123,14 +133,24 @@ final class Events {
 	 * Cron: ein Schritt des Versands der Absagemitteilungen. Bleibt ein Rest, plant sich der
 	 * Schritt für die Personen nach $after_person erneut ein.
 	 *
+	 * Höchstens ein Schritt pro Anfrage: wp-cron.php führt alle fälligen Ereignisse im selben
+	 * PHP-Prozess aus. Lief darin schon ein Schritt (gleich für welchen Anlass), versendet dieser
+	 * Aufruf nichts und plant sich mit DEFER_SECONDS Abstand neu ein.
+	 *
 	 * @param int|string $event_id     Anlass.
 	 * @param int|string $after_person Person, nach der dieser Schritt weitermacht (0: von vorn).
 	 */
 	public static function send_cancellations( $event_id, $after_person = 0 ): void {
-		$event_id = (int) $event_id;
+		$event_id     = (int) $event_id;
+		$after_person = (int) $after_person;
+		if ( self::$batch_ran ) {
+			self::schedule_cancellations( $event_id, $after_person, self::DEFER_SECONDS );
+			return;
+		}
+		self::$batch_ran = true;
 		self::guard(
 			static function () use ( $event_id, $after_person ): void {
-				$result = self::notifications()->send_cancellations( $event_id, (int) $after_person );
+				$result = self::notifications()->send_cancellations( $event_id, $after_person );
 				if ( null !== $result['next'] ) {
 					self::schedule_cancellations( $event_id, $result['next'] );
 				}
@@ -139,28 +159,45 @@ final class Events {
 	}
 
 	/**
+	 * Vergisst, dass in diesem PHP-Prozess schon ein Versandschritt lief (Tests, lang laufende
+	 * Prozesse wie WP-CLI, die mehrere Schritte bewusst nacheinander ausführen).
+	 */
+	public static function reset_request(): void {
+		self::$batch_ran = false;
+	}
+
+	/**
 	 * Stündlicher Lauf der Benachrichtigungen: Auffangnetz für Absagemitteilungen. Der Lauf
 	 * versendet selbst nichts. Für kürzlich abgesagte Anlässe mit ausstehenden Mitteilungen plant
 	 * er nur den Versandschritt neu ein (dasselbe einmalige Ereignis wie nach der Absage), sofern
-	 * für den Anlass nicht schon ein Schritt wartet. So bleibt jede Anfrage auf einen Stapel
-	 * begrenzt. Pro Lauf höchstens EventNotifications::CANCEL_CATCH_UP_EVENTS Anlässe, die älteste
-	 * Absage zuerst, im Abstand von einer Minute; die übrigen folgen im nächsten Lauf.
+	 * für den Anlass nicht schon ein Schritt wartet.
+	 *
+	 * Pro Lauf höchstens EventNotifications::CANCEL_CATCH_UP_EVENTS Versuche, auch wenn das
+	 * Einplanen scheitert, im Abstand von einer Minute. Der Lauf geht reihum vor: Er merkt sich den
+	 * zuletzt eingeplanten Anlass (CATCH_UP_OPTION) und setzt beim nächsten Mal danach fort, am
+	 * Ende wieder von vorn. So kommen spätere Anlässe dran, auch wenn bei älteren dauerhaft etwas
+	 * aussteht (Personen ohne Kanal, scheiternde Adressen).
 	 * Fängt ein verlorenes Ereignis, einen abgebrochenen Lauf und gescheiterte Zustellungen auf.
 	 */
 	public static function catch_up_cancellations(): void {
 		self::guard(
 			static function (): void {
-				$planned = 0;
-				foreach ( self::notifications()->cancellations_to_catch_up( Services::clock()->now() ) as $event_id ) {
-					if ( $planned >= EventNotifications::CANCEL_CATCH_UP_EVENTS ) {
+				$attempts = 0;
+				$last     = null;
+				$after    = (int) get_option( self::CATCH_UP_OPTION, 0 );
+				foreach ( self::notifications()->cancellations_to_catch_up( Services::clock()->now(), $after ) as $event_id ) {
+					if ( $attempts >= EventNotifications::CANCEL_CATCH_UP_EVENTS ) {
 						break;
 					}
 					if ( self::cancellations_scheduled( $event_id ) ) {
 						continue;
 					}
-					if ( self::schedule_cancellations( $event_id, 0, $planned * MINUTE_IN_SECONDS ) ) {
-						++$planned;
-					}
+					self::schedule_cancellations( $event_id, 0, $attempts * MINUTE_IN_SECONDS );
+					++$attempts;
+					$last = $event_id;
+				}
+				if ( null !== $last ) {
+					update_option( self::CATCH_UP_OPTION, $last, false );
 				}
 			}
 		);

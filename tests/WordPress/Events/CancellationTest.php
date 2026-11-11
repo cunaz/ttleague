@@ -24,6 +24,16 @@ use TTLeague\Tk\Tk;
  */
 final class CancellationTest extends EventsTestCase {
 
+	public function set_up(): void {
+		parent::set_up();
+		Events::reset_request();
+	}
+
+	public function tear_down(): void {
+		Events::reset_request();
+		parent::tear_down();
+	}
+
 	/**
 	 * Die TK sagt über das Formular im Backend ab.
 	 */
@@ -56,11 +66,13 @@ final class CancellationTest extends EventsTestCase {
 	}
 
 	/**
-	 * Führt den nächsten geplanten Schritt aus, wie WP-Cron es tut, und liefert seine Argumente.
+	 * Führt den nächsten geplanten Schritt in einer neuen Anfrage aus, wie WP-Cron es tut, und
+	 * liefert seine Argumente.
 	 *
 	 * @return array{0:int,1:int}
 	 */
 	private function run_next(): array {
+		Events::reset_request();
 		$steps = $this->scheduled();
 		self::assertNotSame( array(), $steps, 'ein Schritt ist geplant' );
 		wp_clear_scheduled_hook( Events::CANCELLATION_HOOK, $steps[0] );
@@ -150,6 +162,7 @@ final class CancellationTest extends EventsTestCase {
 		self::assertCount( EventNotifications::CANCEL_BATCH + 3, array_unique( array_map( static fn( $mail ): string => $mail->to, $this->mails ) ), 'jede Person genau einmal' );
 		self::assertSame( array(), $this->scheduled() );
 
+		Events::reset_request();
 		Events::send_cancellations( $event, 0 );
 
 		self::assertCount( EventNotifications::CANCEL_BATCH + 3, $this->mails, 'nach vollständigem Versand nichts mehr' );
@@ -355,5 +368,152 @@ final class CancellationTest extends EventsTestCase {
 
 		self::assertSame( array( array( $event, 0 ) ), $this->scheduled() );
 		self::assertSame( 0, $errors );
+	}
+
+	/**
+	 * wp-cron.php führt alle fälligen Ereignisse in derselben Anfrage aus. Zwei fällige Schritte:
+	 * Der erste versendet seinen Stapel, der zweite versendet nichts und plant sich neu ein.
+	 */
+	public function test_two_due_steps_in_one_request_send_one_batch_and_reschedule_the_other(): void {
+		$first  = $this->event();
+		$second = $this->event( array( 'title' => 'Training' ) );
+		$this->register_all( $first, array( 'h1', 'a1' ) );
+		$this->register_all( $second, array( 'h3', 'nobody' ) );
+		$this->cancel( $first );
+		$this->cancel( $second );
+		$due = $this->scheduled();
+		self::assertSame( array( array( $first, 0 ), array( $second, 0 ) ), $due );
+		$before = time();
+
+		// Eine Anfrage: beide Ereignisse aus der Liste nehmen und nacheinander ausführen.
+		Events::reset_request();
+		wp_unschedule_hook( Events::CANCELLATION_HOOK );
+		foreach ( $due as $args ) {
+			do_action_ref_array( Events::CANCELLATION_HOOK, $args ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- der Hook des Plugins, wie WP-Cron ihn auslöst.
+		}
+
+		self::assertSame(
+			array(
+				'a1@example.invalid' => array( 'Abgesagt: Plauschturnier' ),
+				'h1@example.invalid' => array( 'Abgesagt: Plauschturnier' ),
+			),
+			$this->subjects(),
+			'nur ein Stapel in dieser Anfrage'
+		);
+		self::assertSame( array( array( $second, 0 ) ), $this->scheduled(), 'der zweite Schritt ist neu eingeplant' );
+		self::assertGreaterThanOrEqual( $before + Events::DEFER_SECONDS, wp_next_scheduled( Events::CANCELLATION_HOOK, array( $second, 0 ) ), 'mit Abstand' );
+
+		$this->mails = array();
+		$this->run_next();
+
+		self::assertSame(
+			array(
+				'h3@example.invalid'     => array( 'Abgesagt: Training' ),
+				'nobody@example.invalid' => array( 'Abgesagt: Training' ),
+			),
+			$this->subjects(),
+			'in der nächsten Anfrage'
+		);
+	}
+
+	/**
+	 * So viele abgesagte Anlässe, bei denen dauerhaft etwas aussteht (die angemeldete Person hat
+	 * keine E-Mail-Adresse). IDs in der Reihenfolge der Absage, die älteste zuerst.
+	 *
+	 * @return list<int>
+	 */
+	private function stuck_events( int $number ): array {
+		$person = ( new Seeder( $this->db ) )->person( 'Probe', 'Ohne Adresse' );
+		$events = array();
+		for ( $i = 0; $i < $number; $i++ ) {
+			$event = $this->event( array( 'title' => 'Anlass ' . $i ) );
+			$this->db->insert(
+				'registration',
+				array(
+					'event_id'   => $event,
+					'person_id'  => $person,
+					'status'     => 'registered',
+					'created_at' => gmdate( 'Y-m-d H:i:s' ),
+				)
+			);
+			$this->cancel( $event );
+			$this->db->query(
+				"UPDATE {$this->db->table( 'audit_log' )} SET created_at = %s WHERE entity = 'event' AND entity_id = %d AND action = 'cancelled'",
+				array( gmdate( 'Y-m-d H:i:s', time() - ( $number - $i ) * HOUR_IN_SECONDS ), $event )
+			);
+			$events[] = $event;
+		}
+		wp_unschedule_hook( Events::CANCELLATION_HOOK );
+		return $events;
+	}
+
+	/**
+	 * Ein stündlicher Lauf, danach laufen alle eingeplanten Schritte (und versenden nichts).
+	 *
+	 * @return list<int> Anlässe in der Reihenfolge, in der der Lauf sie eingeplant hat.
+	 */
+	private function hourly_run(): array {
+		Events::catch_up_cancellations();
+		$planned = array_column( $this->scheduled(), 0 );
+		while ( array() !== $this->scheduled() ) {
+			$this->run_next();
+		}
+		return $planned;
+	}
+
+	/**
+	 * Zwölf Anlässe, bei denen dauerhaft etwas aussteht, Obergrenze zehn: Ohne das Vorgehen reihum
+	 * plante jeder Lauf dieselben zehn ältesten ein, und die zwei späteren kämen nie dran.
+	 */
+	public function test_the_hourly_run_goes_round_so_that_later_events_are_not_starved(): void {
+		$limit  = EventNotifications::CANCEL_CATCH_UP_EVENTS;
+		$events = $this->stuck_events( $limit + 2 );
+
+		$first = $this->hourly_run();
+		self::assertSame( array_slice( $events, 0, $limit ), $first, 'zuerst die ältesten' );
+		self::assertSame( $events[ $limit - 1 ], (int) get_option( Events::CATCH_UP_OPTION ), 'der zuletzt eingeplante Anlass ist gemerkt' );
+
+		$second = $this->hourly_run();
+		self::assertSame( array_merge( array_slice( $events, $limit ), array_slice( $events, 0, $limit - 2 ) ), $second, 'die späteren kommen dran, nach dem letzten beginnt es von vorn' );
+
+		$third = $this->hourly_run();
+		self::assertSame( $events[ $limit - 2 ], $third[0], 'weiter nach dem zuletzt eingeplanten' );
+		self::assertCount( $limit, $third );
+		self::assertSame( array(), $this->mails, 'ohne Adresse geht nichts hinaus' );
+
+		global $wpdb;
+		$autoload = $wpdb->get_var( $wpdb->prepare( "SELECT autoload FROM {$wpdb->options} WHERE option_name = %s", Events::CATCH_UP_OPTION ) );
+		self::assertNotContains( $autoload, array( 'yes', 'on', 'auto', 'auto-on' ), 'die Option wird nicht automatisch geladen' );
+	}
+
+	public function test_the_round_starts_at_the_front_when_the_remembered_event_left_the_window(): void {
+		$events = $this->stuck_events( 3 );
+		update_option( Events::CATCH_UP_OPTION, 999999, false );
+
+		self::assertSame( $events, $this->hourly_run() );
+	}
+
+	/**
+	 * Das Einplanen scheitert bei jedem Versuch: Auch dann macht ein Lauf höchstens so viele
+	 * Versuche wie die Obergrenze (und meldet so viele Fehler), nicht einen pro Anlass.
+	 */
+	public function test_failed_scheduling_counts_towards_the_limit_of_a_run(): void {
+		$limit  = EventNotifications::CANCEL_CATCH_UP_EVENTS;
+		$events = $this->stuck_events( $limit + 2 );
+		$errors = array();
+		add_action(
+			'ttleague_notification_error',
+			static function ( \Throwable $error, string $context ) use ( &$errors ): void {
+				$errors[] = $context;
+			},
+			10,
+			2
+		);
+		add_filter( 'pre_schedule_event', static fn() => new \WP_Error( 'kein_cron', 'Cron ist gesperrt.' ) );
+
+		$this->error_log_of( array( Events::class, 'catch_up_cancellations' ) );
+
+		self::assertSame( array_map( static fn( int $id ): string => 'Anlass ' . $id, array_slice( $events, 0, $limit ) ), $errors, 'höchstens so viele Versuche wie die Obergrenze' );
+		self::assertSame( array(), $this->scheduled() );
 	}
 }

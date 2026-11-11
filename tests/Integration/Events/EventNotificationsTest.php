@@ -393,6 +393,31 @@ final class EventNotificationsTest extends EventTestCase {
 		self::assertSame( array( $failed ), $this->notifications->cancellations_to_catch_up( $now ) );
 	}
 
+	/**
+	 * Reihum: Die Reihenfolge beginnt nach dem zuletzt eingeplanten Anlass, auch wenn bei diesem
+	 * selbst nichts mehr aussteht, und beginnt vorn, wenn er nicht mehr im Zeitraum liegt.
+	 */
+	public function test_catching_up_continues_after_the_event_scheduled_last(): void {
+		$events = array();
+		foreach ( array( '2026-11-06 10:00:00', '2026-11-07 10:00:00', '2026-11-08 10:00:00', '2026-11-09 10:00:00' ) as $i => $cancelled_at ) {
+			$event = $this->event( array( 'title' => 'Anlass ' . $i ) );
+			$this->register_all( $event, array( 'h1' ) );
+			$this->events->cancel( $event, $this->actor['tk_account'] );
+			$this->db->query( "UPDATE {$this->db->table( 'audit_log' )} SET created_at = %s WHERE entity = 'event' AND entity_id = %d AND action = 'cancelled'", array( $cancelled_at, $event ) );
+			$events[] = $event;
+		}
+		$now = new \DateTimeImmutable( '2026-11-10 12:00:00', new \DateTimeZone( 'UTC' ) );
+
+		self::assertSame( $events, $this->notifications->cancellations_to_catch_up( $now ) );
+		self::assertSame( array( $events[2], $events[3], $events[0], $events[1] ), $this->notifications->cancellations_to_catch_up( $now, $events[1] ) );
+		self::assertSame( $events, $this->notifications->cancellations_to_catch_up( $now, $events[3] ), 'nach dem letzten von vorn' );
+		self::assertSame( $events, $this->notifications->cancellations_to_catch_up( $now, 99999 ), 'unbekannt oder nicht mehr im Zeitraum: von vorn' );
+
+		$this->notifications->send_cancellations( $events[1] );
+
+		self::assertSame( array( $events[2], $events[3], $events[0] ), $this->notifications->cancellations_to_catch_up( $now, $events[1] ), 'der gemerkte Anlass ist erledigt, die Stelle bleibt' );
+	}
+
 	public function test_no_message_is_sent_twice_for_the_same_registration(): void {
 		$event  = $this->event();
 		$result = $this->registrations->register( $event, $this->person['h1'], $this->actor['h1'] );
