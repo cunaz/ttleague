@@ -42,9 +42,17 @@ final class TeamView extends View {
 		$details = $this->model->teams->details( $season['id'], $team['id'] );
 		$group   = null === $team['competition_id'] ? null : $this->model->championship->group_by_id( $season['id'], $team['competition_id'] );
 
+		// Kontaktdaten nur für angemeldete Funktionärinnen und Funktionäre, bei jeder Anfrage frisch
+		// geladen; für alle anderen (null) bleibt die Ausgabe gleich, damit sie cachebar bleibt.
+		$contacts = array() === $details['captains'] ? null : ContactBox::people( $season['id'], array( (int) $team['club_id'] ) );
 		$captains = array();
 		foreach ( $details['captains'] as $captain ) {
-			$captains[] = null === $captain['player'] ? esc_html( $captain['name'] ) : $this->player_link( $captain['player'] );
+			$name = null === $captain['player'] ? esc_html( $captain['name'] ) : $this->player_link( $captain['player'] );
+			if ( null !== $contacts ) {
+				$links = ContactBox::links( $contacts[ (int) ( $captain['person_id'] ?? 0 ) ] ?? null );
+				$name .= '' === $links ? '' : ' ' . $links;
+			}
+			$captains[] = $name;
 		}
 		$venue = '';
 		if ( null !== $details['venue'] ) {
@@ -79,7 +87,7 @@ final class TeamView extends View {
 				__( 'Club', 'ttleague' )       => Html::link( $this->urls->club( $team['club_slug'], $season['slug'] ), $team['club_name'] ),
 				__( 'Gruppe', 'ttleague' )     => null === $group ? '' : Html::link( $this->urls->group( $season['slug'], $group['slug'] ), $group['name'] ),
 				__( 'Tabelle', 'ttleague' )    => $rank,
-				__( 'Captain', 'ttleague' )    => implode( ', ', $captains ),
+				__( 'Captain', 'ttleague' )    => implode( null === $contacts ? ', ' : '<br>', $captains ),
 				__( 'Heimlokal', 'ttleague' )  => $venue,
 				__( 'Heimspiele', 'ttleague' ) => esc_html( $home_day ),
 			)

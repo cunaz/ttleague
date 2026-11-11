@@ -116,6 +116,22 @@ final class ViewsTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'Die Begegnung Nr. 999999 gibt es nicht.', $missing );
 	}
 
+	public function test_match_report_offers_sharing_once_there_is_a_result(): void {
+		$html = ( new MatchReportView( $this->model, $this->urls ) )->render( array( 'fixture' => $this->ids['fixture_1'] ) );
+		self::assertSame( 1, substr_count( $html, 'data-ttl-share ' ) );
+		self::assertStringContainsString( 'data-ttl-share-title="Seefeld 1 – Altstetten 1 7:3"', $html );
+		self::assertStringContainsString( 'data-ttl-share-url="https://liga.example/begegnung/' . $this->ids['fixture_1'] . '/"', $html );
+		self::assertMatchesRegularExpression( '#<div class="ttl-share"[^>]* hidden><button type="button"#', $html, 'ohne JavaScript verborgen' );
+
+		$forfeit = ( new MatchReportView( $this->model, $this->urls ) )->render( array( 'fixture' => $this->ids['fixture_4'] ) );
+		self::assertStringContainsString( ' 0:10" data-ttl-share-url=', $forfeit, 'auch ein Forfait ist ein Resultat' );
+
+		foreach ( array( 'fixture_6', 'fixture_7' ) as $key ) {
+			$open = ( new MatchReportView( $this->model, $this->urls ) )->render( array( 'fixture' => $this->ids[ $key ] ) );
+			self::assertStringNotContainsString( 'ttl-share', $open, $key . ': ohne Resultat kein Knopf' );
+		}
+	}
+
 	public function test_team_page_with_matrix(): void {
 		$context = $this->context(
 			'team',

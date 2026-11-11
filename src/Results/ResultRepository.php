@@ -96,6 +96,53 @@ final class ResultRepository {
 	}
 
 	/**
+	 * Aufstellung einer Seite aus der letzten erfassten Begegnung desselben Teams (Cup: derselben
+	 * Cup-Mannschaft) in derselben Saison und Konkurrenz, umgelegt auf die Slots dieser Seite:
+	 * erster Slot auf ersten Slot, auch wenn das Team damals auf der anderen Seite spielte (X
+	 * wird A). «Letzte» heisst späteste Anspielzeit, bei gleicher die grössere ID; Begegnungen
+	 * ohne Termin zuletzt. Es zählen nur andere Begegnungen mit Resultat und Aufstellung, also
+	 * keine Forfaits. Ob die Spieler heute spielberechtigt sind, prüft der ResultService.
+	 *
+	 * @return array<string,int> Slot dieser Seite => Spieler-ID; leer ohne frühere Aufstellung.
+	 */
+	public function last_lineup( FixtureContext $ctx, string $side ): array {
+		$column = $ctx->is_cup() ? 'entry_id' : 'team_id';
+		$id     = $ctx->side( $side )[ $column ];
+		if ( null === $id ) {
+			return array();
+		}
+		$home = 'f.home_' . $column;
+		$away = 'f.away_' . $column;
+		$last = $this->db->get_row(
+			"SELECT f.id, IF({$home} = %d, 'home', 'away') AS side
+			FROM {$this->db->table( 'fixture' )} f
+			JOIN {$this->db->table( 'competition' )} c ON c.id = f.competition_id
+			WHERE c.season_id = %d AND c.type = %s AND f.id <> %d AND ( {$home} = %d OR {$away} = %d )
+				AND f.home_score IS NOT NULL AND f.away_score IS NOT NULL
+				AND EXISTS ( SELECT 1 FROM {$this->db->table( 'lineup' )} l WHERE l.fixture_id = f.id AND l.side = IF({$home} = %d, 'home', 'away') )
+			ORDER BY f.scheduled_at IS NULL, f.scheduled_at DESC, f.id DESC LIMIT 1",
+			array( $id, $ctx->season_id, $ctx->type, $ctx->id, $id, $id, $id )
+		);
+		if ( null === $last ) {
+			return array();
+		}
+		$from   = 'away' === $last['side'] ? 'away' : 'home';
+		$target = $ctx->slots( $side );
+		$source = array_flip( $ctx->slots( $from ) );
+		$lineup = array();
+		foreach ( $this->db->get_results(
+			"SELECT slot, player_id FROM {$this->db->table( 'lineup' )} WHERE fixture_id = %d AND side = %s ORDER BY slot",
+			array( (int) $last['id'], $from )
+		) as $row ) {
+			$index = $source[ (string) $row['slot'] ] ?? null;
+			if ( null !== $index && isset( $target[ $index ] ) ) {
+				$lineup[ $target[ $index ] ] = (int) $row['player_id'];
+			}
+		}
+		return $lineup;
+	}
+
+	/**
 	 * @return list<array{sequence:int,type:string,status:string,sets_home:int,sets_away:int,home_players:list<int>,away_players:list<int>,counts:bool,set_points:list<array{0:int,1:int}>}>
 	 */
 	public function games( int $fixture_id ): array {

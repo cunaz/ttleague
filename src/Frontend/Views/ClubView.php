@@ -50,7 +50,10 @@ final class ClubView extends View {
 		$out .= $this->subscribe( $club, $season, $details['teams'] );
 
 		$out .= Html::section( __( 'Spiellokale', 'ttleague' ), $this->venues( $details['venues'], $season['slug'] ), 'ttl-section--venues', 'ttl-lokale' );
-		$out .= Html::section( __( 'Funktionen', 'ttleague' ), $this->roles( $details['roles'], $data['teams'] ), 'ttl-section--roles', 'ttl-funktionen' );
+		// Kontaktdaten nur für angemeldete Funktionärinnen und Funktionäre, bei jeder Anfrage frisch
+		// geladen; für alle anderen (null) bleibt die Ausgabe gleich, damit sie cachebar bleibt.
+		$contacts = array() === $details['roles'] ? null : ContactBox::people( $season['id'], array( $club['id'] ) );
+		$out     .= Html::section( __( 'Funktionen', 'ttleague' ), $this->roles( $details['roles'], $data['teams'], $contacts ), 'ttl-section--roles', 'ttl-funktionen' );
 		/* translators: %s: Saison. */
 		$out .= Html::section( sprintf( __( 'Spieler %s', 'ttleague' ), $season['name'] ), $this->players( $details['players'], $club['name'] ), 'ttl-section--players', 'ttl-spieler' );
 		return $out;
@@ -107,12 +110,13 @@ final class ClubView extends View {
 	}
 
 	/**
-	 * TK-Chef und Captains, nur Namen.
+	 * TK-Chef und Captains; für Gäste nur Namen, mit Recht auch E-Mail und freigegebenes Telefon.
 	 *
-	 * @param list<array<string,mixed>>      $roles Funktionen.
-	 * @param array<int,array<string,mixed>> $teams Teams der Saison.
+	 * @param list<array<string,mixed>>                                  $roles    Funktionen.
+	 * @param array<int,array<string,mixed>>                             $teams    Teams der Saison.
+	 * @param array<int,array{email:string|null,phone:string|null}>|null $contacts Kontaktdaten nach Person, null ohne Recht.
 	 */
-	private function roles( array $roles, array $teams ): string {
+	private function roles( array $roles, array $teams, ?array $contacts = null ): string {
 		if ( array() === $roles ) {
 			return Html::notice( __( 'Keine Funktionen erfasst.', 'ttleague' ) );
 		}
@@ -126,9 +130,14 @@ final class ClubView extends View {
 				/* translators: %s: Mannschaft. */
 				$label = null === $team ? __( 'Captain', 'ttleague' ) : sprintf( __( 'Captain %s', 'ttleague' ), $team['name'] );
 			}
+			if ( null !== $contacts ) {
+				$links = ContactBox::links( $contacts[ (int) ( $role['person_id'] ?? 0 ) ] ?? null );
+				$name .= '' === $links ? '' : '<br>' . $links;
+			}
 			$items[] = '<div class="ttl-facts__item"><dt>' . esc_html( $label ) . '</dt><dd>' . $name . '</dd></div>';
 		}
-		return '<dl class="ttl-facts ttl-facts--roles">' . implode( '', $items ) . '</dl><p class="ttl-footnote">' . esc_html__( 'Kontaktdaten sehen angemeldete Funktionärinnen und Funktionäre.', 'ttleague' ) . '</p>';
+		$footnote = null === $contacts ? __( 'Kontaktdaten sehen angemeldete Funktionärinnen und Funktionäre.', 'ttleague' ) : ContactBox::footnote();
+		return '<dl class="ttl-facts ttl-facts--roles">' . implode( '', $items ) . '</dl><p class="ttl-footnote">' . esc_html( $footnote ) . '</p>';
 	}
 
 	/**

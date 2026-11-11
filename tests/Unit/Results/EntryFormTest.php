@@ -113,6 +113,131 @@ final class EntryFormTest extends TestCase {
 		self::assertCount( 10, $empty['games'] );
 	}
 
+	public function test_empty_form_starts_with_the_suggested_lineup(): void {
+		$entry = EntryScenario::entry(
+			'MM',
+			array(),
+			array(),
+			array(
+				'home' => array(
+					'A' => 11,
+					'B' => 12,
+					'C' => 14,
+				),
+				'away' => array( 'X' => 21 ),
+			)
+		);
+		$data  = EntryForm::data( $entry );
+		$form  = EntryForm::initial( $entry, $data );
+
+		self::assertSame(
+			array(
+				'A' => '11',
+				'B' => '12',
+				'C' => '14',
+			),
+			$data['suggestion']['home']
+		);
+		self::assertSame( $data['suggestion']['home'], $form['lineup']['home'] );
+		self::assertSame(
+			array(
+				'X' => '21',
+				'Y' => '',
+				'Z' => '',
+			),
+			$form['lineup']['away'],
+			'Slots ohne Vorschlag bleiben leer, nicht «fehlt»'
+		);
+		self::assertSame( '', $form['games']['1']['st'], 'Spiele werden nicht vorgeschlagen' );
+
+		$view = EntryForm::view( $data, $form );
+		self::assertTrue( $view['lineup']['home']['sug'] );
+		self::assertTrue( $view['lineup']['away']['sug'] );
+		self::assertStringContainsString( '2. Einsatz als Ersatz', $view['lineup']['home']['C']['note'], 'Hinweis zum vorgeschlagenen Ersatz' );
+		self::assertSame( 'Hanna Heim', $view['g1']['home'] );
+
+		// Die Kennzeichnung gilt pro Seite und nur, solange die Seite dem Vorschlag entspricht.
+		$form['lineup']['home']['C'] = '13';
+		$view                        = EntryForm::view( $data, $form );
+		self::assertFalse( $view['lineup']['home']['sug'] );
+		self::assertTrue( $view['lineup']['away']['sug'] );
+
+		$form['lineup']['home']['C'] = '14';
+		$form['lineup']['away']['Y'] = '22';
+		$view                        = EntryForm::view( $data, $form );
+		self::assertTrue( $view['lineup']['home']['sug'], 'wieder wie vorgeschlagen' );
+		self::assertFalse( $view['lineup']['away']['sug'] );
+	}
+
+	public function test_suggestion_without_effect(): void {
+		$entry = EntryScenario::entry();
+		$data  = EntryForm::data( $entry );
+		self::assertSame(
+			array(
+				'home' => array(),
+				'away' => array(),
+			),
+			$data['suggestion']
+		);
+		$view = EntryForm::view( $data, EntryForm::initial( $entry, $data ) );
+		self::assertFalse( $view['lineup']['home']['sug'], 'ohne Vorschlag keine Kennzeichnung' );
+		self::assertFalse( $view['lineup']['away']['sug'] );
+
+		// Unbekannte Spieler und Slots werden nicht übernommen.
+		$entry = EntryScenario::entry(
+			'MM',
+			array(),
+			array(),
+			array(
+				'home' => array(
+					'A' => 99,
+					'D' => 11,
+				),
+			)
+		);
+		self::assertSame( array(), EntryForm::data( $entry )['suggestion']['home'] );
+
+		// Ein erfasstes Resultat hat Vorrang vor einem Vorschlag.
+		$saved = array(
+			'lineup' => array(
+				'home' => (object) array(
+					'A' => 13,
+					'B' => 12,
+				),
+				'away' => (object) array(
+					'X' => 21,
+					'Y' => 22,
+					'Z' => 23,
+				),
+			),
+			'games'  => array(
+				array(
+					'sequence'     => 1,
+					'type'         => 'single',
+					'status'       => 'played',
+					'sets_home'    => 3,
+					'sets_away'    => 1,
+					'home_players' => array( 13 ),
+					'away_players' => array( 21 ),
+					'counts'       => true,
+					'set_points'   => array(),
+				),
+			),
+		);
+		$entry = EntryScenario::entry( 'MM', $saved, array(), array( 'home' => array( 'A' => 11 ) ) );
+		$data  = EntryForm::data( $entry );
+		$form  = EntryForm::initial( $entry, $data );
+		self::assertSame(
+			array(
+				'A' => '13',
+				'B' => '12',
+				'C' => EntryForm::MISSING,
+			),
+			$form['lineup']['home']
+		);
+		self::assertFalse( EntryForm::view( $data, $form )['lineup']['home']['sug'] );
+	}
+
 	public function test_view_of_empty_form(): void {
 		$entry = EntryScenario::entry();
 		$data  = EntryForm::data( $entry );
