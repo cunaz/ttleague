@@ -49,7 +49,8 @@ final class RankingTournament {
 	 */
 	public function get( int $season_id ): ?array {
 		return $this->cache->remember(
-			'rl_season',
+			// v2: mit regular_rounds; ältere Einträge ohne diesen Schlüssel dürfen nicht mehr gelten.
+			'rl_season_v2',
 			array( $season_id ),
 			fn(): ?array => $this->load( $season_id )
 		);

@@ -510,6 +510,25 @@ final class GroupEntryTest extends RlTestCase {
 		$this->assert_fails( 422, fn() => $service->save( $this->group, $sheet, $this->actor( 'o1' ) ) );
 	}
 
+	public function test_blocked_dates_are_not_stored_for_a_next_round_moved_between_check_and_write(): void {
+		$next   = $this->round( '2026-10-19' );
+		[ $s1 ] = $this->members;
+		$person = $this->seeder->person_of( $s1 );
+		$clock  = new TriggerClock( $this->clock );
+		// Zwischen Prüfung und Schreiben verschiebt die TK die nächste Runde um eine Woche.
+		$clock->before_next    = function () use ( $next ): void {
+			$this->rounds()->reschedule( $this->tk, $next, '2026-10-26', '2026-10-29', false );
+		};
+		$sheet                 = $this->sheet( $this->group );
+		$sheet['next_blocked'] = array( $s1 => array( '2026-10-20' ) );
+
+		$this->assert_fails( 409, fn() => $this->entry( $clock )->save( $this->group, $sheet, $this->actor( 'o1' ) ) );
+
+		self::assertSame( array(), $this->repo()->blocked_dates( array( $person ), '2026-10-19', '2026-10-29' ), 'weder für die alte noch für die neue Woche gespeichert' );
+		self::assertSame( array(), $this->repo()->answered( array( $person ), '2026-10-26', '2026-10-29' ), 'niemand gilt für die neue Woche als gemeldet' );
+		self::assertNull( $this->repo()->group( $this->group )['entered_at'], 'auch der Gruppenzettel ist nicht gespeichert' );
+	}
+
 	public function test_status_labels(): void {
 		foreach ( array_merge( GroupEntry::STATUSES, array( 'scheduled' ) ) as $status ) {
 			self::assertNotSame( $status, GroupEntry::status_label( $status ) );

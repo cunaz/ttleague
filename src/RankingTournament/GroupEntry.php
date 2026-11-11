@@ -220,7 +220,7 @@ final class GroupEntry {
 					),
 					array( 'id' => $current['id'] )
 				);
-				$this->store_next_blocked( $actor, $current, $input['next_blocked'] );
+				$this->store_next_blocked( $actor, $current, $input['next_blocked'], $input['next'] );
 				$after = $this->repo->group( $current['id'] );
 				$this->audit->record( 'rl_group', $current['id'], null === $current['entered_at'] ? 'entry_saved' : 'entry_edited', $actor->user_id, $before, null === $after ? null : self::snapshot( $after ) );
 			}
@@ -358,7 +358,7 @@ final class GroupEntry {
 	 *
 	 * @param array<string,mixed> $group   Gruppe.
 	 * @param array<string,mixed> $payload Eingabe.
-	 * @return array{statuses:array<int,string>,games:list<array{sequence:int,a:int,b:int,sets_a:int,sets_b:int,counts:bool,set_points:list<array{0:int,1:int}>}>,next_blocked:array<int,list<string>>}
+	 * @return array{statuses:array<int,string>,games:list<array{sequence:int,a:int,b:int,sets_a:int,sets_b:int,counts:bool,set_points:list<array{0:int,1:int}>}>,next_blocked:array<int,list<string>>,next:array{id:int,date_from:string,date_to:string}|null}
 	 */
 	private function validate( array $group, SeasonRules $rules, array $payload ): array {
 		$errors  = array();
@@ -474,6 +474,7 @@ final class GroupEntry {
 
 		// Sperrdaten der Anwesenden für die nächste Runde.
 		$next_blocked = array();
+		$next         = null;
 		$raw          = $payload['next_blocked'] ?? null;
 		if ( is_array( $raw ) && array() !== $raw ) {
 			$next = $this->next_round( $group );
@@ -496,6 +497,12 @@ final class GroupEntry {
 			'statuses'     => $statuses,
 			'games'        => $games,
 			'next_blocked' => $next_blocked,
+			// Die Runde, gegen deren Abende die Sperrdaten geprüft sind (für den Vergleich beim Schreiben).
+			'next'         => null === $next ? null : array(
+				'id'        => $next['id'],
+				'date_from' => $next['date_from'],
+				'date_to'   => $next['date_to'],
+			),
 		);
 	}
 
@@ -538,16 +545,23 @@ final class GroupEntry {
 	/**
 	 * Sperrdaten der nächsten Runde speichern, für Personen, die noch zum Turnier angemeldet sind.
 	 *
-	 * @param array<string,mixed>      $group   Gruppe.
-	 * @param array<int,list<string>> $blocked Spieler => Abende.
+	 * @param array<string,mixed>                               $group   Gruppe.
+	 * @param array<int,list<string>>                           $blocked Spieler => Abende.
+	 * @param array{id:int,date_from:string,date_to:string}|null $checked Runde, gegen die geprüft wurde.
+	 * @throws \TTLeague\Results\ResultException Mit 409, wenn die nächste Runde seit der Prüfung geändert wurde.
 	 */
-	private function store_next_blocked( Actor $actor, array $group, array $blocked ): void {
+	private function store_next_blocked( Actor $actor, array $group, array $blocked, ?array $checked ): void {
 		if ( array() === $blocked ) {
 			return;
 		}
 		$next = $this->next_round( $group );
-		if ( null === $next ) {
-			return;
+		// Unter der Sperre: Die nächste Runde muss noch dieselbe sein und in derselben Woche liegen
+		// wie bei der Prüfung. Hat die TK sie inzwischen verschoben, ersetzt oder gelöscht, würden
+		// die Abende sonst für eine andere Woche gespeichert.
+		$same = null !== $next && null !== $checked
+			&& $next['id'] === $checked['id'] && $next['date_from'] === $checked['date_from'] && $next['date_to'] === $checked['date_to'];
+		if ( ! $same ) {
+			Fail::conflict( __( 'Die nächste Runde wurde inzwischen geändert. Bitte lade die Seite neu und trage die Sperrdaten erneut ein.', 'ttleague' ) );
 		}
 		$persons = array_column( $group['members'], 'person_id', 'player_id' );
 		foreach ( $blocked as $player_id => $dates ) {
