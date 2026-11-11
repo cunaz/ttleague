@@ -122,6 +122,24 @@ final class CupTableauViewTest extends CupTestCase {
 		self::assertStringContainsString( '<span class="ttl-bracket__name">Wiedikon 1</span>', $html );
 	}
 
+	public function test_differing_deadlines_stand_at_each_open_tie(): void {
+		$this->eight();
+		$common = $this->tie( 1, 1 )['deadline'];
+		self::assertNotNull( $common );
+		$html = $this->render( array( 'category' => 'a' ) );
+		self::assertSame( 1, substr_count( $html, 'zu spielen bis' ), 'gemeinsame Frist: einmal im Kopf der Runde' );
+		self::assertStringContainsString( 'ttl-bracket__deadline', $html );
+
+		// Die TK verlängert eine Paarung: Jede offene Paarung nennt jetzt ihre eigene Frist.
+		$this->bracket->set_tie_deadline( $this->tie( 1, 4 )['id'], '2026-12-07', $this->tk );
+		$html = $this->render( array( 'category' => 'a' ) );
+
+		self::assertStringNotContainsString( 'ttl-bracket__deadline', $html );
+		self::assertSame( 4, substr_count( $html, 'zu spielen bis' ) );
+		self::assertSame( 1, substr_count( $html, 'zu spielen bis 7.12.2026' ) );
+		self::assertStringContainsString( '<p class="ttl-bracket__meta"><span class="ttl-muted">Termin offen</span> · zu spielen bis 7.12.2026</p>', $html, 'die Frist steht bei der Paarung' );
+	}
+
 	public function test_open_fixtures_show_home_right_the_common_deadline_and_byes(): void {
 		$ids = $this->teams( 5 );
 		$this->release( array( 'seefeld', null, 'altstetten', 'bergwiese', 'wollishofen', null, 'oerlikon', null ), $ids );
