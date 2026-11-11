@@ -13,3 +13,4 @@ Alle nennenswerten Änderungen an ttleague werden hier festgehalten.
 - WP-CLI-Befehl `wp ttleague info`.
 - Grundlage für den Saisonbetrieb: geplante Saison (nicht öffentlich), Schemaversion 2026111007, Rechte für Verschiebung und Gruppenzettel, Erweiterungspunkte für Module, CSV-Exporte (`wp ttleague export`).
 - Online-Meldung der Clubs: Spieler, Neumeldungen, Mannschaften mit Stammspielern, Captains, Lokale und Hallensperren in «Mein Bereich», Prüfung durch die TK unter «Spielbetrieb → Meldungen», Benachrichtigungen `registration_reminder` und `registration_decided`, CSV-Listen `registrations` und `registration-players`.
+- Verschiebung und Terminvorschlag: Antrag, Zustimmung der Gegenseite, Bewilligung der TK bei mehr als 14 Tagen oder nach der Frist der Cup-Runde; REST-API, Formulare auf der Erfassungsseite und in «Mein Bereich», Liste in der Übersicht der TK, Benachrichtigungen mit Erinnerung, CSV-Export.
