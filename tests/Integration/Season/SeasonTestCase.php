@@ -38,14 +38,7 @@ use TTLeague\Tests\Integration\IntegrationTestCase;
  */
 abstract class SeasonTestCase extends IntegrationTestCase {
 
-	protected const TEAMS = array(
-		'seefeld_1'     => array( 'seefeld', 1, 'A', '20:00:00' ),
-		'wollishofen_1' => array( 'wollishofen', 1, 'A', '19:30:00' ),
-		'oerlikon_1'    => array( 'oerlikon', 1, 'A', '20:00:00' ),
-		'seefeld_2'     => array( 'seefeld', 2, 'B', '20:00:00' ),
-		'altstetten_1'  => array( 'altstetten', 1, 'B', '19:45:00' ),
-		'wollishofen_2' => array( 'wollishofen', 2, 'B', '19:30:00' ),
-	);
+	protected const TEAMS = SeasonLeague::TEAMS;
 
 	protected Seeder $seed;
 
@@ -106,45 +99,7 @@ abstract class SeasonTestCase extends IntegrationTestCase {
 	 * @param int|null $tables Tische pro Lokal; null: unbekannt.
 	 */
 	protected function league( ?int $tables = 4 ): void {
-		$s                  = $this->seed;
-		$season             = $s->season( '2026-27', 'active', array( 'substitute_max' => 2 ) );
-		$clubs              = array(
-			'seefeld'     => array( 'Seefeld', 1, 2, 'Chef', 'Charlotte' ),
-			'wollishofen' => array( 'Wollishofen', 2, 3, 'Wolli', 'Walter' ),
-			'oerlikon'    => array( 'Oerlikon', 3, 4, 'Oerli', 'Olga' ),
-			'altstetten'  => array( 'Altstetten', 4, 2, 'Alt', 'Alma' ),
-		);
-		$this->id['active'] = $season;
-		foreach ( $clubs as $key => [ $name, $number, $weekday, $last, $first ] ) {
-			$club                        = $s->club( $name, $number );
-			$this->id[ 'club_' . $key ]  = $club;
-			$this->id[ 'venue_' . $key ] = $s->venue(
-				$club,
-				'Halle ' . $name,
-				array(
-					'weekday'      => $weekday,
-					'tables_count' => $tables,
-				)
-			);
-			$this->id[ 'chef_' . $key ]  = $s->person( $last, $first );
-			$s->role( $season, $club, $this->id[ 'chef_' . $key ], 'tk_chef' );
-		}
-		$this->id['group_a'] = $s->competition( $season, 'MM', 'Gruppe A', 'A', 1, 1 );
-		$this->id['group_b'] = $s->competition( $season, 'MM', 'Gruppe B', 'B', 1, 2 );
-		foreach ( self::TEAMS as $key => [ $club, $number, $category, $start ] ) {
-			$team                          = $s->team(
-				$season,
-				$this->id[ 'club_' . $club ],
-				$number,
-				ucfirst( $club ) . ' ' . $number,
-				$this->id[ 'group_' . strtolower( $category ) ],
-				$this->id[ 'venue_' . $club ],
-				$start
-			);
-			$this->id[ $key ]              = $team;
-			$this->id[ 'captain_' . $key ] = $s->person( 'Captain', ucfirst( $club ) . $number );
-			$s->role( $season, $this->id[ 'club_' . $club ], $this->id[ 'captain_' . $key ], 'captain', $team );
-		}
+		$this->id = ( new SeasonLeague( $this->db ) )->league( $tables ) + $this->id;
 	}
 
 	/**
@@ -154,15 +109,8 @@ abstract class SeasonTestCase extends IntegrationTestCase {
 	 * @param list<string>|null $teams Schlüssel aus TEAMS; null: alle.
 	 */
 	protected function plan( ?array $teams = null ): int {
-		$next             = $this->setup->create( $this->tk );
-		$this->id['next'] = $next;
-		foreach ( self::TEAMS as $key => [ $club, $number, , $start ] ) {
-			if ( null !== $teams && ! in_array( $key, $teams, true ) ) {
-				continue;
-			}
-			$this->id[ 'next_' . $key ] = $this->seed->team( $next, $this->id[ 'club_' . $club ], $number, ucfirst( $club ) . ' ' . $number, null, $this->id[ 'venue_' . $club ], $start );
-		}
-		$this->db->update( 'club_season', array( 'status' => 'reviewed' ), array( 'season_id' => $next ) );
+		$next     = $this->setup->create( $this->tk );
+		$this->id = ( new SeasonLeague( $this->db ) )->register( $next, $this->id, $teams ) + $this->id;
 		return $next;
 	}
 
