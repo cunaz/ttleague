@@ -182,6 +182,8 @@ final class Events {
 	public static function catch_up_cancellations(): void {
 		self::guard(
 			static function (): void {
+				// Eine Basiszeit für alle Schritte dieses Laufs: genau eine Minute Abstand.
+				$now      = time();
 				$attempts = 0;
 				$last     = null;
 				$after    = (int) get_option( self::CATCH_UP_OPTION, 0 );
@@ -192,7 +194,7 @@ final class Events {
 					if ( self::cancellations_scheduled( $event_id ) ) {
 						continue;
 					}
-					self::schedule_cancellations( $event_id, 0, $attempts * MINUTE_IN_SECONDS );
+					self::schedule_cancellations( $event_id, 0, $attempts * MINUTE_IN_SECONDS, $now );
 					++$attempts;
 					$last = $event_id;
 				}
@@ -222,11 +224,12 @@ final class Events {
 	 * Versandschritt einplanen. Scheitert das, wird es gemeldet; der stündliche Lauf plant den
 	 * Anlass dann erneut ein. Ein schon gleich eingeplanter Schritt ist kein Fehler.
 	 *
-	 * @param int $delay Sekunden bis zur Fälligkeit.
+	 * @param int      $delay Sekunden bis zur Fälligkeit.
+	 * @param int|null $now   Basiszeit (Unix); ohne Angabe jetzt.
 	 * @return bool Ob der Schritt eingeplant ist.
 	 */
-	private static function schedule_cancellations( int $event_id, int $after_person, int $delay = 0 ): bool {
-		$result = wp_schedule_single_event( time() + $delay, self::CANCELLATION_HOOK, array( $event_id, $after_person ), true );
+	private static function schedule_cancellations( int $event_id, int $after_person, int $delay = 0, ?int $now = null ): bool {
+		$result = wp_schedule_single_event( ( $now ?? time() ) + $delay, self::CANCELLATION_HOOK, array( $event_id, $after_person ), true );
 		if ( true === $result ) {
 			return true;
 		}
