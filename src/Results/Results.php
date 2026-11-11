@@ -14,6 +14,7 @@ use TTLeague\Accounts\Services;
 use TTLeague\Infrastructure\Cache\DataVersion;
 use TTLeague\Infrastructure\Database\WpdbDb;
 use TTLeague\Rating\RatingService;
+use TTLeague\Rating\RecalcLock;
 use TTLeague\Rest\ResultController;
 
 final class Results {
@@ -22,6 +23,9 @@ final class Results {
 
 	/** Verzögerung der Neuberechnung, damit mehrere Änderungen zusammen gerechnet werden. */
 	public const RECALC_DELAY = 120;
+
+	/** Wartezeit auf die Sperre der Neuberechnung in Sekunden (Filter ttleague_rating_recalc_lock_wait). */
+	public const RECALC_LOCK_WAIT = 20;
 
 	public static function register(): void {
 		add_action( 'rest_api_init', array( ResultController::class, 'register_routes' ) );
@@ -94,9 +98,50 @@ final class Results {
 		}
 	}
 
+	/**
+	 * Geplanter Lauf der Neuberechnung (Cron). Rechnet unter der Sperre der Neuberechnung, damit
+	 * wartet, wer aktuelle Wertungszahlen braucht (Klassierung). Hält ein anderer Lauf die Sperre
+	 * nach der Wartezeit noch, wird neu eingeplant statt doppelt gerechnet.
+	 */
 	public static function recalc_ratings(): void {
+		$lock = self::recalc_lock();
+		if ( ! $lock->acquire( self::recalc_lock_wait() ) ) {
+			self::schedule_rating_recalc();
+			return;
+		}
+		try {
+			self::recalc_ratings_unlocked();
+		} finally {
+			$lock->release();
+		}
+	}
+
+	/**
+	 * Neuberechnung ohne eigene Sperre: nur für Aufrufer, die recalc_lock() selbst halten.
+	 */
+	public static function recalc_ratings_unlocked(): void {
 		( new RatingService( WpdbDb::from_global() ) )->recalc();
 		DataVersion::bump();
+	}
+
+	/**
+	 * Sperre, unter der die Neuberechnung dieser Installation läuft.
+	 */
+	public static function recalc_lock(): RecalcLock {
+		$db = WpdbDb::from_global();
+		return new RecalcLock( $db, RecalcLock::name( defined( 'DB_NAME' ) ? (string) DB_NAME : '', $db->prefix() ) );
+	}
+
+	/**
+	 * Wartezeit auf die Sperre in Sekunden.
+	 */
+	public static function recalc_lock_wait(): int {
+		/**
+		 * Wie lange auf einen laufenden Lauf der Neuberechnung gewartet wird.
+		 *
+		 * @param int $seconds Sekunden.
+		 */
+		return max( 0, (int) apply_filters( 'ttleague_rating_recalc_lock_wait', self::RECALC_LOCK_WAIT ) );
 	}
 
 	public static function deactivate(): void {

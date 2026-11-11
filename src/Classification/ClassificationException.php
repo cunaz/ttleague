@@ -26,7 +26,10 @@ final class ClassificationException extends \RuntimeException {
 	/** Eingabe ungültig (Bemerkung fehlt, Wert ausserhalb der Skala). */
 	public const INVALID = 'invalid';
 
-	public function __construct( public readonly string $reason, string $message ) {
-		parent::__construct( $message );
+	/** Vorübergehend nicht möglich (die Neuberechnung der Wertungszahl ist gescheitert); die Ursache steht in getPrevious(). */
+	public const UNAVAILABLE = 'unavailable';
+
+	public function __construct( public readonly string $reason, string $message, ?\Throwable $previous = null ) {
+		parent::__construct( $message, 0, $previous );
 	}
 }

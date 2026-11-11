@@ -174,6 +174,49 @@ final class ProposalServiceTest extends IntegrationTestCase {
 		self::assertSame( 2, $this->refreshes );
 	}
 
+	/**
+	 * @return array<string,array{0:\Throwable}>
+	 */
+	public static function recalculation_failures(): array {
+		return array(
+			'Ausnahme'       => array( new \RuntimeException( 'Die Sperre der Neuberechnung ist belegt.' ) ),
+			'Fehler im Code' => array( new \DivisionByZeroError( 'Division by zero' ) ),
+		);
+	}
+
+	#[DataProvider( 'recalculation_failures' )]
+	public function test_a_failed_rating_recalculation_rejects_compute_and_close_instead_of_using_old_ratings( \Throwable $failure ): void {
+		$this->service->compute( $this->tk );
+		$this->service->accept_open( $this->tk, new ProposalFilter() );
+		$before        = array( $this->computed(), $this->decisions() );
+		$logged        = (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )}" );
+		$this->changes = 0;
+
+		foreach ( array(
+			'berechnen'    => fn() => $this->service->compute( $this->tk ),
+			'abschliessen' => fn() => $this->service->close( $this->tk ),
+		) as $name => $action ) {
+			$this->pending = static function () use ( $failure ): void {
+				throw $failure;
+			};
+			try {
+				$action();
+				self::fail( 'Ablehnung erwartet: ' . $name );
+			} catch ( ClassificationException $e ) {
+				self::assertSame( ClassificationException::UNAVAILABLE, $e->reason, $name );
+				self::assertSame( 'Die ausstehende Neuberechnung der Wertungszahl ist gescheitert; sie bleibt eingeplant. Bitte später erneut versuchen.', $e->getMessage() );
+				self::assertSame( $failure, $e->getPrevious(), 'Ursache für das Fehlerprotokoll' );
+			}
+		}
+		self::assertSame( $before, array( $this->computed(), $this->decisions() ) );
+		self::assertNull( $this->closed_at() );
+		self::assertSame( $logged, (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )}" ) );
+		self::assertSame( 0, $this->changes );
+
+		$this->pending = null;
+		self::assertSame( self::NOW, $this->service->close( $this->tk ), 'ohne Fehler geht es weiter' );
+	}
+
 	public function test_recompute_overwrites_the_calculation_and_keeps_overrides_and_unchanged_acceptances(): void {
 		$this->service->compute( $this->tk );
 		$this->service->accept( $this->tk, $this->row( 'muster' )['id'] );

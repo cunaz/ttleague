@@ -64,25 +64,56 @@ final class Classification {
 	}
 
 	/**
-	 * Wertungszahlen aktuell machen: Nach einer Resultatänderung plant die Erfassung die
-	 * Neuberechnung verzögert ein (Results::schedule_rating_recalc()). Steht sie noch aus, wird
-	 * sie hier sofort ausgeführt und der geplante Lauf entfernt. Scheitert sie, bleibt sie geplant.
+	 * Wertungszahlen aktuell machen. Nach einer Resultatänderung plant die Erfassung die
+	 * Neuberechnung verzögert ein (Results::schedule_rating_recalc()).
+	 *
+	 * Ablauf unter der Sperre der Neuberechnung (Results::recalc_lock()):
+	 * 1. Sperre nehmen. Rechnet gerade ein Lauf im Hintergrund, wartet das bis zu seinem Ende;
+	 *    hält er die Sperre nach der Wartezeit noch, ist das ein Fehler.
+	 * 2. Erst jetzt prüfen, ob ein Lauf eingeplant ist. Wenn nicht, sind die Wertungszahlen aktuell.
+	 * 3. Sonst neu berechnen und den geplanten Lauf erst nach dem Erfolg entfernen: Scheitert die
+	 *    Berechnung oder bricht der Prozess ab, bleibt sie eingeplant.
+	 *
+	 * Ist während der Berechnung etwas ins audit_log geschrieben worden (z. B. ein Resultat, dessen
+	 * eigenes Einplanen am bestehenden Eintrag nichts ändert), bleibt der geplante Lauf stehen.
 	 *
 	 * @return bool Ob neu berechnet wurde.
+	 * @throws \RuntimeException Wenn die Sperre nicht zu bekommen ist.
 	 */
 	public static function refresh_ratings(): bool {
-		if ( false === wp_next_scheduled( Results::RECALC_HOOK ) ) {
-			return false;
+		$lock = Results::recalc_lock();
+		if ( ! $lock->acquire( Results::recalc_lock_wait() ) ) {
+			throw new \RuntimeException( 'Die Sperre der Neuberechnung der Wertungszahl ist belegt: Ein anderer Lauf rechnet noch.' );
 		}
-		// Zuerst entfernen: Ein Resultat, das während der Berechnung dazukommt, plant so einen neuen Lauf ein.
-		wp_clear_scheduled_hook( Results::RECALC_HOOK );
 		try {
-			Results::recalc_ratings();
-		} catch ( \Throwable $e ) {
-			Results::schedule_rating_recalc();
-			throw $e;
+			self::forget_cron_cache();
+			if ( false === wp_next_scheduled( Results::RECALC_HOOK ) ) {
+				return false;
+			}
+			$written = self::audit_entries();
+			Results::recalc_ratings_unlocked();
+			if ( self::audit_entries() === $written ) {
+				self::forget_cron_cache();
+				wp_clear_scheduled_hook( Results::RECALC_HOOK );
+			}
+			return true;
+		} finally {
+			$lock->release();
 		}
-		return true;
+	}
+
+	/**
+	 * Geplante Läufe frisch aus der Datenbank lesen: Während des Wartens auf die Sperre und
+	 * während der Berechnung können andere Anfragen sie geändert haben.
+	 */
+	private static function forget_cron_cache(): void {
+		wp_cache_delete( 'alloptions', 'options' );
+		wp_cache_delete( 'cron', 'options' );
+	}
+
+	private static function audit_entries(): int {
+		$db = Services::db();
+		return (int) $db->get_var( "SELECT COUNT(*) FROM {$db->table( 'audit_log' )}" );
 	}
 
 	/**

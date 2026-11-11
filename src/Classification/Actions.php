@@ -157,6 +157,11 @@ final class Actions {
 			$outcome = $work( Classification::service(), Results::current_actor() );
 		} catch ( ClassificationException $e ) {
 			$outcome = Outcome::error( $e->getMessage() );
+			$cause   = $e->getPrevious();
+			if ( null !== $cause ) {
+				// Die Rückmeldung nennt nur, dass es gescheitert ist; die Ursache gehört ins Fehlerprotokoll.
+				error_log( sprintf( 'ttleague: Klassierung abgelehnt (%s): %s: %s', $e->reason, $cause::class, $cause->getMessage() ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Hinweis für die Verwaltung.
+			}
 		}
 		Flash::set( Tk::FLASH, get_current_user_id(), $outcome->type, $outcome->message, $outcome->details );
 		wp_safe_redirect( Tk::page_url( Classification::PAGE, self::filter()->to_args() ) . ( '' === $anchor ? '' : '#' . $anchor ) );

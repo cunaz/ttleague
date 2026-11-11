@@ -16,8 +16,11 @@ use TTLeague\Classification\Classification;
 use TTLeague\Classification\Page;
 use TTLeague\Classification\ProposalFilter;
 use TTLeague\Export\Exports;
+use TTLeague\Infrastructure\AuditLog;
 use TTLeague\Infrastructure\Cache\DataVersion;
+use TTLeague\Infrastructure\Database\PdoDb;
 use TTLeague\Infrastructure\Flash;
+use TTLeague\Rating\RecalcLock;
 use TTLeague\Results\Actor;
 use TTLeague\Results\Results;
 use TTLeague\Tests\Integration\Classification\Scenario;
@@ -37,6 +40,9 @@ final class ClassificationTest extends TestCase {
 
 	private int $tk;
 
+	/** Sperre der Neuberechnung auf einer zweiten Verbindung, siehe other_process(). */
+	private ?RecalcLock $other = null;
+
 	public function set_up(): void {
 		parent::set_up();
 		$this->scenario = new Scenario( $this->db );
@@ -48,6 +54,10 @@ final class ClassificationTest extends TestCase {
 		$_GET     = array();
 		$_POST    = array();
 		$_REQUEST = array();
+		if ( null !== $this->other ) {
+			$this->other->release();
+			$this->other = null;
+		}
 		parent::tear_down();
 	}
 
@@ -273,9 +283,10 @@ final class ClassificationTest extends TestCase {
 		$flash = Flash::take( Tk::FLASH, $this->tk );
 		self::assertSame( 'success', $flash['type'] ?? null );
 		self::assertSame( array( 'Zuvor wurde die ausstehende Neuberechnung der Wertungszahl ausgeführt.' ), $flash['details'] ?? null );
+		self::assertTrue( $this->other_process()->acquire( 0 ), 'die Sperre der Neuberechnung ist wieder frei' );
 	}
 
-	public function test_a_failed_rating_recalculation_stays_scheduled(): void {
+	public function test_a_failed_rating_recalculation_stays_scheduled_and_frees_the_lock(): void {
 		Results::schedule_rating_recalc();
 		$this->db->update( 'season', array( 'rules_json' => '{"sets_to_win":0}' ), array( 'id' => $this->id['season'] ) );
 
@@ -286,6 +297,146 @@ final class ClassificationTest extends TestCase {
 			self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
 		}
 		self::assertSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+		self::assertTrue( $this->other_process()->acquire( 0 ), 'die Sperre der Neuberechnung ist wieder frei' );
+	}
+
+	/**
+	 * @return array<string,array{0:string,1:string}>
+	 */
+	public static function actions_needing_current_ratings(): array {
+		return array(
+			'berechnen'    => array( Classification::COMPUTE, 'compute' ),
+			'abschliessen' => array( Classification::CLOSE, 'close' ),
+		);
+	}
+
+	/**
+	 * Die Neuberechnung scheitert mit einem Error (Division durch null bei rating_scale 0). Die
+	 * Regeln selbst sind für die Klassierung gültig, der Dienst kommt also bis zur Neuberechnung.
+	 */
+	#[DataProvider( 'actions_needing_current_ratings' )]
+	public function test_a_failing_recalculation_ends_as_feedback_not_as_a_crash( string $action, string $method ): void {
+		$this->prepare( $method );
+		wp_set_current_user( $this->tk );
+		$this->db->update( 'season', array( 'rules_json' => '{"classification_min_games":3,"rating_scale":0}' ), array( 'id' => $this->id['season'] ) );
+		Results::schedule_rating_recalc();
+		$before = $this->snapshot();
+		$this->post( $action );
+		$log      = (string) tempnam( sys_get_temp_dir(), 'ttl' );
+		$previous = ini_set( 'error_log', $log ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- Fehlerprotokoll im Test umleiten.
+
+		try {
+			$target = $this->redirect_of( array( Actions::class, $method ) );
+			$logged = (string) file_get_contents( $log ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Test liest die eigene Datei.
+		} finally {
+			ini_set( 'error_log', false === $previous ? '' : $previous ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- siehe oben.
+			unlink( $log ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- eigene temporäre Datei.
+		}
+
+		self::assertSame( Tk::page_url( Classification::PAGE ), $target, 'zurück auf die Seite statt kritischer Fehler' );
+		self::assertSame(
+			array(
+				'type'    => 'error',
+				'message' => 'Die ausstehende Neuberechnung der Wertungszahl ist gescheitert; sie bleibt eingeplant. Bitte später erneut versuchen.',
+				'details' => array(),
+			),
+			Flash::take( Tk::FLASH, $this->tk )
+		);
+		self::assertSame( $before, $this->snapshot(), 'weder berechnet noch abgeschlossen' );
+		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'bleibt eingeplant' );
+		self::assertStringContainsString( 'DivisionByZeroError', $logged, 'die Ursache steht im Fehlerprotokoll' );
+		self::assertTrue( $this->other_process()->acquire( 0 ), 'die Sperre der Neuberechnung ist wieder frei' );
+	}
+
+	/**
+	 * Ein Lauf im Hintergrund rechnet gerade: WP-Cron hat den geplanten Eintrag schon entfernt,
+	 * das Ergebnis ist noch nicht gespeichert. Ohne die Sperre sähe die Klassierung nichts
+	 * Ausstehendes und arbeitete mit alten Wertungszahlen.
+	 */
+	public function test_compute_and_close_wait_for_a_running_recalculation_and_give_up_after_the_wait(): void {
+		$this->compute();
+		wp_set_current_user( $this->tk );
+		Classification::service()->accept_open( $this->actor(), new ProposalFilter() );
+		$before = $this->snapshot();
+		self::assertFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
+		self::assertTrue( $this->other_process()->acquire( 0 ) );
+		add_filter( 'ttleague_rating_recalc_lock_wait', static fn(): int => 1 );
+		$log      = (string) tempnam( sys_get_temp_dir(), 'ttl' );
+		$previous = ini_set( 'error_log', $log ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- Fehlerprotokoll im Test umleiten.
+
+		try {
+			foreach ( self::actions_needing_current_ratings() as $name => [ $action, $method ] ) {
+				$this->post( $action );
+				$start = microtime( true );
+
+				$this->redirect_of( array( Actions::class, $method ) );
+
+				self::assertGreaterThanOrEqual( 0.9, microtime( true ) - $start, $name . ': hat auf den Lauf gewartet' );
+				$flash = Flash::take( Tk::FLASH, $this->tk );
+				self::assertSame( 'error', $flash['type'] ?? null, $name );
+				self::assertStringContainsString( 'Neuberechnung der Wertungszahl ist gescheitert', $flash['message'] ?? '', $name );
+				self::assertSame( $before, $this->snapshot(), $name . ': weder berechnet noch abgeschlossen' );
+			}
+		} finally {
+			ini_set( 'error_log', false === $previous ? '' : $previous ); // phpcs:ignore WordPress.PHP.IniSet.Risky -- siehe oben.
+			unlink( $log ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- eigene temporäre Datei.
+		}
+
+		// Der Lauf ist fertig: Die Sperre ist frei, alles geht wie bisher.
+		$this->other_process()->release();
+		$this->post( Classification::CLOSE );
+		$this->redirect_of( array( Actions::class, 'close' ) );
+		self::assertSame( 'success', Flash::take( Tk::FLASH, $this->tk )['type'] ?? null );
+		self::assertNotNull( $this->closed_at() );
+	}
+
+	public function test_the_scheduled_recalculation_holds_the_lock_while_it_runs(): void {
+		$held  = null;
+		$probe = function () use ( &$held ): void {
+			// Während des Laufs (kurz vor seinem Ende) von einer anderen Verbindung aus gesehen.
+			$held = ! $this->other_process()->acquire( 0 );
+		};
+		add_action( 'update_option_' . DataVersion::OPTION, $probe );
+		add_action( 'add_option_' . DataVersion::OPTION, $probe );
+
+		Results::recalc_ratings();
+
+		self::assertTrue( $held, 'während der Neuberechnung belegt' );
+		self::assertNotSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+		self::assertTrue( $this->other_process()->acquire( 0 ), 'danach wieder frei' );
+	}
+
+	public function test_the_scheduled_recalculation_is_rescheduled_while_another_run_holds_the_lock(): void {
+		self::assertTrue( $this->other_process()->acquire( 0 ) );
+		add_filter( 'ttleague_rating_recalc_lock_wait', static fn(): int => 1 );
+		// WP-Cron entfernt den Eintrag, bevor es den Lauf startet.
+		self::assertFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
+
+		Results::recalc_ratings();
+
+		self::assertSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ), 'nicht doppelt gerechnet' );
+		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'neu eingeplant statt verloren' );
+	}
+
+	public function test_a_write_during_the_recalculation_keeps_it_scheduled(): void {
+		Results::schedule_rating_recalc();
+		// Ein Resultat wird gespeichert, während gerechnet wird: Sein eigenes Einplanen ändert am
+		// bestehenden Eintrag nichts, es hinterlässt aber einen Eintrag im audit_log.
+		$write = function (): void {
+			( new AuditLog( $this->db ) )->record( 'fixture', 1, 'result_entered', 1 );
+			Results::schedule_rating_recalc();
+		};
+		add_action( 'update_option_' . DataVersion::OPTION, $write );
+		add_action( 'add_option_' . DataVersion::OPTION, $write );
+
+		self::assertTrue( Classification::refresh_ratings() );
+		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'der Lauf für das neue Resultat steht weiter aus' );
+
+		remove_action( 'update_option_' . DataVersion::OPTION, $write );
+		remove_action( 'add_option_' . DataVersion::OPTION, $write );
+		self::assertTrue( Classification::refresh_ratings() );
+		self::assertFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'ohne weiteren Schreibvorgang entfernt' );
+		self::assertFalse( Classification::refresh_ratings(), 'nichts steht mehr aus' );
 	}
 
 	public function test_compute_action_reports_decisions_reset_by_a_changed_proposal(): void {
@@ -604,6 +755,20 @@ final class ClassificationTest extends TestCase {
 		self::assertSame( 'ttleague-classification-' . wp_date( 'Y-m-d' ) . '.csv', $file['filename'] );
 		self::assertStringContainsString( 'Vorlage Sara;TTC Wollishofen', $file['csv'] );
 		self::assertStringNotContainsString( 'Muster Hans', $file['csv'], 'Filter der Seite gilt auch im Export' );
+	}
+
+	/**
+	 * Die Sperre der Neuberechnung aus Sicht eines anderen Prozesses (eigene Verbindung), z. B.
+	 * des Laufs von WP-Cron. Wird am Ende des Tests freigegeben.
+	 */
+	private function other_process(): RecalcLock {
+		global $wpdb;
+		if ( null === $this->other ) {
+			$host        = (array) $wpdb->parse_db_host( DB_HOST );
+			$dsn         = 'mysql:host=' . $host[0] . ( empty( $host[1] ) ? '' : ';port=' . $host[1] ) . ';dbname=' . DB_NAME . ';charset=utf8mb4';
+			$this->other = new RecalcLock( PdoDb::connect( $dsn, DB_USER, DB_PASSWORD, $wpdb->prefix ), RecalcLock::name( DB_NAME, $wpdb->prefix ) );
+		}
+		return $this->other;
 	}
 
 	/**

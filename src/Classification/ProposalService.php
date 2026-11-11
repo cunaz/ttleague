@@ -120,7 +120,8 @@ final class ProposalService {
 	 *
 	 * @return array{players:int,created:int,updated:int,removed:int,reset:int,refreshed:bool} «reset»: zurückgesetzte
 	 *         Entscheide; «refreshed»: ob die Wertungszahl zuvor neu berechnet wurde.
-	 * @throws ClassificationException Ohne Recht, ohne aktive Saison, nach dem Abschluss, bei ungültigen Regeln.
+	 * @throws ClassificationException Ohne Recht, ohne aktive Saison, nach dem Abschluss, bei ungültigen Regeln,
+	 *                                 wenn die Neuberechnung der Wertungszahl scheitert.
 	 */
 	public function compute( Actor $actor ): array {
 		$season = $this->active_season( $actor );
@@ -128,7 +129,7 @@ final class ProposalService {
 			self::reject( ClassificationException::CONFLICT, self::closed_message() );
 		}
 		$rules     = $this->rules( $season );
-		$refreshed = (bool) ( $this->refresh_ratings )();
+		$refreshed = $this->refresh_ratings();
 
 		$result = $this->db->transaction(
 			function () use ( $season, $rules, $actor, $refreshed ): array {
@@ -284,7 +285,8 @@ final class ProposalService {
 	 *
 	 * @return string Zeitpunkt des Abschlusses (UTC).
 	 * @throws ClassificationException Ohne Recht, ohne Zeilen, mit veralteten oder offenen Zeilen, wenn schon
-	 *                                 abgeschlossen, bei ungültigen Regeln.
+	 *                                 abgeschlossen, bei ungültigen Regeln, wenn die Neuberechnung der
+	 *                                 Wertungszahl scheitert.
 	 */
 	public function close( Actor $actor ): string {
 		$season = $this->active_season( $actor );
@@ -292,7 +294,7 @@ final class ProposalService {
 			self::reject( ClassificationException::CONFLICT, __( 'Die Klassierung ist bereits abgeschlossen.', 'ttleague' ) );
 		}
 		$rules = $this->rules( $season );
-		( $this->refresh_ratings )();
+		$this->refresh_ratings();
 		$now = $this->now();
 		$this->db->transaction(
 			function () use ( $season, $rules, $actor, $now ): void {
@@ -533,10 +535,26 @@ final class ProposalService {
 	}
 
 	/**
+	 * Wertungszahlen aktuell machen. Scheitert die Neuberechnung (auch mit einem Error oder weil
+	 * gerade ein anderer Lauf rechnet), ist das eine Ablehnung mit der Ursache in getPrevious():
+	 * Mit alten Wertungszahlen wird weder berechnet noch abgeschlossen.
+	 *
+	 * @return bool Ob neu berechnet wurde.
+	 * @throws ClassificationException Wenn die Neuberechnung scheitert.
+	 */
+	private function refresh_ratings(): bool {
+		try {
+			return (bool) ( $this->refresh_ratings )();
+		} catch ( \Throwable $e ) {
+			self::reject( ClassificationException::UNAVAILABLE, __( 'Die ausstehende Neuberechnung der Wertungszahl ist gescheitert; sie bleibt eingeplant. Bitte später erneut versuchen.', 'ttleague' ), $e );
+		}
+	}
+
+	/**
 	 * @return never
 	 * @throws ClassificationException Immer.
 	 */
-	private static function reject( string $reason, string $message ): never {
-		throw new ClassificationException( $reason, $message ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Klartext; escaped wird bei der Ausgabe der Rückmeldung.
+	private static function reject( string $reason, string $message, ?\Throwable $previous = null ): never {
+		throw new ClassificationException( $reason, $message, $previous ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Klartext; escaped wird bei der Ausgabe der Rückmeldung.
 	}
 }
