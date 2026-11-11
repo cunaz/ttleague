@@ -217,6 +217,52 @@ final class EligibilityLoader {
 	}
 
 	/**
+	 * Punktesumme der Meldung einer Cup-Mannschaft (Summe der Klassierungen bei der Meldung).
+	 */
+	public function entry_points( int $entry_id ): ?int {
+		$points = $this->db->get_var( "SELECT points_total FROM {$this->db->table( 'cup_entry' )} WHERE id = %d", array( $entry_id ) );
+		return null === $points ? null : (int) $points;
+	}
+
+	/**
+	 * Spieler, die in der Saison zu einer anderen Cup-Mannschaft gehören (Art. 20.2): dort
+	 * gemeldet (über alle Kategorien, auch nach einem Rückzug) oder in einer anderen Begegnung
+	 * für sie eingesetzt.
+	 *
+	 * @param int $entry_id           Cup-Mannschaft, für die geprüft wird.
+	 * @param int $exclude_fixture_id Begegnung, die gerade erfasst wird.
+	 * @return array<int,string> Spieler => andere Cup-Mannschaft mit Konkurrenz, z. B. «Seefeld 2 (Mannschaftscup A)».
+	 */
+	public function cup_commitments( int $season_id, int $entry_id, int $exclude_fixture_id ): array {
+		$other = array();
+		foreach ( $this->db->get_results(
+			"SELECT CONCAT(e.name, ' (', c.name, ')') AS name, e.player1_id, e.player2_id FROM {$this->db->table( 'cup_entry' )} e
+			JOIN {$this->db->table( 'competition' )} c ON c.id = e.competition_id
+			WHERE c.season_id = %d AND c.type = 'CUP' AND e.id <> %d
+			ORDER BY e.id",
+			array( $season_id, $entry_id )
+		) as $row ) {
+			foreach ( array( $row['player1_id'], $row['player2_id'] ) as $player_id ) {
+				if ( null !== $player_id ) {
+					$other[ (int) $player_id ] ??= (string) $row['name'];
+				}
+			}
+		}
+		foreach ( $this->db->get_results(
+			"SELECT l.player_id, CONCAT(e.name, ' (', c.name, ')') AS name FROM {$this->db->table( 'lineup' )} l
+			JOIN {$this->db->table( 'fixture' )} f ON f.id = l.fixture_id
+			JOIN {$this->db->table( 'competition' )} c ON c.id = f.competition_id
+			JOIN {$this->db->table( 'cup_entry' )} e ON e.id = CASE WHEN l.side = 'home' THEN f.home_entry_id ELSE f.away_entry_id END
+			WHERE c.season_id = %d AND c.type = 'CUP' AND e.id <> %d AND f.id <> %d
+			ORDER BY f.id, l.id",
+			array( $season_id, $entry_id, $exclude_fixture_id )
+		) as $row ) {
+			$other[ (int) $row['player_id'] ] ??= (string) $row['name'];
+		}
+		return $other;
+	}
+
+	/**
 	 * Kandidatenliste für das Formular, sortiert: Stamm, gebunden, Ersatz, nicht berechtigt;
 	 * innerhalb nach Klassierung (stärkere zuerst) und Name.
 	 *

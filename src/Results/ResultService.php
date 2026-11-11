@@ -610,12 +610,16 @@ final class ResultService {
 			$info = $ctx->side( $side );
 			$club = $info['club_id'];
 			if ( $ctx->is_cup() ) {
+				// Aufstellungsregel des Cups (Art. 20.1 und 20.2, docs/cup.md): Punktesumme der
+				// Meldung und Spieler, die zu einer anderen Cup-Mannschaft gehören.
 				$sides[ $side ] = new SideRoster(
 					null === $club ? array() : $this->eligibility->club_players( $ctx->season_id, $club ),
 					null,
 					null,
 					null === $info['entry_id'] ? array() : $this->eligibility->entry_players( $info['entry_id'] ),
-					$info['name']
+					$info['name'],
+					null === $info['entry_id'] ? null : $this->eligibility->entry_points( $info['entry_id'] ),
+					null === $info['entry_id'] ? array() : $this->eligibility->cup_commitments( $ctx->season_id, $info['entry_id'], $ctx->id )
 				);
 				continue;
 			}
