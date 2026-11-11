@@ -347,6 +347,58 @@ final class PostponementNotificationsTest extends PostponementTestCase {
 		self::assertSame( array( M::REMINDER ), array_column( $notifications->remind(), 'event' ) );
 	}
 
+	public function test_after_a_failing_request_the_same_run_still_reminds_the_next_one(): void {
+		$good = $this->request_f1()['id'];
+		// Zweite aktive Saison (aus Altdaten möglich) mit ungültigen Regeln und einem fälligen
+		// Antrag; sie ist neuer und kommt im Lauf zuerst.
+		$s                 = new \TTLeague\Tests\Integration\Frontend\Seeder( $this->db );
+		$season            = $s->season( '2027-28', 'active', array( 'sets_to_win' => 0 ) );
+		$group             = $s->competition( $season, 'MM', 'Gruppe A', 'A', 1 );
+		$home              = $s->team( $season, $s->club( 'Oerlikon', 91 ), 1, 'Oerlikon 1', $group );
+		$away              = $s->team( $season, $s->club( 'Altstetten', 92 ), 1, 'Altstetten 1', $group );
+		$broken            = $s->fixture(
+			$group,
+			array(
+				'home_team_id' => $home,
+				'away_team_id' => $away,
+				'scheduled_at' => '2027-11-10 20:00:00',
+			)
+		);
+		$created           = $this->clock->now()->format( 'Y-m-d H:i:s' );
+		$bad               = $this->db->insert(
+			'postponement',
+			array(
+				'fixture_id'   => $broken,
+				'requested_by' => 101,
+				'kind'         => 'postpone',
+				'old_date'     => '2027-11-10 20:00:00',
+				'new_date'     => '2027-11-17 20:00:00',
+				'status'       => 'requested',
+				'reason'       => 'Die Halle ist belegt.',
+				'created_at'   => $created,
+				'updated_at'   => $created,
+			)
+		);
+		$errors            = array();
+		$notifications     = $this->postponement_notifications(
+			array(
+				'from_hour'  => 0,
+				'until_hour' => 24,
+			),
+			static function ( \Throwable $e, string $context ) use ( &$errors ): void {
+				$errors[] = $context;
+			}
+		);
+		$this->email->sent = array();
+		$this->clock->advance( '+3 days' );
+
+		$report = $notifications->remind();
+
+		self::assertSame( array( 'Erinnerung zur Verschiebung ' . $bad ), $errors, 'der fehlerhafte Antrag kam zuerst und wurde gemeldet' );
+		self::assertSame( array( $good ), array_column( $report, 'ref' ), 'der folgende Antrag wurde im selben Lauf verarbeitet' );
+		self::assertSame( $this->away(), $this->email->recipients( M::REMINDER ) );
+	}
+
 	public function test_answered_requests_are_not_reminded(): void {
 		$declined = $this->request_f1()['id'];
 		$this->postponements->decline( $declined, $this->actor['captain_a1'] );
