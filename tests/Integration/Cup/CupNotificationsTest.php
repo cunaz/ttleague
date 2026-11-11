@@ -241,6 +241,24 @@ final class CupNotificationsTest extends CupTestCase {
 		self::assertSame( 'Mannschaftscup A, Halbfinal: Wollishofen 1 – Altstetten 1', $again[0]['subject'] );
 		self::assertNotSame( $first[0]['ref_key'], $again[0]['ref_key'], 'die neue Paarung hat einen eigenen Schlüssel' );
 		self::assertSame( array( $again[0]['ref_key'] ), array_values( array_unique( array_column( $again, 'ref_key' ) ) ) );
+
+		// Zweite Korrektur: In der anderen Begegnung gewinnt neu Oerlikon. Nur die Gastseite des Halbfinals wechselt.
+		$f12 = $this->fixture_of( 1, 2 );
+		$this->results->decide(
+			$f12,
+			$this->tk,
+			array(
+				'action' => 'correct',
+				'result' => $this->payload( $f12, 'home' ),
+			)
+		);
+
+		$sent  = $this->sent( 'cup_round', $semi['id'] );
+		$third = array_slice( $sent, 12 );
+		self::assertCount( 6, $third, 'auch bei einem Wechsel nur der Gastseite erhalten beide Mannschaften eine Mitteilung' );
+		self::assertSame( array_merge( $this->people( 'wollishofen' ), $this->people( 'oerlikon' ) ), array_column( $third, 'to' ) );
+		self::assertSame( 'Mannschaftscup A, Halbfinal: Wollishofen 1 – Oerlikon 1', $third[0]['subject'] );
+		self::assertNotContains( $third[0]['ref_key'], array( $first[0]['ref_key'], $again[0]['ref_key'] ) );
 	}
 
 	public function test_a_failed_delivery_is_counted_and_caught_up_later(): void {
