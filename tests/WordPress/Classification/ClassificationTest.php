@@ -418,6 +418,85 @@ final class ClassificationTest extends TestCase {
 		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'neu eingeplant statt verloren' );
 	}
 
+	/**
+	 * WP-Cron entfernt den geplanten Eintrag, bevor der Lauf die Sperre nimmt. In diesem
+	 * Augenblick ist die Sperre frei und nichts eingeplant; nur die Markierung sagt, dass die
+	 * gespeicherten Wertungszahlen noch nicht aktuell sind.
+	 */
+	public function test_a_change_stays_pending_between_cron_removing_the_entry_and_the_run_taking_the_lock(): void {
+		Results::schedule_rating_recalc();
+		wp_clear_scheduled_hook( Results::RECALC_HOOK );
+		self::assertFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
+		self::assertNotNull( Results::rating_pending() );
+
+		self::assertTrue( Classification::refresh_ratings(), 'rechnet, obwohl nichts eingeplant ist' );
+
+		self::assertNotSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+		self::assertNull( Results::rating_pending(), 'nach dem Erfolg steht nichts mehr aus' );
+		self::assertFalse( Classification::refresh_ratings() );
+	}
+
+	public function test_the_scheduled_run_clears_the_pending_mark_only_after_success(): void {
+		Results::schedule_rating_recalc();
+		$mark = Results::rating_pending();
+		$this->db->update( 'season', array( 'rules_json' => '{"sets_to_win":0}' ), array( 'id' => $this->id['season'] ) );
+		try {
+			Results::recalc_ratings();
+			self::fail( 'Fehler erwartet.' );
+		} catch ( \InvalidArgumentException ) {
+			self::assertSame( $mark, Results::rating_pending(), 'nach einem Fehler steht die Neuberechnung weiter aus' );
+		}
+
+		$this->db->update( 'season', array( 'rules_json' => '{}' ), array( 'id' => $this->id['season'] ) );
+		Results::recalc_ratings();
+		self::assertNull( Results::rating_pending() );
+	}
+
+	public function test_the_command_line_recalculation_uses_the_same_lock_and_clears_the_pending_mark(): void {
+		require_once dirname( __DIR__ ) . '/Cli/wp-cli-stub.php';
+		\WP_CLI::$output = array();
+		Results::schedule_rating_recalc();
+		$command = new \TTLeague\Cli\RatingCommand();
+
+		// Ein anderer Lauf rechnet: Der Befehl wartet, gibt auf und ändert nichts.
+		self::assertTrue( $this->other_process()->acquire( 0 ) );
+		add_filter( 'ttleague_rating_recalc_lock_wait', static fn(): int => 1 );
+		try {
+			$command->recalc( array(), array() );
+			self::fail( 'Abbruch erwartet.' );
+		} catch ( \TTLeague\Tests\WordPress\Cli\CliStop ) {
+			self::assertSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+			self::assertNotNull( Results::rating_pending() );
+		}
+		$this->other_process()->release();
+
+		// Ohne Neuverankerung ist es nicht die übliche Berechnung: Die Markierung bleibt.
+		$command->recalc( array(), array( 'reanchor' => false ) );
+		self::assertNotNull( Results::rating_pending() );
+		self::assertTrue( $this->other_process()->acquire( 0 ), 'Sperre nach dem Lauf frei' );
+		$this->other_process()->release();
+
+		$command->recalc( array(), array() );
+		self::assertNull( Results::rating_pending() );
+		self::assertNotSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+		self::assertTrue( $this->other_process()->acquire( 0 ), 'Sperre nach dem Lauf frei' );
+	}
+
+	public function test_form_fields_that_are_no_single_value_address_no_row(): void {
+		$this->compute();
+		$before = $this->snapshot();
+		wp_set_current_user( $this->tk );
+
+		// Ein Array ergäbe mit absint() die Zahl 1 und träfe die Zeile mit dieser ID.
+		$this->post( Classification::ACCEPT, array( 'proposal' => array( '7' ), 'proposed' => array( '3' ) ) );
+		$this->redirect_of( array( Actions::class, 'accept' ) );
+
+		$flash = Flash::take( Tk::FLASH, $this->tk );
+		self::assertSame( 'error', $flash['type'] ?? null );
+		self::assertSame( 'Diese Zeile gibt es nicht (mehr). Bitte lade die Seite neu.', $flash['message'] ?? null, 'keine Zeile angesprochen, auch nicht die mit der ID 1' );
+		self::assertSame( $before, $this->snapshot() );
+	}
+
 	public function test_a_write_during_the_recalculation_keeps_it_scheduled(): void {
 		Results::schedule_rating_recalc();
 		// Ein Resultat wird gespeichert, während gerechnet wird: Sein eigenes Einplanen ändert am
@@ -431,6 +510,7 @@ final class ClassificationTest extends TestCase {
 
 		self::assertTrue( Classification::refresh_ratings() );
 		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'der Lauf für das neue Resultat steht weiter aus' );
+		self::assertNotNull( Results::rating_pending(), 'die Markierung des neuen Resultats bleibt' );
 
 		remove_action( 'update_option_' . DataVersion::OPTION, $write );
 		remove_action( 'add_option_' . DataVersion::OPTION, $write );

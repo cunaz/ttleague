@@ -39,19 +39,24 @@ Nach jeder Resultatänderung plant die Erfassung die Neuberechnung der Wertungsz
 
 ### Koordination mit der Neuberechnung
 
-Die Neuberechnung läuft an einem Ort (`Results::recalc_ratings()`, als Lauf von WP-Cron) und hält für ihre Dauer eine benannte Datenbanksperre (`Rating\RecalcLock`, `GET_LOCK`). Der Name enthält Datenbank und Tabellenpräfix als Hash, damit sich Installationen auf demselben Datenbankserver nicht stören. `Classification::refresh_ratings()` arbeitet unter derselben Sperre:
+Zwei Dinge halten die Neuberechnung und die Klassierung auseinander:
 
-1. **Sperre nehmen**, mit höchstens 20 Sekunden Wartezeit (`Results::RECALC_LOCK_WAIT`, Filter `ttleague_rating_recalc_lock_wait`). Rechnet gerade ein Lauf im Hintergrund, wartet die Klassierung so auf sein Ende. WP-Cron entfernt den geplanten Eintrag, bevor der Lauf beginnt; ohne die Sperre sähe die Klassierung in dieser Zeit nichts Ausstehendes.
-2. **Erst unter der Sperre prüfen**, ob ein Lauf eingeplant ist (frisch aus der Datenbank gelesen). Wenn nicht, sind die Wertungszahlen aktuell.
-3. **Neu berechnen** (`Results::recalc_ratings_unlocked()`, ohne zweite Sperre) und den geplanten Eintrag **erst nach dem Erfolg entfernen**. Scheitert die Berechnung oder bricht der Prozess ab, bleibt sie eingeplant. Ein gleichzeitiges Berechnen oder Abschliessen einer zweiten Person wartet in Schritt 1.
-4. Ist während der Berechnung etwas ins `audit_log` geschrieben worden, bleibt der Eintrag stehen. So geht ein Resultat nicht verloren, das während der Berechnung gespeichert wird: Sein eigenes Einplanen ändert am bestehenden Eintrag nichts, und die laufende Berechnung hat es womöglich nicht mehr gelesen. Im Zweifel wird einmal zu viel gerechnet.
+- **Markierung «steht aus»** (`Results::RECALC_PENDING`, eine Option): Jede Resultatänderung setzt sie mit einem neuen Wert (`Results::schedule_rating_recalc()`). Entfernt wird sie erst nach einer erfolgreichen Neuberechnung, und nur, wenn sie noch den Wert hat, mit dem die Berechnung begann. Sie sagt also unabhängig von WP-Cron, ob die gespeicherten Wertungszahlen aktuell sind. Der Cron-Eintrag allein taugt dafür nicht: WP-Cron entfernt ihn, bevor der Lauf beginnt.
+- **Sperre** (`Rating\RecalcLock`, `GET_LOCK`): Jede Neuberechnung hält sie für ihre Dauer, der Lauf von WP-Cron (`Results::recalc_ratings()`) ebenso wie `wp ttleague rating recalc`. Der Name enthält Datenbank und Tabellenpräfix als Hash, damit sich Installationen auf demselben Datenbankserver nicht stören.
+
+`Classification::refresh_ratings()` arbeitet so:
+
+1. **Sperre nehmen**, mit höchstens 20 Sekunden Wartezeit (`Results::RECALC_LOCK_WAIT`, Filter `ttleague_rating_recalc_lock_wait`). Rechnet gerade ein anderer Lauf, wartet die Klassierung auf sein Ende. Ein gleichzeitiges Berechnen oder Abschliessen einer zweiten Person wartet hier ebenfalls.
+2. **Unter der Sperre prüfen**, ob die Markierung gesetzt ist (frisch aus der Datenbank gelesen). Ein geplanter Lauf ohne Markierung, etwa aus einer älteren Version, zählt ebenfalls als ausstehend. Steht nichts aus, sind die Wertungszahlen aktuell.
+3. **Neu berechnen** (`Results::recalc_ratings_unlocked()`, ohne zweite Sperre). Nach dem Erfolg verschwindet die Markierung und mit ihr der geplante Lauf. Scheitert die Berechnung oder bricht der Prozess ab, bleiben beide bestehen.
+4. Wird während der Berechnung ein weiteres Resultat gespeichert, hat die Markierung einen neuen Wert und bleibt stehen, der geplante Lauf ebenfalls. Im Zweifel wird einmal zu viel gerechnet, nie zu wenig.
 5. Sperre freigeben, auch nach einem Fehler.
 
-Der Lauf von WP-Cron wartet ebenso lange auf die Sperre. Hält sie dann noch ein anderer Lauf, plant er sich neu ein, statt doppelt zu rechnen.
+Der Lauf von WP-Cron wartet ebenso lange auf die Sperre. Hält sie dann noch ein anderer Lauf, plant er sich neu ein, statt doppelt zu rechnen; die Markierung bleibt dabei unverändert. `wp ttleague rating recalc` bricht in diesem Fall mit einer Meldung ab. Mit `--no-reanchor` entfernt der Befehl die Markierung nicht, weil das nicht die übliche Berechnung ist.
 
 **Fehler:** Scheitert «Wertungszahlen aktuell machen» (Fehler in der Neuberechnung, auch ein `Error`; Sperre nach der Wartezeit noch belegt), lehnt der Dienst mit `ClassificationException::UNAVAILABLE` ab: «Die ausstehende Neuberechnung der Wertungszahl ist gescheitert; sie bleibt eingeplant. Bitte später erneut versuchen.» Es wird weder berechnet noch abgeschlossen. Die Ursache steht in `getPrevious()` und im Fehlerprotokoll (`ttleague: Klassierung abgelehnt …`), nicht in der Rückmeldung.
 
-Grenze: Die Erfassung plant die Neuberechnung erst nach dem Speichern eines Resultats ein. Ein Resultat, das im selben Augenblick gespeichert wird, in dem die TK berechnet oder abschliesst, kann deshalb noch fehlen. Vor dem Abschluss fällt es beim nächsten Versuch auf, danach nicht mehr. Die Sperre gehört der Datenbankverbindung: Bricht die Verbindung während der Berechnung ab, ist sie frei, bevor der Lauf gescheitert ist.
+Grenze: Die Erfassung setzt die Markierung unmittelbar nach dem Speichern eines Resultats, nicht in derselben Transaktion. Ein Resultat, das im selben Augenblick gespeichert wird, in dem die TK berechnet oder abschliesst, kann deshalb noch fehlen. Vor dem Abschluss fällt es beim nächsten Versuch auf, danach nicht mehr. Die Sperre gehört der Datenbankverbindung: Bricht die Verbindung während der Berechnung ab, ist sie frei, bevor der Lauf gescheitert ist.
 
 ## Entscheid der TK
 

@@ -21,6 +21,14 @@ final class Results {
 
 	public const RECALC_HOOK = 'ttleague_rating_recalc';
 
+	/**
+	 * Option mit der Markierung «Neuberechnung steht aus». Sie entsteht mit jeder Resultatänderung
+	 * neu (eigener Wert) und verschwindet erst nach einer erfolgreichen Neuberechnung, die mit
+	 * genau diesem Wert begonnen hat. Anders als der Cron-Eintrag, den WP-Cron vor dem Start des
+	 * Laufs entfernt, sagt sie zuverlässig, ob die gespeicherten Wertungszahlen aktuell sind.
+	 */
+	public const RECALC_PENDING = 'ttleague_rating_pending';
+
 	/** Verzögerung der Neuberechnung, damit mehrere Änderungen zusammen gerechnet werden. */
 	public const RECALC_DELAY = 120;
 
@@ -93,9 +101,40 @@ final class Results {
 	 * Neuberechnung der Wertungszahl einmalig einplanen (entprellt).
 	 */
 	public static function schedule_rating_recalc(): void {
+		update_option( self::RECALC_PENDING, uniqid( '', true ), false );
+		self::ensure_recalc_scheduled();
+	}
+
+	private static function ensure_recalc_scheduled(): void {
 		if ( false === wp_next_scheduled( self::RECALC_HOOK ) ) {
 			wp_schedule_single_event( time() + self::RECALC_DELAY, self::RECALC_HOOK );
 		}
+	}
+
+	/**
+	 * Wert der Markierung «Neuberechnung steht aus», frisch aus der Datenbank (andere Anfragen
+	 * können sie während einer langen Berechnung gesetzt haben); null, wenn nichts aussteht.
+	 */
+	public static function rating_pending(): ?string {
+		global $wpdb;
+		$value = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::RECALC_PENDING ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- bewusst am Options-Cache vorbei.
+		return is_string( $value ) && '' !== $value ? $value : null;
+	}
+
+	/**
+	 * Markierung entfernen, aber nur, wenn sie noch den Wert hat, mit dem die Berechnung begann.
+	 * Wurde inzwischen ein Resultat gespeichert, bleibt sie stehen.
+	 *
+	 * @param string|null $token Wert vor der Berechnung (rating_pending()).
+	 */
+	public static function clear_rating_pending( ?string $token ): void {
+		global $wpdb;
+		if ( null === $token ) {
+			return;
+		}
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s", self::RECALC_PENDING, $token ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Vergleichen und Löschen in einem Schritt.
+		wp_cache_delete( self::RECALC_PENDING, 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
 	}
 
 	/**
@@ -106,7 +145,8 @@ final class Results {
 	public static function recalc_ratings(): void {
 		$lock = self::recalc_lock();
 		if ( ! $lock->acquire( self::recalc_lock_wait() ) ) {
-			self::schedule_rating_recalc();
+			// Die Markierung «steht aus» bleibt, wie sie ist; nur der Lauf wird neu eingeplant.
+			self::ensure_recalc_scheduled();
 			return;
 		}
 		try {
@@ -118,10 +158,17 @@ final class Results {
 
 	/**
 	 * Neuberechnung ohne eigene Sperre: nur für Aufrufer, die recalc_lock() selbst halten.
+	 * Danach verschwindet die Markierung «steht aus», sofern während der Berechnung kein
+	 * weiteres Resultat gespeichert wurde; sonst bleibt sie, und ein Lauf ist eingeplant.
 	 */
 	public static function recalc_ratings_unlocked(): void {
+		$token = self::rating_pending();
 		( new RatingService( WpdbDb::from_global() ) )->recalc();
 		DataVersion::bump();
+		self::clear_rating_pending( $token );
+		if ( null !== self::rating_pending() ) {
+			self::ensure_recalc_scheduled();
+		}
 	}
 
 	/**

@@ -70,12 +70,16 @@ final class Classification {
 	 * Ablauf unter der Sperre der Neuberechnung (Results::recalc_lock()):
 	 * 1. Sperre nehmen. Rechnet gerade ein Lauf im Hintergrund, wartet das bis zu seinem Ende;
 	 *    hält er die Sperre nach der Wartezeit noch, ist das ein Fehler.
-	 * 2. Erst jetzt prüfen, ob ein Lauf eingeplant ist. Wenn nicht, sind die Wertungszahlen aktuell.
-	 * 3. Sonst neu berechnen und den geplanten Lauf erst nach dem Erfolg entfernen: Scheitert die
-	 *    Berechnung oder bricht der Prozess ab, bleibt sie eingeplant.
+	 * 2. Erst jetzt prüfen, ob eine Neuberechnung aussteht. Massgebend ist die Markierung
+	 *    Results::RECALC_PENDING, die jede Resultatänderung setzt und nur eine erfolgreiche
+	 *    Neuberechnung entfernt. Der Cron-Eintrag allein genügt nicht: WP-Cron entfernt ihn, bevor
+	 *    der Lauf die Sperre nimmt. (Ein Eintrag ohne Markierung, etwa aus einer älteren Version,
+	 *    zählt ebenfalls als ausstehend.)
+	 * 3. Steht nichts aus, sind die Wertungszahlen aktuell. Sonst neu berechnen; scheitert die
+	 *    Berechnung oder bricht der Prozess ab, bleiben Markierung und geplanter Lauf bestehen.
 	 *
-	 * Ist während der Berechnung etwas ins audit_log geschrieben worden (z. B. ein Resultat, dessen
-	 * eigenes Einplanen am bestehenden Eintrag nichts ändert), bleibt der geplante Lauf stehen.
+	 * Wird während der Berechnung ein weiteres Resultat gespeichert, bekommt die Markierung einen
+	 * neuen Wert und bleibt stehen; der geplante Lauf ebenfalls.
 	 *
 	 * @return bool Ob neu berechnet wurde.
 	 * @throws \RuntimeException Wenn die Sperre nicht zu bekommen ist.
@@ -87,12 +91,11 @@ final class Classification {
 		}
 		try {
 			self::forget_cron_cache();
-			if ( false === wp_next_scheduled( Results::RECALC_HOOK ) ) {
+			if ( null === Results::rating_pending() && false === wp_next_scheduled( Results::RECALC_HOOK ) ) {
 				return false;
 			}
-			$written = self::audit_entries();
 			Results::recalc_ratings_unlocked();
-			if ( self::audit_entries() === $written ) {
+			if ( null === Results::rating_pending() ) {
 				self::forget_cron_cache();
 				wp_clear_scheduled_hook( Results::RECALC_HOOK );
 			}
@@ -109,11 +112,6 @@ final class Classification {
 	private static function forget_cron_cache(): void {
 		wp_cache_delete( 'alloptions', 'options' );
 		wp_cache_delete( 'cron', 'options' );
-	}
-
-	private static function audit_entries(): int {
-		$db = Services::db();
-		return (int) $db->get_var( "SELECT COUNT(*) FROM {$db->table( 'audit_log' )}" );
 	}
 
 	/**

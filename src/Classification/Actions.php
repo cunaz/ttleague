@@ -54,8 +54,8 @@ final class Actions {
 	public static function accept(): void {
 		check_admin_referer( Classification::ACCEPT );
 		self::require_tk();
-		$id       = isset( $_POST['proposal'] ) ? absint( $_POST['proposal'] ) : 0;
-		$expected = isset( $_POST['proposed'] ) ? absint( $_POST['proposed'] ) : null;
+		$id       = self::number( 'proposal' ) ?? 0;
+		$expected = self::number( 'proposed' );
 		self::run(
 			self::anchor( $id ),
 			static function ( ProposalService $service, Actor $actor ) use ( $id, $expected ): Outcome {
@@ -86,8 +86,8 @@ final class Actions {
 	public static function override(): void {
 		check_admin_referer( Classification::OVERRIDE );
 		self::require_tk();
-		$id    = isset( $_POST['proposal'] ) ? absint( $_POST['proposal'] ) : 0;
-		$value = isset( $_POST['value'] ) ? absint( $_POST['value'] ) : 0;
+		$id    = self::number( 'proposal' ) ?? 0;
+		$value = self::number( 'value' ) ?? 0;
 		$note  = sanitize_textarea_field( wp_unslash( (string) ( $_POST['note'] ?? '' ) ) );
 		self::run(
 			self::anchor( $id ),
@@ -166,5 +166,14 @@ final class Actions {
 		Flash::set( Tk::FLASH, get_current_user_id(), $outcome->type, $outcome->message, $outcome->details );
 		wp_safe_redirect( Tk::page_url( Classification::PAGE, self::filter()->to_args() ) . ( '' === $anchor ? '' : '#' . $anchor ) );
 		exit;
+	}
+
+	/**
+	 * Ganzzahl aus dem Formular; null, wenn das Feld fehlt oder kein einzelner Wert ist
+	 * (ein Array ergäbe mit absint() die Zahl 1).
+	 */
+	private static function number( string $key ): ?int {
+		$value = $_POST[ $key ] ?? null; // phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput -- Nonce in der aufrufenden Aktion geprüft; absint() bereinigt.
+		return is_scalar( $value ) ? absint( wp_unslash( (string) $value ) ) : null;
 	}
 }
