@@ -347,6 +347,34 @@ final class RegistrationServiceTest extends EventTestCase {
 		self::assertSame( array( $this->person['h2'] ), array_column( $this->registrations->club_players( $this->actor['chef_home'], $this->events->repository()->find( $event ) ), 'person_id' ) );
 	}
 
+	/**
+	 * Die TK ändert die Saison des Anlasses, während die TK-Chefin an- oder abmeldet: In der neuen
+	 * Saison ist der Spieler für einen anderen Club gemeldet. Geprüft wird deshalb unter der Sperre
+	 * noch einmal.
+	 */
+	public function test_a_season_change_between_check_and_write_is_checked_again_under_the_lock(): void {
+		$planned = $this->seeder->season( '2027-28', 'planned' );
+		$this->seeder->register( $this->id['h1'], $planned, $this->id['club_away'], 10 );
+		$this->seeder->role( $planned, $this->id['club_home'], $this->person['chef_home'], 'tk_chef' );
+		$event   = $this->event();
+		$move    = fn() => $this->db->update( 'event', array( 'season_id' => $planned ), array( 'id' => $event ) );
+		$restore = fn() => $this->db->update( 'event', array( 'season_id' => $this->id['season'] ), array( 'id' => $event ) );
+
+		$clock              = new TriggerClock( new FixedClock( '2026-11-10 12:00:00' ) );
+		$service            = $this->registration_service( $clock, $this->listener );
+		$clock->before_next = $move;
+		self::assertSame( 403, $this->failure( fn() => $service->register( $event, $this->person['h1'], $this->actor['chef_home'] ) )->status );
+		self::assertSame( array(), $this->list_of( $event ), 'nicht angemeldet' );
+
+		$restore();
+		$this->registrations->register( $event, $this->person['h1'], $this->actor['chef_home'] );
+		$clock              = new TriggerClock( new FixedClock( '2026-11-10 12:00:00' ) );
+		$service            = $this->registration_service( $clock, $this->listener );
+		$clock->before_next = $move;
+		self::assertSame( 403, $this->failure( fn() => $service->unregister( $event, $this->person['h1'], $this->actor['chef_home'] ) )->status );
+		self::assertCount( 1, $this->list_of( $event ), 'nicht abgemeldet' );
+	}
+
 	public function test_without_a_season_the_active_season_decides(): void {
 		$event = $this->event( array( 'season_id' => '' ) );
 

@@ -79,6 +79,8 @@ final class RegistrationService {
 		$result = $this->db->transaction(
 			function () use ( $event_id, $person_id, $actor, $note, $now ): array {
 				$current = $this->locked( $event_id );
+				// Unter der Sperre erneut: Die TK kann die Saison des Anlasses inzwischen geändert haben.
+				$this->require_may_act( $actor, $person_id, $current );
 				$this->require_open( $current, $actor, $now );
 				$existing = $this->repo->registration( $event_id, $person_id );
 				if ( null !== $existing ) {
@@ -124,6 +126,7 @@ final class RegistrationService {
 		[ $removed, $promoted ] = $this->db->transaction(
 			function () use ( $event_id, $person_id, $actor, $now ): array {
 				$current = $this->locked( $event_id );
+				$this->require_may_act( $actor, $person_id, $current );
 				$this->require_open( $current, $actor, $now );
 				$existing = $this->repo->registration( $event_id, $person_id );
 				if ( null === $existing ) {
@@ -209,10 +212,18 @@ final class RegistrationService {
 		if ( null === $event ) {
 			throw EventException::not_found( __( 'Diesen Anlass gibt es nicht.', 'ttleague' ) );
 		}
+		$this->require_may_act( $actor, $person_id, $event );
+		return $event;
+	}
+
+	/**
+	 * @param array<string,mixed> $event Anlass (bei Schreibvorgängen der gesperrt gelesene Stand).
+	 * @throws EventException 403 ohne Recht für diese Person.
+	 */
+	private function require_may_act( Actor $actor, int $person_id, array $event ): void {
 		if ( ! $this->may_act_for( $actor, $person_id, $event ) ) {
 			throw EventException::forbidden( __( 'Du kannst nur dich selbst und als TK-Chef die Spieler deines Clubs an- und abmelden.', 'ttleague' ) );
 		}
-		return $event;
 	}
 
 	/**
