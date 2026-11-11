@@ -95,7 +95,7 @@ Satz- und Punkteverhältnisse zählen nur Spiele mit `status = played`.
 
 ## Ranglistenturnier (`rl_*`)
 
-- `rl_round.round_no` 1 bis 3, Finalrunde 4 mit `is_final` 1.
+- `rl_round.round_no` fortlaufend ab 1. Regulär ist jede Runde mit `is_final` 0; die Finalrunde (`is_final` 1) gibt es höchstens einmal, sie ist die letzte Runde. Üblich sind die Runden 1 bis 3 und die Finalrunde 4; gezählt wird überall nach `is_final`, nicht nach der Nummer.
 - `rl_round.status`: `planned`, `published` (aufgeboten) oder `closed`. Der Standardwert ist `closed`, damit Runden aus Altdaten als abgeschlossen gelten. Ein Import, der eine laufende Saison übernimmt, setzt aufgebotene, noch nicht gespielte Runden auf `published`.
 - `rl_group.category` 1 bis 3, `group_no` ab 1, `start_at` Ortszeit, `host_club_id` Platzclub, `note` Rohtext des Aufgebots.
 - `rl_group_player.status`: `played`, `absent`, `disqualified`, `forfeit` oder `scheduled` (aufgeboten, Gruppe hat noch nicht gespielt); `rank_no` und `points` nach `GroupRanking`, bei `scheduled` leer.
