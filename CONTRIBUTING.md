@@ -6,7 +6,7 @@ Danke, dass du ttleague verbessern willst. Bitte beachte diese Punkte.
 
 1. Für grössere Änderungen zuerst ein Issue eröffnen und die Idee kurz beschreiben.
 2. Änderungen in einem eigenen Branch, Pull Request auf `main`. Pull Requests werden automatisch von CodeRabbit und der CI geprüft.
-3. Vor dem Pull Request lokal: `composer test`, `composer test:wp` (WordPress-Tests, siehe README) und `composer lint` müssen grün sein, die Git-Hooks müssen aktiv sein (`git config core.hooksPath .githooks`).
+3. Vor dem Pull Request lokal: `composer test -- --fail-on-skipped`, `composer test:wp` (WordPress-Tests, siehe README), `composer test:js` und `composer lint` müssen grün sein, die Git-Hooks müssen aktiv sein (`git config core.hooksPath .githooks`).
 
 ## Keine Personendaten, keine KI-Verläufe
 

@@ -13,6 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  javascript:
+    name: JavaScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Node einrichten
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+
+      - name: Browserlogik testen
+        run: node --test tests/JavaScript/*.test.cjs
+
   sensitive:
     name: Sensible Inhalte
     runs-on: ubuntu-latest
@@ -65,11 +81,16 @@ jobs:
           extensions: dom, mbstring, json, intl, mysqli, pdo_mysql
           coverage: none
 
+      - name: Node für die PHP/JavaScript-Vergleichstests einrichten
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+
       - name: Abhängigkeiten installieren
         uses: ramsey/composer-install@a8d0d959dab41457692a5e2041bd9b757a119e3f # 3.2.1
 
       - name: Tests
-        run: composer test
+        run: composer test -- --fail-on-skipped
 
       - name: Datenbank für die WordPress-Tests
         run: >-
