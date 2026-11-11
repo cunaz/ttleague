@@ -230,6 +230,33 @@ final class AccessPolicyTest extends IntegrationTestCase {
 		self::assertFalse( $this->policy->can_invite( $this->id['captain_home'], $this->id['player'] ), 'Captains laden nicht ein' );
 	}
 
+	public function test_officials_of_the_active_season_view_contacts(): void {
+		self::assertTrue( $this->policy->can_view_contacts( $this->id['captain_home'] ), 'Captain' );
+		self::assertTrue( $this->policy->can_view_contacts( $this->id['chef_other'] ), 'TK-Chef eines Clubs ohne Team' );
+		self::assertFalse( $this->policy->can_view_contacts( $this->id['player'] ), 'gemeldeter Spieler ohne Funktion' );
+		self::assertFalse( $this->policy->can_view_contacts( $this->id['cup_a1'] ), 'Cup-Spieler ohne Funktion' );
+		self::assertFalse( $this->policy->can_view_contacts( 0 ) );
+	}
+
+	public function test_contacts_follow_the_active_season_and_a_reset(): void {
+		$s      = new Seeder( $this->db );
+		$season = (int) $this->policy->active_season_id();
+		$old    = (int) $this->db->get_var( "SELECT id FROM {$this->db->table( 'season' )} WHERE status = 'archived'" );
+		$past   = $s->person( 'Vorbei', 'Vera' );
+		$s->role( $old, $this->id['club_home'], $past, 'captain' );
+		self::assertFalse( $this->policy->can_view_contacts( $past ), 'nur in der Vorsaison Captain' );
+
+		// Captain ohne zugeordnetes Team: hat eine Funktion, aber kein Recht an einer Begegnung.
+		$s->role( $season, $this->id['club_home'], $past, 'captain' );
+		self::assertFalse( $this->policy->can_view_contacts( $past ), 'gemerktes Ergebnis bis zum Zurücksetzen' );
+		$this->policy->reset();
+		self::assertTrue( $this->policy->can_view_contacts( $past ) );
+
+		$this->db->update( 'season', array( 'status' => 'archived' ), array( 'id' => $season ) );
+		$this->policy->reset();
+		self::assertFalse( $this->policy->can_view_contacts( $this->id['captain_home'] ), 'ohne aktive Saison' );
+	}
+
 	public function test_person_for_user(): void {
 		$this->db->update( 'person', array( 'user_id' => 42 ), array( 'id' => $this->id['captain_home'] ) );
 

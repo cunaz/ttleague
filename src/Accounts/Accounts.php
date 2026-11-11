@@ -19,6 +19,7 @@ final class Accounts {
 	public static function register(): void {
 		LoginFlow::register();
 		MyClub::register();
+		Privacy::register();
 		add_action( 'wp_login', array( self::class, 'remember_login' ), 10, 2 );
 		add_action( 'init', array( Blocks::class, 'register' ) );
 		add_action( 'init', array( self::class, 'schedule' ) );
