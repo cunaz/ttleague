@@ -17,8 +17,8 @@ use TTLeague\Domain\Rating\ClassificationScale;
  * nicht, aber das Einreichen (may_submit). Daten (Datum) sind Kalendertage in Ortszeit als
  * JJJJ-MM-TT.
  *
- * Die Zahl der Stammspieler und die Tage der Erinnerung sind Parameter mit den Werten des
- * Reglements der Region Zürich als Standard.
+ * Die Zahl der Stammspieler und die Tage der Erinnerung sind Parameter mit Standardwerten;
+ * die WordPress-Schicht macht sie über Filter einstellbar.
  */
 final class RegistrationRules {
 

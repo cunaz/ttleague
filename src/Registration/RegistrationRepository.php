@@ -626,22 +626,49 @@ final class RegistrationRepository {
 			$after     = json_decode( (string) $row['after_json'], true );
 			$before    = json_decode( (string) $row['before_json'], true );
 			$data      = is_array( $after ) ? $after : ( is_array( $before ) ? $before : array() );
-			$club_id   = isset( $data['club_id'] ) ? (int) $data['club_id'] : null;
-			$venue_id  = 'venue' === $row['entity'] ? (int) $row['entity_id'] : ( isset( $data['venue_id'] ) ? (int) $data['venue_id'] : null );
-			$venue     = null === $venue_id ? null : $this->venue( $venue_id );
 			$changes[] = array(
 				'entity'     => (string) $row['entity'],
 				'action'     => (string) $row['action'],
 				'created_at' => (string) $row['created_at'],
 				'user_id'    => self::int_or_null( $row['user_id'] ),
-				'club_id'    => $club_id,
-				'club'       => null === $club_id ? null : ( $this->club( $club_id )['short_name'] ?? null ),
-				'venue_id'   => $venue_id,
-				'venue'      => null === $venue ? null : $venue['name'],
+				'club_id'    => isset( $data['club_id'] ) ? (int) $data['club_id'] : null,
+				'club'       => null,
+				'venue_id'   => 'venue' === $row['entity'] ? (int) $row['entity_id'] : ( isset( $data['venue_id'] ) ? (int) $data['venue_id'] : null ),
+				'venue'      => null,
 				'data'       => $data,
 			);
 		}
+		// Namen der Lokale und Clubs mit je einer Abfrage, nicht pro Eintrag.
+		$venues = $this->names( 'venue', 'name', array_column( $changes, 'venue_id' ) );
+		$clubs  = $this->names( 'club', 'short_name', array_column( $changes, 'club_id' ) );
+		foreach ( $changes as $i => $change ) {
+			$changes[ $i ]['venue'] = null === $change['venue_id'] ? null : ( $venues[ $change['venue_id'] ] ?? null );
+			$changes[ $i ]['club']  = null === $change['club_id'] ? null : ( $clubs[ $change['club_id'] ] ?? null );
+		}
 		return $changes;
+	}
+
+	/**
+	 * Eine Namensspalte zu IDs, mit einer Abfrage.
+	 *
+	 * @param string          $table  Tabelle (fest im Code).
+	 * @param string          $column Spalte (fest im Code).
+	 * @param list<int|null>  $ids    IDs, auch doppelt oder leer.
+	 * @return array<int,string>
+	 */
+	private function names( string $table, string $column, array $ids ): array {
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static fn( int $id ): bool => $id > 0 ) ) );
+		if ( array() === $ids ) {
+			return array();
+		}
+		$names = array();
+		foreach ( $this->db->get_results(
+			"SELECT id, {$column} AS name FROM {$this->db->table( $table )} WHERE id IN (" . implode( ', ', array_fill( 0, count( $ids ), '%d' ) ) . ')',
+			$ids
+		) as $row ) {
+			$names[ (int) $row['id'] ] = (string) $row['name'];
+		}
+		return $names;
 	}
 
 	/**

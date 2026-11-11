@@ -155,4 +155,25 @@ final class VenuesTest extends RegistrationTestCase {
 		self::assertSame( 1, $this->rows( 'audit_log', "entity = 'venue_closure' AND action = 'deleted'" ) );
 		$this->refused( fn() => $this->venues->delete_closure( $chef, $id ), Refusal::NOT_FOUND );
 	}
+
+	public function test_venue_changes_for_the_tk_carry_club_and_venue_names_with_few_queries(): void {
+		$this->at( '2027-03-01 10:00:00' );
+		$chef  = $this->actor['chef'];
+		$venue = $this->id['venue'];
+		$this->venues->save( $chef, $this->id['home'], $venue, array( 'tables_count' => 6 ) + self::HALL );
+		$this->venues->add_closure( $chef, $venue, '2027-10-04', '2027-10-15', 'Herbstferien' );
+		$this->venues->add_closure( $chef, $venue, '2027-12-08', '2027-12-08' );
+
+		$recorder = new \TTLeague\Tests\Integration\Database\RecordingDb( $this->db );
+		$changes  = ( new \TTLeague\Registration\RegistrationRepository( $recorder ) )->venue_changes( '2026-01-01 00:00:00' );
+
+		self::assertSame( array( 'venue_closure', 'venue_closure', 'venue' ), array_column( $changes, 'entity' ), 'neueste zuerst' );
+		foreach ( $changes as $change ) {
+			self::assertSame( 'Seefeld', $change['club'] );
+			self::assertSame( self::HALL['name'], $change['venue'] );
+			self::assertSame( $venue, $change['venue_id'] );
+		}
+		self::assertCount( 3, $recorder->log, 'Protokoll, Lokale und Clubs: je eine Abfrage, nicht pro Eintrag' );
+		self::assertSame( array(), ( new \TTLeague\Registration\RegistrationRepository( $this->db ) )->venue_changes( '2099-01-01 00:00:00' ), 'nichts seit dem Zeitpunkt' );
+	}
 }
