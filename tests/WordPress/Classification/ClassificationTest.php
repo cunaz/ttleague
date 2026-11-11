@@ -19,6 +19,7 @@ use TTLeague\Export\Exports;
 use TTLeague\Infrastructure\Cache\DataVersion;
 use TTLeague\Infrastructure\Flash;
 use TTLeague\Results\Actor;
+use TTLeague\Results\Results;
 use TTLeague\Tests\Integration\Classification\Scenario;
 use TTLeague\Tests\WordPress\TestCase;
 use TTLeague\Tk\Tk;
@@ -254,6 +255,77 @@ final class ClassificationTest extends TestCase {
 		);
 		self::assertGreaterThan( $version, DataVersion::get() );
 		self::assertSame( (string) $this->tk, $this->db->get_var( "SELECT user_id FROM {$this->db->table( 'audit_log' )} WHERE action = 'classification_computed'" ) );
+	}
+
+	public function test_compute_action_first_runs_the_pending_rating_recalculation(): void {
+		wp_set_current_user( $this->tk );
+		// Wie nach einer Resultatänderung: Die Neuberechnung ist eingeplant, die gespeicherten Wertungszahlen sind alt.
+		Results::schedule_rating_recalc();
+		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
+		$this->post( Classification::COMPUTE );
+
+		$this->redirect_of( array( Actions::class, 'compute' ) );
+
+		self::assertFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'ausgeführt statt weiter eingeplant' );
+		$rating = $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) );
+		self::assertNotSame( '812.50', $rating, 'aus den Spielen neu berechnet' );
+		self::assertSame( $rating, $this->db->get_var( "SELECT rating FROM {$this->db->table( 'classification_proposal' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+		$flash = Flash::take( Tk::FLASH, $this->tk );
+		self::assertSame( 'success', $flash['type'] ?? null );
+		self::assertSame( array( 'Zuvor wurde die ausstehende Neuberechnung der Wertungszahl ausgeführt.' ), $flash['details'] ?? null );
+	}
+
+	public function test_a_failed_rating_recalculation_stays_scheduled(): void {
+		Results::schedule_rating_recalc();
+		$this->db->update( 'season', array( 'rules_json' => '{"sets_to_win":0}' ), array( 'id' => $this->id['season'] ) );
+
+		try {
+			Classification::refresh_ratings();
+			self::fail( 'Fehler erwartet.' );
+		} catch ( \InvalidArgumentException ) {
+			self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
+		}
+		self::assertSame( '812.50', $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id['muster'] ) ) );
+	}
+
+	public function test_compute_action_reports_decisions_reset_by_a_changed_proposal(): void {
+		$this->compute();
+		wp_set_current_user( $this->tk );
+		Classification::service()->accept( $this->actor(), $this->proposal( 'muster' ) );
+		Classification::service()->override( $this->actor(), $this->proposal( 'vorlage' ), 7, 'Bleibt C7.' );
+		$this->db->update( 'player_rating', array( 'rating' => 951.0 ), array( 'player_id' => $this->id['muster'] ) );
+		$this->db->update( 'player_rating', array( 'rating' => 760.0 ), array( 'player_id' => $this->id['vorlage'] ) );
+		$this->post( Classification::COMPUTE );
+
+		$this->redirect_of( array( Actions::class, 'compute' ) );
+
+		$flash = Flash::take( Tk::FLASH, $this->tk );
+		self::assertSame( 'warning', $flash['type'] ?? null );
+		self::assertSame( 'Vorschlag berechnet: 6 Spieler, davon 0 neu und 2 aktualisiert.', $flash['message'] ?? null );
+		self::assertSame( array( '1 übernommener Entscheid zurückgesetzt, weil sich der Vorschlag geändert hat. Die Zeile ist wieder offen (Filter «noch offen»).' ), $flash['details'] ?? null );
+		self::assertSame( 1, $this->decided_rows(), 'nur die Übersteuerung bleibt' );
+
+		$_GET = array( 'open' => '1' );
+		self::assertContains( 'Muster Hans', array_map( static fn( array $cells ): string => explode( 'Lizenz', $cells[0] )[0], $this->table( $this->render() ) ), 'unter «noch offen»' );
+	}
+
+	public function test_close_action_runs_the_pending_recalculation_and_refuses_outdated_rows(): void {
+		$this->compute();
+		wp_set_current_user( $this->tk );
+		Classification::service()->accept_open( $this->actor(), new ProposalFilter() );
+		$before = $this->snapshot();
+		Results::schedule_rating_recalc();
+		$this->post( Classification::CLOSE );
+
+		$this->redirect_of( array( Actions::class, 'close' ) );
+
+		self::assertFalse( wp_next_scheduled( Results::RECALC_HOOK ) );
+		$flash = Flash::take( Tk::FLASH, $this->tk );
+		self::assertSame( 'error', $flash['type'] ?? null );
+		// Die echte Neuberechnung ändert die Wertungszahl aller fünf Spieler mit Spielen.
+		self::assertStringContainsString( '5 Zeilen entsprechen nicht mehr dem aktuellen Stand', $flash['message'] ?? '' );
+		self::assertStringContainsString( '«Vorschlag neu berechnen»', $flash['message'] ?? '' );
+		self::assertSame( $before, $this->snapshot(), 'weder abgeschlossen noch Zeilen geändert' );
 	}
 
 	/**

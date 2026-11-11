@@ -11,6 +11,7 @@ namespace TTLeague\Classification;
 
 use TTLeague\Domain\Rating\ClassificationProposal;
 use TTLeague\Domain\Rating\ClassificationScale;
+use TTLeague\Domain\Rules\SeasonRules;
 use TTLeague\Infrastructure\AuditLog;
 use TTLeague\Infrastructure\Database\Db;
 use TTLeague\Infrastructure\Time\Clock;
@@ -22,6 +23,10 @@ use TTLeague\Season\SeasonRepository;
  * sperrt in seiner Transaktion zuerst die Saison, schreibt ins audit_log und meldet danach die
  * Änderung (Cache-Version). Nach dem Abschluss (season.classification_closed_at) sind
  * Vorschläge und Entscheide gesperrt, bis die TK wieder öffnet.
+ *
+ * Die Wertungszahl wird nach Resultaten verzögert neu berechnet. Berechnen und Abschliessen
+ * machen sie deshalb zuerst aktuell; der Abschluss prüft zudem, dass die gespeicherten Zeilen
+ * dem entsprechen, was eine Berechnung jetzt ergäbe.
  *
  * Ablehnungen sind ClassificationException mit Klartext für die Rückmeldung.
  */
@@ -39,14 +44,21 @@ final class ProposalService {
 	/** @var callable():void */
 	private $changed;
 
+	/** @var callable():bool */
+	private $refresh_ratings;
+
 	/**
-	 * @param callable():void|null $changed Nach jedem gespeicherten Schreibvorgang (in WordPress: DataVersion::bump()).
+	 * @param callable():void|null $changed         Nach jedem gespeicherten Schreibvorgang (in WordPress: DataVersion::bump()).
+	 * @param callable():bool|null $refresh_ratings Wertungszahlen aktuell machen: führt eine ausstehende Neuberechnung
+	 *                                              aus und meldet, ob neu berechnet wurde. Ohne Angabe gelten die
+	 *                                              gespeicherten Wertungszahlen als aktuell.
 	 */
-	public function __construct( private readonly Db $db, private readonly Clock $clock, ?callable $changed = null ) {
-		$this->repo    = new ProposalRepository( $db );
-		$this->seasons = new SeasonRepository( $db );
-		$this->audit   = new AuditLog( $db );
-		$this->changed = $changed ?? static function (): void {};
+	public function __construct( private readonly Db $db, private readonly Clock $clock, ?callable $changed = null, ?callable $refresh_ratings = null ) {
+		$this->repo            = new ProposalRepository( $db );
+		$this->seasons         = new SeasonRepository( $db );
+		$this->audit           = new AuditLog( $db );
+		$this->changed         = $changed ?? static function (): void {};
+		$this->refresh_ratings = $refresh_ratings ?? static fn(): bool => false;
 	}
 
 	/**
@@ -99,52 +111,74 @@ final class ProposalService {
 
 	/**
 	 * Vorschlag für alle gemeldeten Spieler der aktiven Saison berechnen oder neu berechnen.
-	 * Bestehende Zeilen behalten Entscheid und Bemerkung; bisherige Klassierung, Wertungszahl,
-	 * Spiele und Vorschlag werden überschrieben. Zeilen ohne Entscheid von Spielern, die nicht
-	 * mehr gemeldet sind, fallen weg.
+	 * Zuerst wird eine ausstehende Neuberechnung der Wertungszahl ausgeführt. Bisherige
+	 * Klassierung, Wertungszahl, Spiele und Vorschlag bestehender Zeilen werden überschrieben.
+	 * Entscheid und Bemerkung bleiben, mit einer Ausnahme: Ändert sich der Vorschlag einer Zeile,
+	 * deren Entscheid eine reine Übernahme war (Entscheid gleich dem bisherigen Vorschlag, ohne
+	 * Bemerkung), wird der Entscheid zurückgesetzt, und die Zeile ist wieder offen. Zeilen ohne
+	 * Entscheid von Spielern, die nicht mehr gemeldet sind, fallen weg.
 	 *
-	 * @return array{players:int,created:int,updated:int,removed:int}
+	 * @return array{players:int,created:int,updated:int,removed:int,reset:int,refreshed:bool} «reset»: zurückgesetzte
+	 *         Entscheide; «refreshed»: ob die Wertungszahl zuvor neu berechnet wurde.
 	 * @throws ClassificationException Ohne Recht, ohne aktive Saison, nach dem Abschluss, bei ungültigen Regeln.
 	 */
 	public function compute( Actor $actor ): array {
 		$season = $this->active_season( $actor );
-		try {
-			$rules = $this->seasons->rules( $season );
-		} catch ( \InvalidArgumentException ) {
-			self::reject( ClassificationException::INVALID, __( 'Die Regeln der Saison sind ungültig. Bitte zuerst die Saisonregeln korrigieren.', 'ttleague' ) );
+		if ( null !== $season['classification_closed_at'] ) {
+			self::reject( ClassificationException::CONFLICT, self::closed_message() );
 		}
+		$rules     = $this->rules( $season );
+		$refreshed = (bool) ( $this->refresh_ratings )();
 
 		$result = $this->db->transaction(
-			function () use ( $season, $rules, $actor ): array {
+			function () use ( $season, $rules, $actor, $refreshed ): array {
 				$this->lock_open( $season['id'] );
 				$removed = $this->repo->delete_orphans( $season['id'] );
-				$players = $this->repo->candidates( $season['id'] );
+				$players = $this->calculate( $season['id'], $rules );
 				$new     = array();
 				$updated = 0;
-				foreach ( $players as $player ) {
-					$row = array(
-						'player_id' => $player['player_id'],
-						'current'   => $player['classification'],
-						'rating'    => round( $player['rating'] ?? ProposalRepository::NO_RATING, 2 ),
-						'games'     => $player['games'],
-						'proposed'  => ClassificationProposal::propose( $player['classification'], $player['rating'], $player['games'], $rules ),
-					);
-					$old = $player['proposal'];
+				$reset   = 0;
+				foreach ( $players as [ $row, $old ] ) {
 					if ( null === $old ) {
 						$new[] = $row;
 						continue;
 					}
-					if ( $old['current'] !== $row['current'] || $old['rating'] !== $row['rating'] || $old['games'] !== $row['games'] || $old['proposed'] !== $row['proposed'] ) {
-						$this->repo->refresh( $old['id'], $row );
-						++$updated;
+					if ( ! self::differs( $old, $row ) ) {
+						continue;
+					}
+					// Reine Übernahme eines Vorschlags, den es so nicht mehr gibt: wieder offen.
+					$accepted = null !== $old['decided'] && $old['decided'] === $old['proposed'] && null === $old['note'];
+					$undo     = $accepted && $old['proposed'] !== $row['proposed'];
+					$this->repo->refresh( $old['id'], $row, $undo );
+					++$updated;
+					if ( $undo ) {
+						++$reset;
+						$this->audit->record(
+							'classification_proposal',
+							$old['id'],
+							'decision_reset',
+							$actor->user_id,
+							array(
+								'decided'  => $old['decided'],
+								'note'     => null,
+								'proposed' => $old['proposed'],
+							),
+							array(
+								'decided'  => null,
+								'note'     => null,
+								'proposed' => $row['proposed'],
+							)
+						);
 					}
 				}
 				$this->repo->insert( $season['id'], $new );
 				$result = array(
-					'players' => count( $players ),
-					'created' => count( $new ),
-					'updated' => $updated,
-					'removed' => $removed,
+					'players'   => count( $players ),
+					'created'   => count( $new ),
+					'updated'   => $updated,
+					'removed'   => $removed,
+					'reset'     => $reset,
+					'refreshed' => $refreshed,
 				);
 				$this->audit->record( 'season', $season['id'], 'classification_computed', $actor->user_id, null, $result );
 				return $result;
@@ -243,24 +277,34 @@ final class ProposalService {
 	}
 
 	/**
-	 * Klassierung abschliessen: Jeder gemeldete Spieler hat eine Zeile, und jede Zeile ist entschieden.
+	 * Klassierung abschliessen. Zuerst wird eine ausstehende Neuberechnung der Wertungszahl
+	 * ausgeführt. Dann müssen die gespeicherten Zeilen dem entsprechen, was eine Berechnung jetzt
+	 * ergäbe (gemeldete Spieler, bisherige Klassierung, Wertungszahl, Spiele, Vorschlag), und jede
+	 * Zeile muss entschieden sein. Die Prüfung ändert keine Zeile.
 	 *
 	 * @return string Zeitpunkt des Abschlusses (UTC).
-	 * @throws ClassificationException Ohne Recht, ohne Zeilen, mit offenen Zeilen, wenn schon abgeschlossen.
+	 * @throws ClassificationException Ohne Recht, ohne Zeilen, mit veralteten oder offenen Zeilen, wenn schon
+	 *                                 abgeschlossen, bei ungültigen Regeln.
 	 */
 	public function close( Actor $actor ): string {
 		$season = $this->active_season( $actor );
-		$now    = $this->now();
+		if ( null !== $season['classification_closed_at'] ) {
+			self::reject( ClassificationException::CONFLICT, __( 'Die Klassierung ist bereits abgeschlossen.', 'ttleague' ) );
+		}
+		$rules = $this->rules( $season );
+		( $this->refresh_ratings )();
+		$now = $this->now();
 		$this->db->transaction(
-			function () use ( $season, $actor, $now ): void {
+			function () use ( $season, $rules, $actor, $now ): void {
 				$this->lock_open( $season['id'], __( 'Die Klassierung ist bereits abgeschlossen.', 'ttleague' ) );
 				$counts = $this->repo->counts( $season['id'] );
 				if ( 0 === $counts['total'] ) {
 					self::reject( ClassificationException::CONFLICT, __( 'Es gibt noch keinen Vorschlag. Berechne ihn zuerst.', 'ttleague' ) );
 				}
-				if ( $counts['missing'] > 0 ) {
-					/* translators: %d: Anzahl Spieler */
-					self::reject( ClassificationException::CONFLICT, sprintf( _n( 'Abschliessen ist noch nicht möglich: %d gemeldeter Spieler hat keinen Vorschlag. Berechne den Vorschlag neu.', 'Abschliessen ist noch nicht möglich: %d gemeldete Spieler haben keinen Vorschlag. Berechne den Vorschlag neu.', $counts['missing'], 'ttleague' ), $counts['missing'] ) );
+				$outdated = $this->outdated( $season['id'], $rules );
+				if ( $outdated > 0 ) {
+					/* translators: %d: Anzahl Zeilen */
+					self::reject( ClassificationException::CONFLICT, sprintf( _n( 'Abschliessen ist noch nicht möglich: %d Zeile entspricht nicht mehr dem aktuellen Stand (Meldung, Klassierung, Wertungszahl oder Spiele). Wähle «Vorschlag neu berechnen».', 'Abschliessen ist noch nicht möglich: %d Zeilen entsprechen nicht mehr dem aktuellen Stand (Meldung, Klassierung, Wertungszahl oder Spiele). Wähle «Vorschlag neu berechnen».', $outdated, 'ttleague' ), $outdated ) );
 				}
 				if ( $counts['open'] > 0 ) {
 					/* translators: %d: Anzahl Zeilen */
@@ -317,6 +361,68 @@ final class ProposalService {
 	}
 
 	/**
+	 * Was eine Berechnung jetzt ergäbe: je gemeldetem Spieler die neuen Werte und die bisherige Zeile.
+	 *
+	 * @return list<array{0:array{player_id:int,current:int,rating:float,games:int,proposed:int},1:array{id:int,current:int,rating:float,games:int,proposed:int,decided:int|null,note:string|null}|null}>
+	 */
+	private function calculate( int $season_id, SeasonRules $rules ): array {
+		$out = array();
+		foreach ( $this->repo->candidates( $season_id ) as $player ) {
+			$out[] = array(
+				array(
+					'player_id' => $player['player_id'],
+					'current'   => $player['classification'],
+					'rating'    => round( $player['rating'] ?? ProposalRepository::NO_RATING, 2 ),
+					'games'     => $player['games'],
+					'proposed'  => ClassificationProposal::propose( $player['classification'], $player['rating'], $player['games'], $rules ),
+				),
+				$player['proposal'],
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Anzahl der Zeilen, die eine Berechnung jetzt anlegen, ändern oder entfernen würde.
+	 */
+	private function outdated( int $season_id, SeasonRules $rules ): int {
+		$count = $this->repo->count_orphans( $season_id );
+		foreach ( $this->calculate( $season_id, $rules ) as [ $row, $old ] ) {
+			if ( null === $old || self::differs( $old, $row ) ) {
+				++$count;
+			}
+		}
+		return $count;
+	}
+
+	/**
+	 * Weicht der berechnete Teil der gespeicherten Zeile von den neuen Werten ab?
+	 *
+	 * @param array{current:int,rating:float,games:int,proposed:int} $old Gespeicherte Zeile.
+	 * @param array{current:int,rating:float,games:int,proposed:int} $row Neu berechnete Werte.
+	 */
+	private static function differs( array $old, array $row ): bool {
+		return $old['current'] !== $row['current'] || $old['rating'] !== $row['rating'] || $old['games'] !== $row['games'] || $old['proposed'] !== $row['proposed'];
+	}
+
+	/**
+	 * Regeln der Saison; ungültige Regeln sind eine Ablehnung, kein Rückfall auf Standardwerte.
+	 *
+	 * @param array<string,mixed> $season Saison.
+	 */
+	private function rules( array $season ): SeasonRules {
+		try {
+			return $this->seasons->rules( $season );
+		} catch ( \InvalidArgumentException ) {
+			self::reject( ClassificationException::INVALID, __( 'Die Regeln der Saison sind ungültig. Bitte zuerst die Saisonregeln korrigieren.', 'ttleague' ) );
+		}
+	}
+
+	private static function closed_message(): string {
+		return __( 'Die Klassierung ist abgeschlossen. Öffne sie wieder, um etwas zu ändern.', 'ttleague' );
+	}
+
+	/**
 	 * Die aktive Saison, nach Prüfung des Rechts.
 	 *
 	 * @return array<string,mixed>
@@ -350,7 +456,7 @@ final class ProposalService {
 	 */
 	private function lock_open( int $season_id, ?string $message = null ): void {
 		if ( null !== $this->lock( $season_id )['classification_closed_at'] ) {
-			self::reject( ClassificationException::CONFLICT, $message ?? __( 'Die Klassierung ist abgeschlossen. Öffne sie wieder, um etwas zu ändern.', 'ttleague' ) );
+			self::reject( ClassificationException::CONFLICT, $message ?? self::closed_message() );
 		}
 	}
 

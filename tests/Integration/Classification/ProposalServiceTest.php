@@ -39,6 +39,12 @@ final class ProposalServiceTest extends IntegrationTestCase {
 	/** Aufrufe der Meldung «Daten geändert». */
 	private int $changes = 0;
 
+	/** Aufrufe von «Wertungszahlen aktuell machen». */
+	private int $refreshes = 0;
+
+	/** @var (callable():void)|null Ausstehende Neuberechnung der Wertungszahl; null: nichts steht aus. */
+	private $pending = null;
+
 	private Seeder $seeder;
 
 	/** @var array<string,int> */
@@ -50,19 +56,30 @@ final class ProposalServiceTest extends IntegrationTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		$scenario      = new Scenario( $this->db );
-		$this->id      = $scenario->id;
-		$this->seeder  = $scenario->seeder;
-		$this->clock   = new FixedClock( self::NOW );
-		$this->changes = 0;
-		$this->service = new ProposalService(
+		$scenario        = new Scenario( $this->db );
+		$this->id        = $scenario->id;
+		$this->seeder    = $scenario->seeder;
+		$this->clock     = new FixedClock( self::NOW );
+		$this->changes   = 0;
+		$this->refreshes = 0;
+		$this->pending   = null;
+		$this->service   = new ProposalService(
 			$this->db,
 			$this->clock,
 			function (): void {
 				++$this->changes;
+			},
+			function (): bool {
+				++$this->refreshes;
+				if ( null === $this->pending ) {
+					return false;
+				}
+				( $this->pending )();
+				$this->pending = null;
+				return true;
 			}
 		);
-		$this->tk      = new Actor( 7, null, true, 'TK' );
+		$this->tk        = new Actor( 7, null, true, 'TK' );
 	}
 
 	public function test_compute_writes_one_row_per_registered_player_of_the_active_season(): void {
@@ -70,10 +87,12 @@ final class ProposalServiceTest extends IntegrationTestCase {
 
 		self::assertSame(
 			array(
-				'players' => 6,
-				'created' => 6,
-				'updated' => 0,
-				'removed' => 0,
+				'players'   => 6,
+				'created'   => 6,
+				'updated'   => 0,
+				'removed'   => 0,
+				'reset'     => 0,
+				'refreshed' => false,
 			),
 			$result
 		);
@@ -140,38 +159,40 @@ final class ProposalServiceTest extends IntegrationTestCase {
 		self::assertGreaterThan( $counted[ $ids['player_muster'] ], (int) $this->db->get_var( "SELECT games_count FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $ids['player_muster'] ) ), 'die Vorsaison zählt nicht mit' );
 	}
 
-	public function test_recompute_overwrites_the_calculation_but_keeps_decisions(): void {
+	public function test_compute_runs_a_pending_rating_recalculation_first(): void {
+		// Nach einem Resultat steht die Neuberechnung aus: Sie bringt Muster ein Spiel und eine neue Wertungszahl.
+		$this->pending = fn() => $this->rated_game( 'muster', 951.0 );
+
+		$result = $this->service->compute( $this->tk );
+
+		self::assertTrue( $result['refreshed'] );
+		self::assertSame( 1, $this->refreshes );
+		self::assertSame( array( 6, 951.0, 4, 10 ), $this->computed()['muster'], 'der Vorschlag beruht auf der neu berechneten Wertungszahl' );
+		self::assertTrue( json_decode( (string) $this->audit( 'season', $this->id['season'] )[0]['after_json'], true )['refreshed'] );
+
+		self::assertFalse( $this->service->compute( $this->tk )['refreshed'], 'steht nichts aus, wird nicht neu berechnet' );
+		self::assertSame( 2, $this->refreshes );
+	}
+
+	public function test_recompute_overwrites_the_calculation_and_keeps_overrides_and_unchanged_acceptances(): void {
 		$this->service->compute( $this->tk );
-		$muster  = $this->row( 'muster' )['id'];
-		$vorlage = $this->row( 'vorlage' )['id'];
-		$this->service->accept( $this->tk, $muster );
-		$this->service->override( $this->tk, $vorlage, 7, 'Lange verletzt, bleibt C7.' );
+		$this->service->accept( $this->tk, $this->row( 'muster' )['id'] );
+		$this->service->accept( $this->tk, $this->row( 'beispiel' )['id'] );
+		$this->service->override( $this->tk, $this->row( 'vorlage' )['id'], 7, 'Lange verletzt, bleibt C7.' );
+		$this->service->override( $this->tk, $this->row( 'entwurf' )['id'], 4, 'Nach Rücksprache bestätigt.' );
 		$decided = $this->decisions();
 
-		// Seither: neue Wertungszahl und ein Spiel mehr für Muster, Klassierung von Ablage korrigiert, Nachmeldung.
+		// Seither:
+		// Muster: ein Spiel mehr, Vorschlag C8 → C10 (reine Übernahme von C8).
+		// Beispiel: neue Wertungszahl, Vorschlag bleibt C10 (reine Übernahme).
+		// Vorlage: neue Wertungszahl, Vorschlag C6 → C8 (übersteuert auf C7).
+		// Entwurf: Klassierung korrigiert, Vorschlag D4 → D5 (mit Bemerkung auf D4 entschieden, gleich dem alten Vorschlag).
+		// Ablage: Klassierung korrigiert, noch offen. Dazu eine Nachmeldung.
 		$this->clock->advance( '+1 day' );
-		$this->db->update( 'player_rating', array( 'rating' => 951.0 ), array( 'player_id' => $this->id['muster'] ) );
-		$this->db->insert(
-			'rating_event',
-			array(
-				'player_id'     => $this->id['muster'],
-				'game_id'       => $this->db->insert(
-					'game',
-					array(
-						'rl_group_id'  => (int) $this->db->get_var( "SELECT id FROM {$this->db->table( 'rl_group' )} LIMIT 1" ),
-						'sequence'     => 2,
-						'a1_player_id' => $this->id['muster'],
-						'b1_player_id' => $this->id['probe'],
-						'sets_a'       => 3,
-						'sets_b'       => 0,
-					)
-				),
-				'rating_before' => 812.5,
-				'rating_after'  => 951.0,
-				'delta'         => 138.5,
-				'played_at'     => '2027-06-01 20:00:00',
-			)
-		);
+		$this->rated_game( 'muster', 951.0 );
+		$this->db->update( 'player_rating', array( 'rating' => 1171.0 ), array( 'player_id' => $this->id['beispiel'] ) );
+		$this->db->update( 'player_rating', array( 'rating' => 760.0 ), array( 'player_id' => $this->id['vorlage'] ) );
+		$this->db->update( 'player_season', array( 'classification' => 5 ), array( 'player_id' => $this->id['entwurf'] ) );
 		$this->db->update( 'player_season', array( 'classification' => 6 ), array( 'player_id' => $this->id['ablage'] ) );
 		$late = $this->seeder->player( 'Skizze', 'Urs' );
 		$this->seeder->register( $late, $this->id['season'], $this->id['club_seefeld'], 3 );
@@ -180,18 +201,54 @@ final class ProposalServiceTest extends IntegrationTestCase {
 
 		self::assertSame(
 			array(
-				'players' => 7,
-				'created' => 1,
-				'updated' => 2,
-				'removed' => 0,
+				'players'   => 7,
+				'created'   => 1,
+				'updated'   => 5,
+				'removed'   => 0,
+				'reset'     => 1,
+				'refreshed' => false,
 			),
 			$result
 		);
-		self::assertSame( array( 6, 951.0, 4, 10 ), $this->computed()['muster'], 'Wertungszahl, Spiele und Vorschlag neu' );
-		self::assertSame( array( 6, 520.0, 1, 6 ), $this->computed()['ablage'], 'bisherige Klassierung nachgeführt' );
-		self::assertSame( $decided, array_intersect_key( $this->decisions(), $decided ), 'Entscheid, Konto, Zeitpunkt und Bemerkung unverändert' );
-		self::assertSame( 8, $this->row( 'muster' )['decided'], 'der übernommene Entscheid bleibt beim damaligen Vorschlag' );
+		$computed = $this->computed();
+		self::assertSame( array( 6, 951.0, 4, 10 ), $computed['muster'], 'Wertungszahl, Spiele und Vorschlag neu' );
+		self::assertSame( array( 10, 1171.0, 2, 10 ), $computed['beispiel'] );
+		self::assertSame( array( 7, 760.0, 3, 8 ), $computed['vorlage'] );
+		self::assertSame( array( 5, 380.0, 1, 5 ), $computed['entwurf'] );
+		self::assertSame( array( 6, 520.0, 1, 6 ), $computed['ablage'], 'bisherige Klassierung nachgeführt' );
+
+		$after = $this->decisions();
+		self::assertSame( array( null, null, null, null ), $after['muster'], 'Übernahme eines Vorschlags, den es nicht mehr gibt: wieder offen' );
+		self::assertSame( $decided['beispiel'], $after['beispiel'], 'Übernahme bleibt, wenn der Vorschlag gleich bleibt' );
+		self::assertSame( $decided['vorlage'], $after['vorlage'], 'Übersteuerung bleibt mit Konto, Zeitpunkt und Bemerkung' );
+		self::assertSame( $decided['entwurf'], $after['entwurf'], 'ein Entscheid mit Bemerkung ist keine reine Übernahme' );
 		self::assertNull( $this->db->get_var( "SELECT decided FROM {$this->db->table( 'classification_proposal' )} WHERE player_id = %d", array( $late ) ) );
+		self::assertSame( 4, $this->service->overview( new ProposalFilter() )['counts']['open'], 'Muster, Ablage, Probe und die Nachmeldung' );
+		self::assertContains( $this->id['muster'], array_column( $this->service->overview( new ProposalFilter( 0, false, true ) )['rows'], 'player_id' ), 'unter «noch offen» zu finden' );
+
+		$audit = $this->audit( 'classification_proposal', $this->row( 'muster' )['id'] );
+		self::assertSame( array( 'accepted', 'decision_reset' ), array_column( $audit, 'action' ) );
+		self::assertSame( '8', $audit[1]['user_id'], 'wer neu berechnet hat' );
+		self::assertSame(
+			array(
+				'decided'  => 8,
+				'note'     => null,
+				'proposed' => 8,
+			),
+			json_decode( (string) $audit[1]['before_json'], true )
+		);
+		self::assertSame(
+			array(
+				'decided'  => null,
+				'note'     => null,
+				'proposed' => 10,
+			),
+			json_decode( (string) $audit[1]['after_json'], true )
+		);
+		foreach ( array( 'beispiel', 'vorlage', 'entwurf' ) as $key ) {
+			self::assertNotContains( 'decision_reset', array_column( $this->audit( 'classification_proposal', $this->row( $key )['id'] ), 'action' ), $key );
+		}
+		self::assertSame( 1, json_decode( (string) $this->audit( 'season', $this->id['season'] )[1]['after_json'], true )['reset'] );
 	}
 
 	public function test_recompute_drops_open_rows_of_players_no_longer_registered_but_keeps_decided_ones(): void {
@@ -460,13 +517,74 @@ final class ProposalServiceTest extends IntegrationTestCase {
 		self::assertSame( self::NOW, $this->service->close( $this->tk ) );
 	}
 
-	public function test_close_is_rejected_while_a_registered_player_has_no_row(): void {
+	/**
+	 * @return array<string,array{0:string}>
+	 */
+	public static function changes_since_the_calculation(): array {
+		return array(
+			'Wertungszahl, Vorschlag bleibt' => array( 'rating' ),
+			'nur ein gewertetes Spiel mehr'  => array( 'games' ),
+			'Klassierung korrigiert'         => array( 'classification' ),
+			'Nachmeldung'                    => array( 'registration' ),
+		);
+	}
+
+	#[DataProvider( 'changes_since_the_calculation' )]
+	public function test_close_is_rejected_when_the_rows_no_longer_match_a_fresh_calculation( string $change ): void {
 		$this->service->compute( $this->tk );
 		$this->service->accept_open( $this->tk, new ProposalFilter() );
-		$this->seeder->register( $this->seeder->player( 'Skizze', 'Urs' ), $this->id['season'], $this->id['club_seefeld'], 3 );
+		match ( $change ) {
+			'rating'         => $this->db->update( 'player_rating', array( 'rating' => 815.0 ), array( 'player_id' => $this->id['muster'] ) ),
+			// Ablage: zwei statt ein Spiel, weiter unter der Mindestzahl, Wertungszahl und Vorschlag gleich.
+			'games'          => $this->rated_game( 'ablage', 520.0 ),
+			'classification' => $this->db->update( 'player_season', array( 'classification' => 6 ), array( 'player_id' => $this->id['ablage'] ) ),
+			'registration'   => $this->seeder->register( $this->seeder->player( 'Skizze', 'Urs' ), $this->id['season'], $this->id['club_seefeld'], 3 ),
+		};
+		$before        = array( $this->computed(), $this->decisions() );
+		$this->changes = 0;
 
-		self::assertSame( ClassificationException::CONFLICT, $this->rejected( fn() => $this->service->close( $this->tk ) ) );
+		try {
+			$this->service->close( $this->tk );
+			self::fail( 'Ablehnung erwartet.' );
+		} catch ( ClassificationException $e ) {
+			self::assertSame( ClassificationException::CONFLICT, $e->reason );
+			self::assertStringContainsString( '1 Zeile entspricht nicht mehr dem aktuellen Stand', $e->getMessage() );
+			self::assertStringContainsString( '«Vorschlag neu berechnen»', $e->getMessage() );
+		}
 		self::assertNull( $this->closed_at() );
+		self::assertSame( $before, array( $this->computed(), $this->decisions() ), 'die Prüfung ändert keine Zeile' );
+		self::assertSame( 0, $this->changes );
+
+		// Nach dem Neuberechnen (und dem Entscheid über wieder offene Zeilen) ist alles aktuell.
+		$this->service->compute( $this->tk );
+		$this->service->accept_open( $this->tk, new ProposalFilter() );
+		self::assertSame( self::NOW, $this->service->close( $this->tk ) );
+	}
+
+	public function test_close_runs_a_pending_rating_recalculation_and_rejects_what_it_changes(): void {
+		$this->service->compute( $this->tk );
+		$this->service->accept_open( $this->tk, new ProposalFilter() );
+		$before          = array( $this->computed(), $this->decisions() );
+		$this->refreshes = 0;
+		$this->pending   = function (): void {
+			$this->rated_game( 'muster', 951.0 );
+			$this->rated_game( 'vorlage', 645.0 );
+		};
+
+		try {
+			$this->service->close( $this->tk );
+			self::fail( 'Ablehnung erwartet.' );
+		} catch ( ClassificationException $e ) {
+			self::assertSame( ClassificationException::CONFLICT, $e->reason );
+			self::assertStringContainsString( '2 Zeilen entsprechen nicht mehr dem aktuellen Stand', $e->getMessage() );
+		}
+		self::assertSame( 1, $this->refreshes );
+		self::assertNull( $this->closed_at() );
+		self::assertSame( $before, array( $this->computed(), $this->decisions() ), 'nichts stillschweigend geändert' );
+
+		self::assertSame( 1, $this->service->compute( $this->tk )['reset'], 'Muster: Vorschlag C8 → C10; bei Vorlage bleibt der Vorschlag C6' );
+		$this->service->accept_open( $this->tk, new ProposalFilter() );
+		self::assertSame( self::NOW, $this->service->close( $this->tk ) );
 	}
 
 	public function test_close_sets_the_time_and_locks_everything_until_reopened(): void {
@@ -492,8 +610,9 @@ final class ProposalServiceTest extends IntegrationTestCase {
 
 		// Gesperrt: Nichts ändert sich, auch nicht mit geänderten Wertungszahlen.
 		$this->db->update( 'player_rating', array( 'rating' => 1400.0 ), array( 'player_id' => $this->id['muster'] ) );
-		$before        = array( $this->computed(), $this->decisions() );
-		$this->changes = 0;
+		$before          = array( $this->computed(), $this->decisions() );
+		$this->changes   = 0;
+		$this->refreshes = 0;
 		foreach ( array(
 			'berechnen'       => fn() => $this->service->compute( $this->tk ),
 			'übernehmen'      => fn() => $this->service->accept( $this->tk, $muster ),
@@ -506,6 +625,7 @@ final class ProposalServiceTest extends IntegrationTestCase {
 		self::assertSame( $before, array( $this->computed(), $this->decisions() ) );
 		self::assertSame( $closed, $this->closed_at() );
 		self::assertSame( 0, $this->changes );
+		self::assertSame( 0, $this->refreshes, 'abgeschlossen: keine Neuberechnung der Wertungszahl' );
 		self::assertCount( 2, $this->audit( 'season', $this->id['season'] ) );
 	}
 
@@ -557,10 +677,11 @@ final class ProposalServiceTest extends IntegrationTestCase {
 			$this->service->close( $this->tk );
 		}
 		$this->db->update( 'player_rating', array( 'rating' => 1400.0 ), array( 'player_id' => $this->id['muster'] ) );
-		$id            = $this->row( 'muster' )['id'];
-		$before        = array( $this->computed(), $this->decisions(), $this->closed_at() );
-		$logged        = (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )}" );
-		$this->changes = 0;
+		$id              = $this->row( 'muster' )['id'];
+		$before          = array( $this->computed(), $this->decisions(), $this->closed_at() );
+		$logged          = (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )}" );
+		$this->changes   = 0;
+		$this->refreshes = 0;
 		// TK-Chefin eines Clubs: angemeldet und mit Person, aber ohne ttl_tk.
 		$chef = new Actor( 12, 3, false, 'Charlotte Chef' );
 
@@ -579,6 +700,7 @@ final class ProposalServiceTest extends IntegrationTestCase {
 		self::assertSame( $before, array( $this->computed(), $this->decisions(), $this->closed_at() ) );
 		self::assertSame( $logged, (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )}" ) );
 		self::assertSame( 0, $this->changes );
+		self::assertSame( 0, $this->refreshes, 'ohne Recht keine Neuberechnung der Wertungszahl' );
 	}
 
 	public function test_without_an_active_season_nothing_is_written(): void {
@@ -669,6 +791,39 @@ final class ProposalServiceTest extends IntegrationTestCase {
 			}
 		}
 		self::assertSame( array(), $files, 'Vorschläge und offene Entscheide sind nicht öffentlich' );
+	}
+
+	/**
+	 * Ein weiteres gewertetes Spiel der aktiven Saison (Ranglistenturnier) und die Wertungszahl
+	 * danach: das, was eine Neuberechnung der Wertungszahl nach einem neuen Resultat hinterlässt.
+	 */
+	private function rated_game( string $key, float $rating ): void {
+		$t      = $this->db->table( 'game' );
+		$group  = (int) $this->db->get_var( "SELECT id FROM {$this->db->table( 'rl_group' )} LIMIT 1" );
+		$game   = $this->db->insert(
+			'game',
+			array(
+				'rl_group_id'  => $group,
+				'sequence'     => 1 + (int) $this->db->get_var( "SELECT MAX(sequence) FROM $t WHERE rl_group_id = %d", array( $group ) ),
+				'a1_player_id' => $this->id[ $key ],
+				'b1_player_id' => $this->id['probe'],
+				'sets_a'       => 3,
+				'sets_b'       => 0,
+			)
+		);
+		$before = (float) $this->db->get_var( "SELECT rating FROM {$this->db->table( 'player_rating' )} WHERE player_id = %d", array( $this->id[ $key ] ) );
+		$this->db->insert(
+			'rating_event',
+			array(
+				'player_id'     => $this->id[ $key ],
+				'game_id'       => $game,
+				'rating_before' => $before,
+				'rating_after'  => $rating,
+				'delta'         => $rating - $before,
+				'played_at'     => '2027-06-01 20:00:00',
+			)
+		);
+		$this->db->update( 'player_rating', array( 'rating' => $rating ), array( 'player_id' => $this->id[ $key ] ) );
 	}
 
 	/**

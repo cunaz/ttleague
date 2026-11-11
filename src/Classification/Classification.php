@@ -12,6 +12,7 @@ namespace TTLeague\Classification;
 use TTLeague\Accounts\Services;
 use TTLeague\Domain\Rating\ClassificationScale;
 use TTLeague\Infrastructure\Cache\DataVersion;
+use TTLeague\Results\Results;
 
 /**
  * Hängt nur Hooks ein: die Seite «Spielbetrieb → Klassierung», ihre Formularaktionen
@@ -48,7 +49,8 @@ final class Classification {
 	}
 
 	/**
-	 * Dienst mit der Datenbank von WordPress; nach jedem Schreibvorgang eine neue Cache-Version.
+	 * Dienst mit der Datenbank von WordPress; nach jedem Schreibvorgang eine neue Cache-Version,
+	 * vor dem Berechnen und dem Abschliessen aktuelle Wertungszahlen.
 	 */
 	public static function service(): ProposalService {
 		return new ProposalService(
@@ -56,8 +58,31 @@ final class Classification {
 			Services::clock(),
 			static function (): void {
 				DataVersion::bump();
-			}
+			},
+			array( self::class, 'refresh_ratings' )
 		);
+	}
+
+	/**
+	 * Wertungszahlen aktuell machen: Nach einer Resultatänderung plant die Erfassung die
+	 * Neuberechnung verzögert ein (Results::schedule_rating_recalc()). Steht sie noch aus, wird
+	 * sie hier sofort ausgeführt und der geplante Lauf entfernt. Scheitert sie, bleibt sie geplant.
+	 *
+	 * @return bool Ob neu berechnet wurde.
+	 */
+	public static function refresh_ratings(): bool {
+		if ( false === wp_next_scheduled( Results::RECALC_HOOK ) ) {
+			return false;
+		}
+		// Zuerst entfernen: Ein Resultat, das während der Berechnung dazukommt, plant so einen neuen Lauf ein.
+		wp_clear_scheduled_hook( Results::RECALC_HOOK );
+		try {
+			Results::recalc_ratings();
+		} catch ( \Throwable $e ) {
+			Results::schedule_rating_recalc();
+			throw $e;
+		}
+		return true;
 	}
 
 	/**

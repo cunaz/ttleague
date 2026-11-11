@@ -53,13 +53,13 @@ final class ProposalRepository {
 	 * Eintrag in rating_event (Einzel und Doppel, wie in der Wertungszahl); die Saison ergibt
 	 * sich aus der Konkurrenz der Begegnung oder der Runde des Ranglistenturniers.
 	 *
-	 * @return list<array{player_id:int,classification:int,rating:float|null,games:int,proposal:array{id:int,current:int,rating:float,games:int,proposed:int}|null}>
+	 * @return list<array{player_id:int,classification:int,rating:float|null,games:int,proposal:array{id:int,current:int,rating:float,games:int,proposed:int,decided:int|null,note:string|null}|null}>
 	 */
 	public function candidates( int $season_id ): array {
 		$t    = fn( string $name ): string => $this->db->table( $name );
 		$rows = $this->db->get_results(
 			"SELECT ps.player_id, ps.classification, pr.rating, COALESCE(gc.games, 0) AS games,
-				cp.id AS proposal_id, cp.current_value, cp.rating AS proposal_rating, cp.games_count, cp.proposed
+				cp.id AS proposal_id, cp.current_value, cp.rating AS proposal_rating, cp.games_count, cp.proposed, cp.decided, cp.note
 			FROM {$t( 'player_season' )} ps
 			LEFT JOIN {$t( 'player_rating' )} pr ON pr.player_id = ps.player_id
 			LEFT JOIN (
@@ -90,6 +90,8 @@ final class ProposalRepository {
 					'rating'   => (float) $row['proposal_rating'],
 					'games'    => (int) $row['games_count'],
 					'proposed' => (int) $row['proposed'],
+					'decided'  => null === $row['decided'] ? null : (int) $row['decided'],
+					'note'     => null === $row['note'] || '' === $row['note'] ? null : (string) $row['note'],
 				),
 			),
 			$rows
@@ -119,21 +121,28 @@ final class ProposalRepository {
 	}
 
 	/**
-	 * Überschreibt den berechneten Teil einer Zeile; der Entscheid bleibt.
+	 * Überschreibt den berechneten Teil einer Zeile. Der Entscheid bleibt, ausser er wird
+	 * ausdrücklich zurückgesetzt; dann ist die Zeile wieder offen.
 	 *
-	 * @param array{current:int,rating:float,games:int,proposed:int} $row Neu berechnete Werte.
+	 * @param array{current:int,rating:float,games:int,proposed:int} $row            Neu berechnete Werte.
+	 * @param bool                                                    $reset_decision Entscheid zurücksetzen.
 	 */
-	public function refresh( int $id, array $row ): void {
-		$this->db->update(
-			'classification_proposal',
-			array(
-				'current_value' => $row['current'],
-				'rating'        => $row['rating'],
-				'games_count'   => $row['games'],
-				'proposed'      => $row['proposed'],
-			),
-			array( 'id' => $id )
+	public function refresh( int $id, array $row, bool $reset_decision = false ): void {
+		$data = array(
+			'current_value' => $row['current'],
+			'rating'        => $row['rating'],
+			'games_count'   => $row['games'],
+			'proposed'      => $row['proposed'],
 		);
+		if ( $reset_decision ) {
+			$data += array(
+				'decided'    => null,
+				'decided_by' => null,
+				'decided_at' => null,
+				'note'       => null,
+			);
+		}
+		$this->db->update( 'classification_proposal', $data, array( 'id' => $id ) );
 	}
 
 	/**
@@ -142,6 +151,18 @@ final class ProposalRepository {
 	public function delete_orphans( int $season_id ): int {
 		return $this->db->query(
 			"DELETE cp FROM {$this->db->table( 'classification_proposal' )} cp
+			LEFT JOIN {$this->db->table( 'player_season' )} ps ON ps.season_id = cp.season_id AND ps.player_id = cp.player_id
+			WHERE cp.season_id = %d AND cp.decided IS NULL AND ps.id IS NULL",
+			array( $season_id )
+		);
+	}
+
+	/**
+	 * Anzahl der Zeilen, die delete_orphans() entfernen würde.
+	 */
+	public function count_orphans( int $season_id ): int {
+		return (int) $this->db->get_var(
+			"SELECT COUNT(*) FROM {$this->db->table( 'classification_proposal' )} cp
 			LEFT JOIN {$this->db->table( 'player_season' )} ps ON ps.season_id = cp.season_id AND ps.player_id = cp.player_id
 			WHERE cp.season_id = %d AND cp.decided IS NULL AND ps.id IS NULL",
 			array( $season_id )

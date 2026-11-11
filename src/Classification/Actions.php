@@ -34,9 +34,17 @@ final class Actions {
 				/* translators: 1: Anzahl Spieler, 2: neue Zeilen, 3: aktualisierte Zeilen */
 				$message = sprintf( __( 'Vorschlag berechnet: %1$d Spieler, davon %2$d neu und %3$d aktualisiert.', 'ttleague' ), $result['players'], $result['created'], $result['updated'] );
 				$details = array();
+				if ( $result['refreshed'] ) {
+					$details[] = __( 'Zuvor wurde die ausstehende Neuberechnung der Wertungszahl ausgeführt.', 'ttleague' );
+				}
 				if ( $result['removed'] > 0 ) {
 					/* translators: %d: Anzahl Zeilen */
 					$details[] = sprintf( _n( '%d offene Zeile eines nicht mehr gemeldeten Spielers entfernt.', '%d offene Zeilen nicht mehr gemeldeter Spieler entfernt.', $result['removed'], 'ttleague' ), $result['removed'] );
+				}
+				if ( $result['reset'] > 0 ) {
+					/* translators: %d: Anzahl Entscheide */
+					$details[] = sprintf( _n( '%d übernommener Entscheid zurückgesetzt, weil sich der Vorschlag geändert hat. Die Zeile ist wieder offen (Filter «noch offen»).', '%d übernommene Entscheide zurückgesetzt, weil sich der Vorschlag geändert hat. Die Zeilen sind wieder offen (Filter «noch offen»).', $result['reset'], 'ttleague' ), $result['reset'] );
+					return Outcome::warning( $message, $details );
 				}
 				return Outcome::success( $message, $details );
 			}
