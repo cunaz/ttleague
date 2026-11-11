@@ -37,13 +37,36 @@ final class PersonalData {
 	public function __construct( private readonly Db $db, private readonly AuditLog $audit ) {}
 
 	/**
-	 * Personen zu einer E-Mail-Adresse: die Person mit dieser Adresse (person.email ist
-	 * eindeutig, Gross-/Kleinschreibung egal) und die Person, die mit dem Konto verknüpft ist.
+	 * Die Person zu einer E-Mail-Adresse: die Person mit dieser Adresse (person.email ist
+	 * eindeutig, Gross-/Kleinschreibung egal) oder die Person, die mit dem Konto verknüpft ist.
+	 * Führen Adresse und Konto zu verschiedenen Personen (oder das Konto zu mehreren), ist die
+	 * Zuordnung mehrdeutig und es gibt keine Person: lieber nichts exportieren oder löschen als
+	 * die Daten einer anderen Person (siehe is_ambiguous()).
 	 *
 	 * @param int|null $user_id WordPress-Konto mit dieser Adresse, falls es eines gibt.
-	 * @return list<int>
+	 * @return list<int> Höchstens eine Person.
 	 */
 	public function person_ids( string $email, ?int $user_id = null ): array {
+		$ids = $this->candidates( $email, $user_id );
+		return 1 === count( $ids ) ? $ids : array();
+	}
+
+	/**
+	 * Führen Adresse und Konto zu verschiedenen Personen? Dann muss die TK die Zuordnung
+	 * klären, bevor Daten exportiert oder gelöscht werden.
+	 *
+	 * @param int|null $user_id WordPress-Konto mit dieser Adresse, falls es eines gibt.
+	 */
+	public function is_ambiguous( string $email, ?int $user_id = null ): bool {
+		return count( $this->candidates( $email, $user_id ) ) > 1;
+	}
+
+	/**
+	 * Alle Personen, auf die Adresse oder Konto zeigen.
+	 *
+	 * @return list<int>
+	 */
+	private function candidates( string $email, ?int $user_id ): array {
 		$email = trim( $email );
 		$ids   = array();
 		if ( '' !== $email ) {

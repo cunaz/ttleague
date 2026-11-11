@@ -33,7 +33,7 @@ Dieses Dokument ist der Vertrag für Phase 2: Konten, Anmeldung, Rechte, Status�
 
 Code in `TTLeague\Accounts\PersonalData` (ohne WordPress) und `TTLeague\Accounts\Privacy` (Anbindung an WordPress).
 
-**Export und Löschung über WordPress** («Werkzeuge → Personenbezogene Daten exportieren» und «… löschen»): Das Plugin registriert sich über `wp_privacy_personal_data_exporters` und `wp_privacy_personal_data_erasers` unter dem Schlüssel `ttleague`. Die Person wird über die E-Mail-Adresse der Anfrage gefunden: `person.email` (Gross-/Kleinschreibung egal) oder das WordPress-Konto mit dieser Adresse, das mit einer Person verknüpft ist.
+**Export und Löschung über WordPress** («Werkzeuge → Personenbezogene Daten exportieren» und «… löschen»): Das Plugin registriert sich über `wp_privacy_personal_data_exporters` und `wp_privacy_personal_data_erasers` unter dem Schlüssel `ttleague`. Die Person wird über die E-Mail-Adresse der Anfrage gefunden: `person.email` (Gross-/Kleinschreibung egal) oder das WordPress-Konto mit dieser Adresse, das mit einer Person verknüpft ist. Zeigen die Adresse und das Konto auf zwei verschiedene Personen, ist die Zuordnung mehrdeutig: Es wird nichts exportiert und nichts gelöscht, Export und Löschung melden das, und die TK klärt die Zuordnung zuerst.
 
 | Gruppe im Export | Inhalt |
 |---|---|

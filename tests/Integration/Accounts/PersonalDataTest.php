@@ -138,6 +138,18 @@ final class PersonalDataTest extends IntegrationTestCase {
 		self::assertSame( array( $this->id['hanna'] ), $this->data->person_ids( self::EMAIL, 77 ), 'einmal, auch wenn beides passt' );
 		self::assertSame( array(), $this->data->person_ids( 'niemand@example.org', 78 ) );
 		self::assertSame( array(), $this->data->person_ids( '' ) );
+		self::assertFalse( $this->data->is_ambiguous( self::EMAIL, 77 ) );
+		self::assertFalse( $this->data->is_ambiguous( 'niemand@example.org', 78 ) );
+	}
+
+	public function test_address_and_account_pointing_to_different_people_match_nobody(): void {
+		// Gustav hat die Adresse der Anfrage, das Konto mit dieser Adresse ist mit Hanna verknüpft.
+		$this->db->update( 'person', array( 'email' => 'gustav.gast@example.org' ), array( 'id' => $this->id['gustav'] ) );
+
+		self::assertSame( array(), $this->data->person_ids( 'gustav.gast@example.org', 77 ) );
+		self::assertTrue( $this->data->is_ambiguous( 'gustav.gast@example.org', 77 ) );
+		self::assertSame( array( $this->id['gustav'] ), $this->data->person_ids( 'gustav.gast@example.org' ), 'ohne Konto eindeutig' );
+		self::assertSame( array( $this->id['hanna'] ), $this->data->person_ids( 'andere@example.org', 77 ), 'abweichende Konto-Adresse bleibt eindeutig' );
 	}
 
 	public function test_export_lists_profile_functions_registrations_and_settings(): void {

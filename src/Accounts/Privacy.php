@@ -71,6 +71,15 @@ final class Privacy {
 		unset( $page );
 		$service = self::service();
 		$items   = array();
+		if ( self::ambiguous( $service, $email_address ) ) {
+			$items[] = array(
+				'group_id'          => 'ttleague-notice',
+				'group_label'       => __( 'Spielbetrieb: Hinweis', 'ttleague' ),
+				'group_description' => __( 'Hinweis zur Zuordnung der Anfrage.', 'ttleague' ),
+				'item_id'           => 'ttleague-notice-ambiguous',
+				'data'              => self::rows( array( __( 'Hinweis', 'ttleague' ) => self::ambiguous_message() ) ),
+			);
+		}
 		foreach ( self::people( $service, $email_address ) as $person_id ) {
 			$data = $service->export( $person_id );
 			if ( null !== $data ) {
@@ -97,6 +106,15 @@ final class Privacy {
 		$removed  = false;
 		$retained = false;
 		$messages = array();
+		if ( self::ambiguous( $service, $email_address ) ) {
+			// Nichts gelöscht: Die Daten könnten einer anderen Person gehören.
+			return array(
+				'items_removed'  => false,
+				'items_retained' => true,
+				'messages'       => array( self::ambiguous_message() ),
+				'done'           => true,
+			);
+		}
 		foreach ( self::people( $service, $email_address ) as $person_id ) {
 			$result = $service->erase( $person_id, $actor > 0 ? $actor : null, 'privacy-tools' );
 			if ( null === $result ) {
@@ -133,11 +151,23 @@ final class Privacy {
 	}
 
 	/**
-	 * @return list<int>
+	 * @return list<int> Höchstens eine Person; keine, wenn die Zuordnung mehrdeutig ist.
 	 */
 	private static function people( PersonalData $service, string $email_address ): array {
 		$user = get_user_by( 'email', $email_address );
 		return $service->person_ids( $email_address, $user instanceof \WP_User ? (int) $user->ID : null );
+	}
+
+	/**
+	 * Zeigen die Adresse und das Konto mit dieser Adresse auf verschiedene Personen?
+	 */
+	private static function ambiguous( PersonalData $service, string $email_address ): bool {
+		$user = get_user_by( 'email', $email_address );
+		return $service->is_ambiguous( $email_address, $user instanceof \WP_User ? (int) $user->ID : null );
+	}
+
+	private static function ambiguous_message(): string {
+		return __( 'Spielbetrieb: Zu dieser E-Mail-Adresse gehören zwei verschiedene Personen (eine über die Adresse, eine über das verknüpfte Konto). Es wurde nichts exportiert und nichts gelöscht. Die Technische Kommission muss die Zuordnung zuerst klären (Konten und Einladungen).', 'ttleague' );
 	}
 
 	/**

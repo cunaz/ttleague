@@ -169,6 +169,28 @@ final class PrivacyTest extends TestCase {
 		self::assertSame( 'nein', $nobody['ttleague-profile'][0]['Telefon für Captains, TK-Chefs und TK sichtbar'] );
 	}
 
+	public function test_address_and_account_of_different_people_export_and_erase_nothing(): void {
+		// Nina Niemand hat die Adresse, mit der das Konto von Spieler1 angelegt ist.
+		$this->db->update( 'person', array( 'email' => self::ACCOUNT ), array( 'id' => $this->league->id['nobody'] ) );
+
+		$export = $this->export( self::ACCOUNT );
+		self::assertSame( array( 'ttleague-notice' ), array_keys( $export ), 'weder das Profil der einen noch der anderen Person' );
+		self::assertStringContainsString( 'zwei verschiedene Personen', $export['ttleague-notice'][0]['Hinweis'] );
+
+		$result = Privacy::erase( self::ACCOUNT );
+		self::assertFalse( $result['items_removed'] );
+		self::assertTrue( $result['items_retained'] );
+		self::assertCount( 1, $result['messages'] );
+		self::assertStringContainsString( 'nichts gelöscht', $result['messages'][0] );
+		self::assertSame( self::PHONE, $this->db->get_var( "SELECT phone FROM {$this->db->table( 'person' )} WHERE id = %d", array( $this->person ) ) );
+		self::assertSame( 1, $this->rows( 'push_subscription' ) );
+		self::assertSame( 1, $this->rows( 'login_token' ) );
+		self::assertSame( 0, (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'audit_log' )} WHERE action = 'privacy_erased'" ) );
+
+		// Die eigene Adresse der Person bleibt eindeutig.
+		self::assertArrayHasKey( 'ttleague-profile', $this->export( self::EMAIL ) );
+	}
+
 	public function test_eraser_removes_private_data_and_reports_what_is_retained(): void {
 		$result = Privacy::erase( self::EMAIL );
 
