@@ -225,6 +225,25 @@
 				} ),
 			];
 		},
+		'ttleague/event-registration': function ( p ) {
+			var events = window.ttleagueEvents || [];
+			if ( ! events.length ) {
+				return [ numberControl( p, 'event', __( 'Anlass (Nummer)', 'ttleague' ), __( 'Nummer aus «Spielbetrieb → Anlässe».', 'ttleague' ) ) ];
+			}
+			return [
+				el( SelectControl, {
+					key: 'event',
+					label: __( 'Anlass', 'ttleague' ),
+					help: __( 'Anlässe legt die TK unter «Spielbetrieb → Anlässe» an.', 'ttleague' ),
+					value: String( p.attributes.event || '' ),
+					options: withEmpty( events, __( 'Bitte wählen', 'ttleague' ) ),
+					onChange: function ( value ) {
+						p.setAttributes( { event: parseInt( value, 10 ) || 0 } );
+					},
+					__nextHasNoMarginBottom: true,
+				} ),
+			];
+		},
 		'ttleague/documents': function ( p ) {
 			return [
 				textControl( p, 'type', __( 'Dokumenttyp', 'ttleague' ), __( 'Slug eines Dokumenttyps; leer: alle.', 'ttleague' ) ),

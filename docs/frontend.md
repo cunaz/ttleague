@@ -80,8 +80,9 @@ Alle Blöcke sind dynamisch (`blocks/<name>/block.json` mit `render_callback` in
 | `ttleague/standings-compact` | `season`, `group` |
 | `ttleague/season-switcher` | `label` |
 | `ttleague/archive` | `compact` |
+| `ttleague/event-registration` | `event` (ID des Anlasses; Anmeldung, siehe [anlaesse.md](anlaesse.md)) |
 
-Shortcode: `[ttleague view="<Blockname ohne ttleague/>" …Attribute…]`, z. B. `[ttleague view="group" season="2026-27" group="a"]`, `[ttleague view="player" player="90001"]`, `[ttleague view="latest-results" count="5"]`. Deutsche Kurzformen: `meisterschaft`, `gruppe`, `begegnung`, `mannschaft`, `spieler`, `spielerprofil`, `ranglistenturnier`, `resultate`, `termine`, `tabellen`, `saisonwahl`, `archiv`.
+Shortcode: `[ttleague view="<Blockname ohne ttleague/>" …Attribute…]`, z. B. `[ttleague view="group" season="2026-27" group="a"]`, `[ttleague view="player" player="90001"]`, `[ttleague view="latest-results" count="5"]`. Deutsche Kurzformen: `meisterschaft`, `gruppe`, `begegnung`, `mannschaft`, `spieler`, `spielerprofil`, `ranglistenturnier`, `resultate`, `termine`, `tabellen`, `saisonwahl`, `archiv`, `anlass`.
 
 Editor: `assets/js/editor.js` registriert alle Blöcke (auch `ttleague/documents` aus dem Inhaltsmodul) mit `ServerSideRender` und einfachen Einstellungen (Saison, Gruppe, Kategorie, Anzahl …). Saisons und Clubs für die Auswahllisten kommen als `window.ttleagueEditor`.
 
