@@ -238,7 +238,7 @@ final class RegistrationView extends View {
 			/* translators: 1: freie Plätze, 2: Höchstzahl */
 			$items[ __( 'Freie Plätze', 'ttleague' ) ] = esc_html( sprintf( __( '%1$d von %2$d', 'ttleague' ), $free, $event['max_participants'] ) );
 		}
-		return Html::facts( $items, 'ttl-facts--compact ttl-event__facts' );
+		return Html::facts( $items, 'ttl-event__facts' );
 	}
 
 	/**
