@@ -25,16 +25,22 @@ final class EntryLinks {
 		if ( $fixture_id <= 0 || ! is_user_logged_in() ) {
 			return '';
 		}
-		$label = self::label(
+		$label  = self::label(
 			$status,
 			current_user_can( Capabilities::ENTER_RESULT, $fixture_id ),
 			current_user_can( Capabilities::CONFIRM, $fixture_id ),
 			current_user_can( Capabilities::TK )
 		);
-		if ( null === $label ) {
-			return '';
-		}
-		return '<p class="ttl-actions ttl-report-action"><a class="ttl-button" href="' . esc_url( Results::entry_url( $fixture_id ) ) . '">' . esc_html( $label ) . '</a></p>';
+		$button = null === $label ? '' : '<p class="ttl-actions ttl-report-action"><a class="ttl-button" href="' . esc_url( Results::entry_url( $fixture_id ) ) . '">' . esc_html( $label ) . '</a></p>';
+		/**
+		 * Weitere Knöpfe im Matchreport für angemeldete Personen, z. B. «Termin verschieben».
+		 * Fertiges, escaptes HTML; jedes Modul prüft das Recht selbst.
+		 *
+		 * @param string $html       Knöpfe.
+		 * @param int    $fixture_id Begegnung.
+		 * @param string $status     Status der Begegnung.
+		 */
+		return $button . (string) apply_filters( 'ttleague_report_actions', '', $fixture_id, $status );
 	}
 
 	/**

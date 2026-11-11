@@ -62,7 +62,15 @@ final class EntryBlock {
 			$actor,
 			self::links( $fixture_id ),
 			array( Results::class, 'photo_url' ),
-			static fn( int $id ): string => ContactBox::fixture_section( $id, 3 )
+			static fn( int $id ): string => ContactBox::fixture_section( $id, 3 ),
+			/**
+			 * Weitere Abschnitte der Erfassungsseite direkt unter dem Kopf, z. B. «Termin» der
+			 * Verschiebung. Fertiges, escaptes HTML; jedes Modul prüft das Recht selbst.
+			 *
+			 * @param string $html       Abschnitte.
+			 * @param int    $fixture_id Begegnung.
+			 */
+			static fn( int $id ): string => (string) apply_filters( 'ttleague_entry_sections', '', $id )
 		);
 		if ( null !== $result['state'] && null !== $result['config'] ) {
 			wp_interactivity_state( EntryMarkup::NS, $result['state'] );
