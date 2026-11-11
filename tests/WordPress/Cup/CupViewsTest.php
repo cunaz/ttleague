@@ -217,6 +217,24 @@ final class CupViewsTest extends CupWpTestCase {
 		self::assertStringNotContainsString( 'admin-post.php', $after, 'keine Formulare auf der öffentlichen Seite' );
 	}
 
+	public function test_fixtures_of_a_round_reach_the_date_proposal_in_my_area(): void {
+		$this->released();
+		$fixture = $this->tie( 1, 1 )['fixture']['id'];
+		// Spieler der Heimmannschaft (Seefeld 1) und der Gastmannschaft (Wollishofen 1) mit Konto.
+		$this->users['home'] = $this->account( 'subscriber', 'spieler.seefeld1@example.invalid', $this->seeder->person_of( $this->player['seefeld'][1] ) );
+		$this->users['away'] = $this->account( 'subscriber', 'spieler.wollishofen1@example.invalid', $this->seeder->person_of( $this->player['wollishofen'][1] ) );
+
+		$home = $this->my_area( 'home' );
+		self::assertStringContainsString( 'Ohne Termin', $home, 'Abschnitt des Moduls Verschiebung' );
+		self::assertStringContainsString( 'Seefeld 1 – Wollishofen 1', $home );
+		self::assertStringContainsString( 'begegnung=' . $fixture, $home );
+		self::assertStringContainsString( 'Termin vorschlagen', $home, 'das Heimteam schlägt vor' );
+
+		$away = $this->my_area( 'away' );
+		self::assertStringContainsString( 'Ohne Termin', $away );
+		self::assertStringNotContainsString( 'Termin vorschlagen', $away );
+	}
+
 	public function test_notification_types_and_the_csv_export_are_registered(): void {
 		$labels = EventTypes::labels();
 		self::assertSame( 'Cup: Auslosung, neue Runde, angesetzte Begegnung', $labels[ EventTypes::CUP_ROUND ] ?? null );

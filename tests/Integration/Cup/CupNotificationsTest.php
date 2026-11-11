@@ -294,9 +294,13 @@ final class CupNotificationsTest extends CupTestCase {
 		$inactive = $this->seeder->person_of( $this->player['seefeld'][1] );
 		$this->db->update( 'person', array( 'status' => 'inactive' ), array( 'id' => $inactive ) );
 
+		// Eine weitere Person hat keine gültige Adresse.
+		$this->db->update( 'person', array( 'email' => 'keine-adresse' ), array( 'id' => $this->seeder->person_of( $this->player['seefeld'][2] ) ) );
+
 		$this->notifications->send_round( $this->cup_a );
 		self::assertNotContains( 'p' . $inactive, array_column( $this->email->sent, 'to' ) );
-		self::assertCount( 23, $this->email->sent );
+		self::assertCount( 22, $this->email->sent );
+		self::assertSame( array(), $this->notifications->competitions_to_catch_up(), 'wer nicht erreichbar ist, hält nichts offen' );
 
 		$this->db->update( 'season', array( 'status' => 'archived' ), array( 'id' => $this->season ) );
 		$this->at( '2026-11-25 08:00:00' );

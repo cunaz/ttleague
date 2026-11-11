@@ -232,9 +232,6 @@ final class AdminPage {
 				)
 			) . '</p></div>';
 		}
-		if ( 'archived' === $competition['season_status'] ) {
-			return $out;
-		}
 		$out .= self::settings( $competition )
 			. self::entries( $competition, $all, $overview, $club_id, $actor );
 		if ( $overview['drawn'] ) {

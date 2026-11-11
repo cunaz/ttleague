@@ -102,6 +102,9 @@ final class CupNotifications {
 	/**
 	 * Konkurrenzen aktiver Saisons, in denen zu einer höchstens CATCH_UP_DAYS Tage alten Paarung
 	 * noch Mitteilungen ausstehen: Für sie plant der stündliche Lauf den Versand erneut ein.
+	 * Ausstehend ist eine Mitteilung, wenn eine aktive Person mit gültiger E-Mail-Adresse sie über
+	 * keinen Kanal erhalten hat. Wer den Ereignistyp ganz abgewählt hat, gilt deshalb bis zum
+	 * Ablauf der Tage als ausstehend; der eingeplante Schritt versendet dann nichts.
 	 *
 	 * @return list<int>
 	 */
@@ -114,6 +117,10 @@ final class CupNotifications {
 			}
 			foreach ( $this->notices( $competition_id, $ties ) as $notice ) {
 				foreach ( $this->recipients->persons( $notice['people'] ) as $recipient ) {
+					// Ohne gültige Adresse gibt es nichts nachzuholen.
+					if ( null === $recipient->email ) {
+						continue;
+					}
 					if ( ! $this->repo->was_notified( (int) $recipient->person_id, $notice['notification']->event, $notice['notification']->ref_type, $notice['notification']->ref_id, $notice['notification']->ref_key ) ) {
 						$pending[] = $competition_id;
 						continue 3;

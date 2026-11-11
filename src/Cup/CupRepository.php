@@ -162,17 +162,6 @@ final class CupRepository {
 	}
 
 	/**
-	 * Club, für den ein Spieler in der Saison gemeldet ist (Status active), oder null.
-	 */
-	public function club_of_player( int $season_id, int $player_id ): ?int {
-		$club = $this->db->get_var(
-			"SELECT club_id FROM {$this->db->table( 'player_season' )} WHERE season_id = %d AND player_id = %d AND status = 'active'",
-			array( $season_id, $player_id )
-		);
-		return null === $club ? null : (int) $club;
-	}
-
-	/**
 	 * Cupmannschaften der Saison, in denen die Spieler gemeldet sind, über alle Kategorien
 	 * (auch zurückgezogene: Die Meldung bindet den Spieler für die Saison, Art. 20.2).
 	 *
