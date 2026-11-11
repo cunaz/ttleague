@@ -96,6 +96,9 @@ interface Db {
 
 	/**
 	 * Führt die Funktion in einer Transaktion aus; bei einer Ausnahme wird zurückgerollt.
+	 * Verschachtelte Aufrufe auf derselben Db-Instanz gehören zur äusseren Transaktion. Scheitert
+	 * einer davon, darf auch eine abgefangene Ausnahme keinen Teilstand festschreiben: Der
+	 * äussere Aufruf rollt alles zurück und wirft DbException. Erst danach ist ein neuer Versuch möglich.
 	 *
 	 * @template T
 	 * @param callable(Db):T $work Arbeit.

@@ -7,6 +7,8 @@ use TTLeague\Infrastructure\Database\DbException;
 
 final class DbTest extends IntegrationTestCase {
 
+	use \TTLeague\Tests\Integration\Database\TransactionAssertions;
+
 	private function insert_club( int $number, string $short ): int {
 		return $this->db->insert(
 			'club',

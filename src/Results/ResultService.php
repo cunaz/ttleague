@@ -16,6 +16,7 @@ use TTLeague\Domain\Match\TeamMatchResult;
 use TTLeague\Infrastructure\AuditLog;
 use TTLeague\Infrastructure\Database\Db;
 use TTLeague\Infrastructure\Time\Clock;
+use TTLeague\Infrastructure\Time\Hours;
 
 /**
  * Prüft Rechte (Rolle aus den Daten der aktiven Saison) und Status (FixtureWorkflow), schreibt
@@ -640,11 +641,11 @@ final class ResultService {
 		}
 		$scheduled = new \DateTimeImmutable( $ctx->scheduled_at, $this->timezone );
 		$now       = $this->clock->now();
-		if ( $now > $scheduled->modify( '+' . $ctx->rules->entry_deadline_hours . ' hours' ) ) {
+		if ( $now > Hours::after( $scheduled, $ctx->rules->entry_deadline_hours ) ) {
 			/* translators: %d: Stunden */
 			return array( sprintf( __( 'Erfasst nach Ablauf der Frist von %d Stunden.', 'ttleague' ), $ctx->rules->entry_deadline_hours ) );
 		}
-		if ( $now < $scheduled->modify( '-2 hours' ) ) {
+		if ( $now < Hours::after( $scheduled, -2 ) ) {
 			/* translators: %s: Datum */
 			return array( sprintf( __( 'Die Begegnung ist erst am %s angesetzt.', 'ttleague' ), $scheduled->format( 'd.m.Y' ) ) );
 		}

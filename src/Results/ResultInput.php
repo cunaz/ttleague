@@ -138,8 +138,9 @@ final class ResultInput {
 		if ( is_int( $value ) ) {
 			return $value > 0 ? $value : null;
 		}
-		if ( is_string( $value ) && 1 === preg_match( '/^[1-9][0-9]{0,18}$/', $value ) ) {
-			return (int) $value;
+		if ( is_string( $value ) && 1 === preg_match( '/^[1-9][0-9]{0,18}$/D', $value ) ) {
+			$integer = (int) $value;
+			return (string) $integer === $value ? $integer : null;
 		}
 		return null;
 	}
