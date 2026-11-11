@@ -35,7 +35,7 @@ final class Standings {
 				'class' => $row['shared'] ? 'is-shared' : '',
 				'cells' => array(
 					$this->rank( $row ),
-					null === $team ? '' : Html::link( $this->urls->team( $season, $team['slug'] ), $team['name'] ),
+					$this->team( $row, $team, $season ),
 					(string) $row['played'],
 					$row['wins'] . '/' . $row['draws'] . '/' . $row['losses'],
 					Format::ratio( $row['games_won'], $row['games_lost'] ),
@@ -106,7 +106,7 @@ final class Standings {
 			$team  = $teams[ $row['team_id'] ] ?? null;
 			$cells = array(
 				$this->rank( $row ),
-				null === $team ? '' : Html::link( $this->urls->team( $season, $team['slug'] ), $team['name'] ),
+				$this->team( $row, $team, $season ),
 			);
 			if ( ! $minimal ) {
 				$cells[] = (string) $row['played'];
@@ -152,6 +152,24 @@ final class Standings {
 				'class'   => 'ttl-table--compact ttl-standings',
 			)
 		);
+	}
+
+	/**
+	 * Team mit Link; zurückgezogene Mannschaften (Art. 13.3) sind gekennzeichnet.
+	 *
+	 * @param array<string,mixed>      $row    Tabellenzeile.
+	 * @param array<string,mixed>|null $team   Team.
+	 * @param string                   $season Saison-Slug.
+	 */
+	private function team( array $row, ?array $team, string $season ): string {
+		if ( null === $team ) {
+			return '';
+		}
+		$html = Html::link( $this->urls->team( $season, $team['slug'] ), $team['name'] );
+		if ( ! empty( $row['withdrawn'] ) ) {
+			$html .= ' <span class="ttl-muted">' . esc_html__( '(zurückgezogen)', 'ttleague' ) . '</span>';
+		}
+		return $html;
 	}
 
 	/**
