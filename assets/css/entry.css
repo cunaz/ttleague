@@ -873,3 +873,86 @@
 		display: none;
 	}
 }
+
+/* Verschiebung und Terminvorschlag: Abschnitt «Termin» (Erfassungsseite) und «Mein Bereich». */
+
+.ttl-postponement__open {
+	display: grid;
+	gap: 0.5rem;
+	justify-items: start;
+}
+
+.ttl-postponement__open > p,
+.ttl-postponement__item > p {
+	margin: 0;
+}
+
+.ttl-postponement__reason {
+	overflow-wrap: anywhere;
+}
+
+.ttl-postponement__form {
+	margin: 0;
+}
+
+.ttl-postponement .ttl-details {
+	margin-block: 0;
+}
+
+.ttl-postponement .ttl-details > .ttl-form {
+	margin-block: 0.4rem 0.75rem;
+}
+
+.ttl-postponement input[type="datetime-local"],
+.ttl-postponement textarea {
+	min-height: var(--ttl-touch);
+	padding: 0.45rem 0.6rem;
+	font: inherit;
+	color: var(--ttl-ink);
+	background: var(--ttl-surface);
+	border: 1px solid color-mix(in srgb, var(--ttl-ink) 45%, transparent);
+	border-radius: 0.4rem;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.ttl-postponement textarea {
+	width: 100%;
+	resize: vertical;
+}
+
+.ttl-postponement .ttl-button--secondary {
+	background: var(--ttl-surface);
+	color: var(--ttl-accent);
+}
+
+.ttl-postponement__list {
+	margin-block-end: var(--ttl-gap);
+}
+
+.ttl-postponement__item {
+	display: grid;
+	gap: 0.35rem;
+	justify-items: start;
+	padding-block: 0.65rem;
+	border-bottom: 1px solid var(--ttl-line);
+}
+
+.ttl-postponement__history ul {
+	margin: 0.25rem 0 0;
+	padding-inline-start: 1.2rem;
+}
+
+.ttl-my-games__item .ttl-postponement__link {
+	grid-column: 1 / -1;
+	justify-self: start;
+	font-size: var(--ttl-small);
+}
+
+@media print {
+
+	.ttl-postponement form,
+	.ttl-postponement__request {
+		display: none;
+	}
+}
