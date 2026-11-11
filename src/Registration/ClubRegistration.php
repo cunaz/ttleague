@@ -307,6 +307,7 @@ final class ClubRegistration {
 
 	/**
 	 * Mannschaft speichern: Stammspieler, Heimlokal, Anspielzeit und, falls angegeben, Captain.
+	 * Die Angaben ersetzen die bisherigen; was fehlt, gilt als leer (ausser dem Captain).
 	 * In der geplanten Saison wird auch eine unvollständige Mannschaft gespeichert (Verstösse
 	 * verhindern das Einreichen); in der aktiven Saison (nur TK) müssen die Stammspieler stimmen.
 	 *

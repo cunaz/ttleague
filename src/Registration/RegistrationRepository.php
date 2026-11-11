@@ -610,6 +610,75 @@ final class RegistrationRepository {
 	}
 
 	/**
+	 * Änderungen an Lokalen und Hallensperren seit dem Zeitpunkt (UTC), neueste zuerst, für die
+	 * Übersicht der TK. Der Club steht im Protokolleintrag (vorher oder nachher).
+	 *
+	 * @return list<array{entity:string,action:string,created_at:string,user_id:int|null,club_id:int|null,club:string|null,venue_id:int|null,venue:string|null,data:array<string,mixed>}>
+	 */
+	public function venue_changes( string $since, int $limit = 50 ): array {
+		$rows    = $this->db->get_results(
+			"SELECT entity, entity_id, action, user_id, created_at, before_json, after_json FROM {$this->db->table( 'audit_log' )}
+			WHERE entity IN ('venue', 'venue_closure') AND created_at >= %s ORDER BY id DESC LIMIT %d",
+			array( $since, $limit )
+		);
+		$changes = array();
+		foreach ( $rows as $row ) {
+			$after     = json_decode( (string) $row['after_json'], true );
+			$before    = json_decode( (string) $row['before_json'], true );
+			$data      = is_array( $after ) ? $after : ( is_array( $before ) ? $before : array() );
+			$club_id   = isset( $data['club_id'] ) ? (int) $data['club_id'] : null;
+			$venue_id  = 'venue' === $row['entity'] ? (int) $row['entity_id'] : ( isset( $data['venue_id'] ) ? (int) $data['venue_id'] : null );
+			$venue     = null === $venue_id ? null : $this->venue( $venue_id );
+			$changes[] = array(
+				'entity'     => (string) $row['entity'],
+				'action'     => (string) $row['action'],
+				'created_at' => (string) $row['created_at'],
+				'user_id'    => self::int_or_null( $row['user_id'] ),
+				'club_id'    => $club_id,
+				'club'       => null === $club_id ? null : ( $this->club( $club_id )['short_name'] ?? null ),
+				'venue_id'   => $venue_id,
+				'venue'      => null === $venue ? null : $venue['name'],
+				'data'       => $data,
+			);
+		}
+		return $changes;
+	}
+
+	/**
+	 * Gemeldete Spieler einer Saison mit Club und Stammmannschaft, für den Export.
+	 *
+	 * @param int|null $club_id Nur dieser Club.
+	 * @return list<array{club:string,license_no:int,last_name:string,first_name:string,classification:int,status:string,team:string|null}>
+	 */
+	public function export_players( int $season_id, ?int $club_id = null ): array {
+		$sql  = "SELECT c.name AS club, p.license_no, pe.last_name, pe.first_name, ps.classification, ps.status,
+				( SELECT t.name FROM {$this->db->table( 'team_roster' )} r JOIN {$this->db->table( 'team' )} t ON t.id = r.team_id
+					WHERE r.player_id = ps.player_id AND r.kind = 'stamm' AND t.season_id = ps.season_id ORDER BY t.number LIMIT 1 ) AS team
+			FROM {$this->db->table( 'player_season' )} ps
+			JOIN {$this->db->table( 'player' )} p ON p.id = ps.player_id
+			JOIN {$this->db->table( 'person' )} pe ON pe.id = p.person_id
+			JOIN {$this->db->table( 'club' )} c ON c.id = ps.club_id
+			WHERE ps.season_id = %d";
+		$args = array( $season_id );
+		if ( null !== $club_id ) {
+			$sql   .= ' AND ps.club_id = %d';
+			$args[] = $club_id;
+		}
+		return array_map(
+			static fn( array $row ): array => array(
+				'club'           => (string) $row['club'],
+				'license_no'     => (int) $row['license_no'],
+				'last_name'      => (string) $row['last_name'],
+				'first_name'     => (string) $row['first_name'],
+				'classification' => (int) $row['classification'],
+				'status'         => (string) $row['status'],
+				'team'           => $row['team'],
+			),
+			$this->db->get_results( $sql . ' ORDER BY c.name, pe.last_name, pe.first_name, p.id', $args )
+		);
+	}
+
+	/**
 	 * @param array<string,string|null> $row Zeile mit first_name und last_name.
 	 */
 	public static function name( array $row ): string {
