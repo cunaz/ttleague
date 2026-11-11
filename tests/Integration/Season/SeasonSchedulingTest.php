@@ -516,6 +516,29 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 		self::assertSame( 6, $groups[ $this->id['next_group_b'] ]['fixtures'] );
 	}
 
+	public function test_a_fixture_the_planner_cannot_take_does_not_break_the_report(): void {
+		$this->league();
+		$next = $this->scheduled();
+		$this->seed->fixture(
+			$this->id['next_group_a'],
+			array(
+				'home_team_id' => $this->id['next_seefeld_1'],
+				'away_team_id' => $this->id['next_seefeld_1'],
+				'scheduled_at' => '2027-10-05 20:00:00',
+				'venue_id'     => $this->id['venue_seefeld'],
+				'status'       => 'scheduled',
+			)
+		);
+		$this->db->update( 'fixture', array( 'venue_id' => null ), array( 'home_team_id' => $this->id['next_altstetten_1'] ) );
+
+		$overview = $this->scheduling->overview( $next );
+
+		self::assertSame( 3, $overview['unscheduled'], 'Heim gleich Gast und zwei Begegnungen ohne Lokal.' );
+		self::assertNull( $overview['error'] );
+		self::assertFalse( array_column( $overview['groups'], 'complete', 'id' )[ $this->id['next_group_a'] ], 'Eine überzählige Begegnung passt nicht zur Gruppe.' );
+		self::assertTrue( array_column( $overview['groups'], 'complete', 'id' )[ $this->id['next_group_b'] ] );
+	}
+
 	public function test_the_draft_can_be_cleared(): void {
 		$this->league();
 		$next = $this->scheduled();

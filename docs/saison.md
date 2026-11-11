@@ -85,7 +85,7 @@ Voraussetzungen: keine Begegnung der Meisterschaft oder des Cups mehr `scheduled
 ## Dienste und Rechte
 
 - `Season\SeasonSetup` (anlegen, Regeln, Fenster, Clubs, löschen), `Season\Grouping`, `Season\Scheduling` (Spielwochen, Entwurf, verlegen, prüfen), `Season\Lifecycle` (Freigabe, Rückzug, Abschluss), `Season\SeasonNotifications`. Reine Regeln in `Domain\Season` (`SeasonDates`, `RulesInput`, `GroupingRules`, `ScheduleWeeks`, `LifecycleRules`).
-- Alles verlangt `ttl_tk`: in der WordPress-Schicht die Capability, im Dienst `Actor::is_tk`.
+- Alles verlangt `ttl_tk`: in der WordPress-Schicht die Capability, im Dienst `Actor::is_tk`. Die lesenden Methoden der Dienste (`state()`, `overview()`, `readiness()` …) prüfen kein Recht; sie liefern auch Daten der geplanten Saison und sind nur für die Seite der TK gedacht, die `ttl_tk` verlangt.
 - Jeder Schreibvorgang läuft in einer Transaktion, sperrt zuerst alle Saisons, steht im `audit_log` (`season`, `club_season`, `competition`, `team`, `fixture`) und meldet danach `SeasonEvents`; in WordPress folgen `DataVersion::bump()` und die Aktion `ttleague_data_changed` (`season`, Saison-ID).
 - Ablehnungen der Dienste sind `SeasonException` (`ttl_forbidden`, `ttl_not_found`, `ttl_conflict`, `ttl_invalid` mit Feldfehlern).
 

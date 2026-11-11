@@ -285,15 +285,21 @@ final class Scheduling {
 				++$skipped;
 				continue;
 			}
-			$fixture                          = new PlannedFixture(
-				$data['labels'][ $row['competition_id'] ] ?? (string) $row['competition_id'],
-				$row['round'],
-				PlannedFixture::LEG_SECOND === $row['leg'] ? PlannedFixture::LEG_SECOND : PlannedFixture::LEG_FIRST,
-				$row['home_team_id'],
-				$row['away_team_id'],
-				new \DateTimeImmutable( (string) $row['scheduled_at'] ),
-				$row['venue_id']
-			);
+			try {
+				$fixture = new PlannedFixture(
+					$data['labels'][ $row['competition_id'] ] ?? (string) $row['competition_id'],
+					null !== $row['round'] && $row['round'] < 1 ? null : $row['round'],
+					PlannedFixture::LEG_SECOND === $row['leg'] ? PlannedFixture::LEG_SECOND : PlannedFixture::LEG_FIRST,
+					$row['home_team_id'],
+					$row['away_team_id'],
+					new \DateTimeImmutable( (string) $row['scheduled_at'] ),
+					$row['venue_id']
+				);
+			} catch ( \Exception $e ) {
+				// Was der Planer nicht annimmt (Heim gleich Gast, kein gültiger Termin), gilt als nicht prüfbar.
+				++$skipped;
+				continue;
+			}
 			$planned[]                        = $fixture;
 			$ids[ spl_object_id( $fixture ) ] = $id;
 		}
