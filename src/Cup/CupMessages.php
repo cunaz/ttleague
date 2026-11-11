@@ -68,7 +68,7 @@ final class CupMessages {
 			$paragraphs[] = '' === $when
 				? __( 'Ort und Termin setzt die TK an; ihr erhaltet dann eine Nachricht.', 'ttleague' )
 				/* translators: 1: Datum und Zeit, 2: Ort mit Komma davor oder leer */
-				: sprintf( __( 'Die TK hat die Begegnung angesetzt: %1$s%2$s.', 'ttleague' ), $when, null === $venue ? '' : ', ' . $venue );
+				: sprintf( __( 'Die Begegnung ist angesetzt: %1$s%2$s.', 'ttleague' ), $when, null === $venue ? '' : ', ' . $venue );
 			$push = '' === $when ? __( 'Ort und Termin setzt die TK an.', 'ttleague' ) : $when . ( null === $venue ? '' : ', ' . $venue );
 		} else {
 			$paragraphs[] = '' === $when

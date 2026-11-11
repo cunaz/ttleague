@@ -44,7 +44,7 @@ final class LineupRule {
 		}
 		$violations  = array();
 		$substitutes = array_diff( array_keys( $fielded ), $original );
-		if ( array() !== $original && count( $substitutes ) === count( $fielded ) ) {
+		if ( array() !== $original && array() === array_intersect( array_keys( $fielded ), $original ) ) {
 			$violations[] = self::NO_ORIGINAL;
 		}
 		if ( null !== $points_total && array() !== $substitutes && self::points( $fielded ) > $points_total ) {

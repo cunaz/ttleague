@@ -139,7 +139,7 @@ final class CupView extends View {
 				. '<ol class="ttl-bracket__ties">' . $items . '</ol></section>';
 		}
 		/* translators: %s: Cup-Kategorie. */
-		return '<div class="ttl-bracket" role="group" aria-label="' . esc_attr( sprintf( __( 'Tableau %s', 'ttleague' ), $cup['name'] ) ) . '">' . $out . '</div>';
+		return '<div class="ttl-bracket" role="region" tabindex="0" aria-label="' . esc_attr( sprintf( __( 'Tableau %s', 'ttleague' ), $cup['name'] ) ) . '">' . $out . '</div>';
 	}
 
 	/**

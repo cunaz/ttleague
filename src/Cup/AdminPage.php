@@ -177,7 +177,7 @@ final class AdminPage {
 				. '<br><span class="ttl-tk-muted">' . esc_html( $row['competition'] . ', ' . Labels::round( (int) $row['round'], (int) $row['rounds'] ) ) . '</span></td>'
 				. '<td>' . esc_html( Format::date_plain( $row['deadline'] ) ) . '</td>'
 				. '<td>' . esc_html( null === $row['scheduled_at'] ? __( 'kein Termin', 'ttleague' ) : Format::datetime( $row['scheduled_at'] ) ) . '</td>'
-				. '<td>' . self::tie_deadline_form( (int) $row['tie'], Forms::BACK_TK, __( 'Frist verlängern', 'ttleague' ) )
+				. '<td>' . self::tie_deadline_form( (int) $row['tie'], Forms::BACK_TK, __( 'Frist verlängern', 'ttleague' ), $row['home'] . ' – ' . $row['away'] . ', ' . $row['competition'] . ', ' . Labels::round( (int) $row['round'], (int) $row['rounds'] ) )
 				. '<p><a href="' . esc_url( $url ) . '">' . esc_html__( 'Forfait werten', 'ttleague' ) . '</a></p></td>'
 				. '</tr>';
 		}
@@ -458,13 +458,17 @@ final class AdminPage {
 	private static function tie_row( array $tie, array $entries, bool $first_round, bool $editable, array $venues ): string {
 		$fixture = $tie['fixture'];
 		$names   = array();
+		$plain   = array();
 		foreach ( array( 'home', 'away' ) as $place ) {
 			$entry = null === $tie[ $place ] ? null : ( $entries[ $tie[ $place ] ] ?? null );
 			if ( null === $entry ) {
-				$names[] = '<span class="ttl-tk-muted">' . esc_html( $first_round ? __( 'Freilos', 'ttleague' ) : __( 'offen', 'ttleague' ) ) . '</span>';
+				$empty   = $first_round ? __( 'Freilos', 'ttleague' ) : __( 'offen', 'ttleague' );
+				$names[] = '<span class="ttl-tk-muted">' . esc_html( $empty ) . '</span>';
+				$plain[] = $empty;
 				continue;
 			}
-			$name = esc_html( $entry['name'] );
+			$plain[] = (string) $entry['name'];
+			$name    = esc_html( $entry['name'] );
 			if ( CupRepository::WITHDRAWN === $entry['status'] ) {
 				$name .= ' <span class="ttl-tk-muted">(' . esc_html__( 'zurückgezogen', 'ttleague' ) . ')</span>';
 			}
@@ -490,7 +494,8 @@ final class AdminPage {
 
 		$actions = '';
 		if ( $editable && null !== $fixture && in_array( $fixture['status'], array( 'scheduled', 'postponed' ), true ) ) {
-			$actions .= self::tie_deadline_form( (int) $tie['id'], Forms::BACK_ADMIN, __( 'Frist setzen', 'ttleague' ) );
+			/* translators: 1: Nummer der Paarung im Tableau, 2: Mannschaften */
+			$actions .= self::tie_deadline_form( (int) $tie['id'], Forms::BACK_ADMIN, __( 'Frist setzen', 'ttleague' ), sprintf( __( 'Paarung %1$d, %2$s', 'ttleague' ), (int) $tie['slot'], implode( ' – ', $plain ) ) );
 		}
 		if ( $editable && $tie['can_swap'] ) {
 			$actions .= '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="ttl-tk-inline">'
@@ -520,14 +525,15 @@ final class AdminPage {
 	/**
 	 * Formular «Frist setzen» einer Paarung.
 	 *
-	 * @param string $back  Ziel nach der Aktion (Forms::BACK_*).
-	 * @param string $label Beschriftung des Knopfs.
+	 * @param string $back      Ziel nach der Aktion (Forms::BACK_*).
+	 * @param string $label     Beschriftung des Knopfs.
+	 * @param string $tie_label Paarung, wie sie auf der Seite steht (für das Feld der Frist).
 	 */
-	private static function tie_deadline_form( int $tie_id, string $back, string $label ): string {
+	private static function tie_deadline_form( int $tie_id, string $back, string $label, string $tie_label ): string {
 		return '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="ttl-tk-inline">'
 			. self::hidden( Forms::TIE_DEADLINE, 'tie', $tie_id, $back )
-			/* translators: %d: Nummer der Paarung in der Datenbank */
-			. '<input type="date" name="deadline" required aria-label="' . esc_attr( sprintf( __( 'Neue Frist der Paarung %d', 'ttleague' ), $tie_id ) ) . '">'
+			/* translators: %s: Paarung, wie sie auf der Seite steht */
+			. '<input type="date" name="deadline" required aria-label="' . esc_attr( sprintf( __( 'Neue Frist: %s', 'ttleague' ), $tie_label ) ) . '">'
 			. '<button type="submit" class="button">' . esc_html( $label ) . '</button></form>';
 	}
 

@@ -196,7 +196,7 @@ final class CupNotificationsTest extends CupTestCase {
 		);
 		$sent = $this->sent( 'cup_round', $semi['id'] );
 		self::assertCount( 12, $sent );
-		self::assertSame( 'Die TK hat die Begegnung angesetzt: Sa, 12.12.2026, 14:00, Affoltern: Sporthalle Affoltern.', $sent[6]['notification']->paragraphs[1] );
+		self::assertSame( 'Die Begegnung ist angesetzt: Sa, 12.12.2026, 14:00, Affoltern: Sporthalle Affoltern.', $sent[6]['notification']->paragraphs[1] );
 		self::assertNotSame( $sent[0]['ref_key'], $sent[6]['ref_key'] );
 
 		// Getauschtes Heimrecht in der ersten Runde: beide Mannschaften erfahren es.

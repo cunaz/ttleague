@@ -51,7 +51,8 @@
 .ttl button:focus-visible,
 .ttl input:focus-visible,
 .ttl select:focus-visible,
-.ttl .ttl-scroll:focus-visible {
+.ttl .ttl-scroll:focus-visible,
+.ttl .ttl-bracket:focus-visible {
 	outline: 3px solid var(--ttl-highlight);
 	outline-offset: 2px;
 	border-radius: 2px;

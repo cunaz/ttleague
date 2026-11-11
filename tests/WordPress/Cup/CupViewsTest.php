@@ -147,6 +147,10 @@ final class CupViewsTest extends CupWpTestCase {
 		self::assertSame( 2, substr_count( $html, 'value="' . Forms::SWAP_HOME . '"' ), 'nur offene Begegnungen vor dem Halbfinal' );
 		self::assertStringContainsString( 'ohne Termin', $html );
 		self::assertStringContainsString( wp_date( 'j.n.Y', time() + 20 * DAY_IN_SECONDS ), $html, 'Frist der ersten Runde' );
+		// Das Feld der Frist nennt die Paarung, wie sie im Tableau steht, nicht ihre Nummer in der Datenbank.
+		self::assertSame( 2, preg_match_all( '/aria-label="Neue Frist: Paarung ([34]), [^"]+ – [^"]+"/', $html, $labels ), 'die zwei offenen Paarungen der ersten Runde' );
+		self::assertSame( array( '3', '4' ), $labels[1] );
+		self::assertStringNotContainsString( 'Neue Frist der Paarung', $html );
 	}
 
 	public function test_the_overview_of_the_tk_lists_overdue_fixtures_and_bracket_conflicts(): void {
@@ -169,6 +173,7 @@ final class CupViewsTest extends CupWpTestCase {
 		self::assertStringContainsString( 'Mannschaftscup A, Viertelfinal', $section['html'] );
 		self::assertStringContainsString( 'begegnung=' . $this->tie( 1, 1 )['fixture']['id'], $section['html'], 'Link auf die Erfassungsseite für das Forfait' );
 		self::assertStringContainsString( 'name="back" value="' . Forms::BACK_TK . '"', $section['html'] );
+		self::assertStringContainsString( 'aria-label="Neue Frist: Seefeld 1 – Wollishofen 1, Mannschaftscup A, Viertelfinal"', $section['html'] );
 		self::assertStringNotContainsString( 'Oerlikon 1', $section['html'] );
 
 		// Korrektur mit Siegerwechsel, nachdem der Halbfinal schon erfasst ist: Hinweis an die TK.

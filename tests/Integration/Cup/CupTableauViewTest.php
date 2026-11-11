@@ -90,7 +90,7 @@ final class CupTableauViewTest extends CupTestCase {
 		$html = $this->render( array( 'category' => 'a' ) );
 
 		self::assertSame( array( 'Tableau', 'Meldeliste' ), self::subtitles( $html ), 'das Tableau ersetzt die Liste der Resultate' );
-		self::assertStringContainsString( '<div class="ttl-bracket" role="group" aria-label="Tableau Mannschaftscup A">', $html );
+		self::assertStringContainsString( '<div class="ttl-bracket" role="region" tabindex="0" aria-label="Tableau Mannschaftscup A">', $html );
 		preg_match_all( '~<h4 class="ttl-bracket__title" id="([^"]+)">([^<]+)</h4>~', $html, $titles );
 		self::assertSame( array( 'Viertelfinal', 'Halbfinal', 'Final' ), $titles[2], 'Runden als Spalten in ihrer Reihenfolge' );
 		self::assertSame( array( 'ttl-cup-a-runde-1', 'ttl-cup-a-runde-2', 'ttl-cup-a-runde-3' ), $titles[1] );
