@@ -20,6 +20,17 @@ use TTLeague\Tk\Tk;
 
 final class ExtensionPointsTest extends TestCase {
 
+	/**
+	 * Die Tests prüfen die Erweiterungspunkte selbst, ohne die Einträge der Module. Die
+	 * WordPress-Testsuite stellt die Hooks nach jedem Test wieder her.
+	 */
+	public function set_up(): void {
+		parent::set_up();
+		remove_all_filters( 'ttleague_tk_pages' );
+		remove_all_filters( 'ttleague_tk_overview_sections' );
+		remove_all_filters( 'ttleague_notification_types' );
+	}
+
 	public function tear_down(): void {
 		remove_all_filters( 'ttleague_tk_pages' );
 		remove_all_filters( 'ttleague_tk_overview_sections' );

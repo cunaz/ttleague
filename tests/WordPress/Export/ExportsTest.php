@@ -20,6 +20,8 @@ final class ExportsTest extends TestCase {
 	public function set_up(): void {
 		parent::set_up();
 		$this->seen = array();
+		// Ohne die Listen der Module; die WordPress-Testsuite stellt die Hooks nach jedem Test wieder her.
+		remove_all_filters( 'ttleague_exports' );
 		add_filter( 'ttleague_exports', array( $this, 'exports' ) );
 	}
 
