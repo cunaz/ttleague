@@ -307,6 +307,24 @@ final class GroupProposalTest extends TestCase {
 		);
 		self::assertSame( array(), GroupProposal::slots( self::THU, self::MON, $venues, array() ), 'Ende vor Beginn.' );
 
+		// Ein Lokal mit Platz für zwei Gruppen liefert den Abend zweimal.
+		$double = GroupProposal::slots(
+			self::MON,
+			self::THU,
+			array(
+				array(
+					'id'      => 20,
+					'club'    => 2,
+					'weekday' => 2,
+					'groups'  => 2,
+				),
+			),
+			array()
+		);
+		self::assertCount( 2, $double );
+		$two = ( new GroupProposal( new SeasonRules() ) )->propose( array( 1 => self::people( 12 ) ), $double );
+		self::assertSame( array( 20, 20 ), array( $two['groups'][0]['slot']['venue'], $two['groups'][1]['slot']['venue'] ) );
+
 		// Das gesperrte Lokal kommt im Vorschlag nicht vor.
 		$result = ( new GroupProposal( new SeasonRules() ) )->propose( array( 1 => self::people( 6 ) ), GroupProposal::slots( self::MON, self::THU, $venues, $closures ) );
 		self::assertSame( 20, $result['groups'][0]['slot']['venue'] );

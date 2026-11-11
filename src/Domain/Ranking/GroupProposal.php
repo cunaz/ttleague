@@ -20,10 +20,10 @@ use TTLeague\Domain\Rules\SeasonRules;
  *   gilt nur, wenn sonst wegen weniger Personen, als in eine einzige Gruppe zusätzlich passen
  *   (üblich: eine Person), eine weitere Gruppe nötig wäre: 13 Angemeldete ergeben 7 und 6,
  *   14 ergeben 5, 5 und 4. Die Gruppen sind so gleich gross wie möglich.
- * - Jede Gruppe erhält einen Abend in einem Lokal (Slot). Ein Slot dient einer Gruppe. Bevorzugt
- *   werden Abende, an denen jemand vom Platzclub in der Kategorie spielen kann, dann Abende,
- *   an denen möglichst viele noch nicht berücksichtigte Personen frei sind, dann Clubs, die
- *   seltener Platzclub waren.
+ * - Jede Gruppe erhält einen Abend in einem Lokal (Slot). Ein Slot dient einer Gruppe; ein Lokal
+ *   mit Platz für mehrere Gruppen liefert mehrere Slots. Bevorzugt werden Abende, an denen
+ *   möglichst viele noch nicht berücksichtigte Personen frei sind, dann Abende, an denen jemand
+ *   vom Platzclub in der Kategorie spielen kann, dann Clubs, die seltener Platzclub waren.
  * - Niemand steht in einer Gruppe an einem gesperrten Abend. Wer an keinem gewählten Abend
  *   kann oder keinen Platz mehr findet, bleibt «nicht zugeteilt».
  * - Jede Gruppe erhält, wenn möglich, eine Person des Platzclubs. Danach werden die Personen
@@ -71,7 +71,7 @@ final class GroupProposal {
 	 *
 	 * @param string                                             $date_from Erster Tag der Rundenwoche (J-M-T).
 	 * @param string                                             $date_to   Letzter Tag der Rundenwoche.
-	 * @param list<array{id:int,club:int,weekday:int|null}>      $venues    Lokale mit Spieltag (1 = Montag … 7 = Sonntag).
+	 * @param list<array{id:int,club:int,weekday:int|null,groups?:int}> $venues Lokale mit Spieltag (1 = Montag … 7 = Sonntag) und der Zahl der Gruppen, die an einem Abend Platz haben (Standard 1).
 	 * @param list<array{venue:int,from:string,to:string}>       $closures  Hallensperren (Tage einschliesslich).
 	 * @return list<array{club:int,venue:int,date:string}> Sortiert nach Datum, Club, Lokal.
 	 */
@@ -97,11 +97,13 @@ final class GroupProposal {
 						continue 2;
 					}
 				}
-				$slots[] = array(
-					'club'  => (int) $venue['club'],
-					'venue' => (int) $venue['id'],
-					'date'  => $date,
-				);
+				for ( $n = max( 1, (int) ( $venue['groups'] ?? 1 ) ); $n > 0; $n-- ) {
+					$slots[] = array(
+						'club'  => (int) $venue['club'],
+						'venue' => (int) $venue['id'],
+						'date'  => $date,
+					);
+				}
 			}
 		}
 		return self::sorted_slots( $slots );
@@ -215,7 +217,7 @@ final class GroupProposal {
 			foreach ( $free as $key => $slot ) {
 				$available = array_values( array_filter( $placeable, static fn( int $id ): bool => ! isset( $people[ $id ]['blocked'][ $slot['date'] ] ) ) );
 				$hosts     = count( array_filter( $available, static fn( int $id ): bool => $people[ $id ]['club'] === $slot['club'] ) );
-				$score     = array( $hosts > 0 ? 1 : 0, count( array_intersect( $uncovered, $available ) ), -( $hosting[ $slot['club'] ] ?? 0 ), $hosts );
+				$score     = array( count( array_intersect( $uncovered, $available ) ), $hosts > 0 ? 1 : 0, -( $hosting[ $slot['club'] ] ?? 0 ), $hosts );
 				if ( null === $best_score || $score > $best_score ) {
 					$best       = $key;
 					$best_score = $score;
@@ -421,22 +423,22 @@ final class GroupProposal {
 	}
 
 	/**
-	 * Slots ohne Doppel, sortiert nach Datum, Club, Lokal.
+	 * Slots sortiert nach Datum, Club, Lokal. Derselbe Abend im selben Lokal darf mehrfach
+	 * vorkommen: einmal pro Gruppe, die dort Platz hat.
 	 *
 	 * @param list<array{club:int,venue:int,date:string}> $slots Slots.
 	 * @return list<array{club:int,venue:int,date:string}>
 	 */
 	private static function sorted_slots( array $slots ): array {
-		$unique = array();
+		$sorted = array();
 		foreach ( $slots as $slot ) {
-			$unique[ $slot['date'] . '|' . (int) $slot['venue'] ] = array(
+			$sorted[] = array(
 				'club'  => (int) $slot['club'],
 				'venue' => (int) $slot['venue'],
 				'date'  => (string) $slot['date'],
 			);
 		}
-		$unique = array_values( $unique );
-		usort( $unique, static fn( array $a, array $b ): int => array( $a['date'], $a['club'], $a['venue'] ) <=> array( $b['date'], $b['club'], $b['venue'] ) );
-		return $unique;
+		usort( $sorted, static fn( array $a, array $b ): int => array( $a['date'], $a['club'], $a['venue'] ) <=> array( $b['date'], $b['club'], $b['venue'] ) );
+		return $sorted;
 	}
 }
