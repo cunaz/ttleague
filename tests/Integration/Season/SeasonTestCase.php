@@ -128,7 +128,8 @@ abstract class SeasonTestCase extends IntegrationTestCase {
 
 	/**
 	 * Geplante Saison mit Einteilung und Spielwochen: je vier Wochen ab dem 6. September 2027
-	 * und ab dem 10. Januar 2028. Jede Gruppe braucht drei pro Halbserie; eine bleibt Reserve.
+	 * und ab dem 10. Januar 2028. Jede Gruppe braucht drei pro Halbserie: Gruppe A spielt in den
+	 * ersten drei Wochen, Gruppe B versetzt in der ersten, dritten und vierten.
 	 */
 	protected function with_weeks(): int {
 		$next = $this->grouped();

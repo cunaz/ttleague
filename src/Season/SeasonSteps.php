@@ -382,7 +382,7 @@ final class SeasonSteps {
 
 		$out = '<h3>' . esc_html__( 'Spielwochen', 'ttleague' ) . '</h3><p>'
 			. esc_html( $weeks['saved'] ? __( 'Deine Auswahl ist gespeichert.', 'ttleague' ) : __( 'Vorschlag, noch nicht gespeichert: alle Wochen der Saison ohne die Runden des Ranglistenturniers. Streiche die Ferienwochen und speichere.', 'ttleague' ) )
-			. ' ' . esc_html__( 'Wochen, die eine Gruppe nicht braucht, bleiben Reserve für Ausweichtermine.', 'ttleague' ) . '</p>'
+			. ' ' . esc_html__( 'Wählst du mehr Wochen, als eine Gruppe Runden hat, verteilt der Entwurf die Runden über alle Wochen und versetzt die Gruppen gegeneinander. Wochen, in denen eine Gruppe nicht spielt, dienen als Ausweichtermine.', 'ttleague' ) . '</p>'
 			. '<details' . ( $weeks['saved'] ? '' : ' open' ) . '><summary class="button">' . esc_html(
 				sprintf(
 					/* translators: 1: Wochen der Vorrunde, 2: Wochen der Rückrunde */

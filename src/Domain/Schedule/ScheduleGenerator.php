@@ -11,9 +11,12 @@ namespace TTLeague\Domain\Schedule;
 
 /**
  * Baut auf dem RoundRobinScheduler auf: Paarungen nach dem Kreisverfahren, die Rückrunde
- * spiegelt die Vorrunde mit getauschtem Heimrecht. Runde n jeder Halbserie fällt in deren
- * n-te Spielwoche, der Termin ist Spielwoche plus Heimspieltag des Heimteams zur Anspielzeit
- * im Heimlokal. Der Generator prüft keine Kollisionen, das macht der ScheduleChecker.
+ * spiegelt die Vorrunde mit getauschtem Heimrecht. Hat eine Halbserie genau so viele
+ * Spielwochen wie die Gruppe Runden, fällt Runde n in die n-te Spielwoche. Hat sie mehr,
+ * verteilt der Generator die Runden gleichmässig über alle Spielwochen und versetzt die
+ * Gruppen gegeneinander (weeks_for()): So spielen in der Regel seltener mehrere Mannschaften
+ * eines Clubs am selben Abend. Der Termin ist Spielwoche plus Heimspieltag des Heimteams zur Anspielzeit im
+ * Heimlokal. Der Generator prüft keine Kollisionen, das macht der ScheduleChecker.
  */
 final class ScheduleGenerator {
 
@@ -29,12 +32,12 @@ final class ScheduleGenerator {
 
 		$weekday  = static fn( int|string $team ): int => $input->team( $team )->home_weekday;
 		$fixtures = array();
-		foreach ( $input->groups as $group ) {
+		foreach ( $input->groups as $position => $group ) {
 			$rounds  = $this->scheduler->double_round_robin( $group->team_ids() );
 			$per_leg = $group->rounds_per_leg();
 			$dated   = array_merge(
-				$this->scheduler->assign_dates( array_slice( $rounds, 0, $per_leg ), $input->first_leg_weeks, $weekday ),
-				$this->scheduler->assign_dates( array_slice( $rounds, $per_leg ), $input->second_leg_weeks, $weekday )
+				$this->scheduler->assign_dates( array_slice( $rounds, 0, $per_leg ), self::weeks_for( $input->first_leg_weeks, $per_leg, $position ), $weekday ),
+				$this->scheduler->assign_dates( array_slice( $rounds, $per_leg ), self::weeks_for( $input->second_leg_weeks, $per_leg, $position ), $weekday )
 			);
 			foreach ( $dated as $index => $round ) {
 				foreach ( $round as $pair ) {
@@ -52,6 +55,32 @@ final class ScheduleGenerator {
 			}
 		}
 		return $fixtures;
+	}
+
+	/**
+	 * Spielwochen einer Gruppe in einer Halbserie: so viele wie Runden, gleichmässig über alle
+	 * Spielwochen verteilt. Passen die Runden mehrfach in die Spielwochen, beginnt jede Gruppe
+	 * um einen Bruchteil des Abstands später als die vorherige, damit die Gruppen in
+	 * verschiedenen Wochen spielen. Mit genau so vielen Spielwochen wie Runden ändert sich nichts.
+	 *
+	 * @param list<\DateTimeImmutable> $weeks    Spielwochen der Halbserie, aufsteigend.
+	 * @param int                      $rounds   Runden der Gruppe pro Halbserie.
+	 * @param int                      $position Stelle der Gruppe in der Eingabe (ab 0).
+	 * @return list<\DateTimeImmutable> Eine Spielwoche pro Runde, aufsteigend und ohne Wiederholung.
+	 */
+	public static function weeks_for( array $weeks, int $rounds, int $position ): array {
+		$available = count( $weeks );
+		if ( $rounds < 1 || $available <= $rounds ) {
+			return $weeks;
+		}
+		// Phasen: wie oft die Runden (aufgerundet) in die Spielwochen passen.
+		$phases = intdiv( $available + $rounds - 1, $rounds );
+		$phase  = $position % $phases;
+		$chosen = array();
+		for ( $round = 0; $round < $rounds; $round++ ) {
+			$chosen[] = $weeks[ intdiv( ( $round * $phases + $phase ) * $available, $rounds * $phases ) ];
+		}
+		return $chosen;
 	}
 
 	/**
