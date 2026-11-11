@@ -12,6 +12,7 @@ namespace TTLeague\Cli;
 use TTLeague\Infrastructure\Cache\DataVersion;
 use TTLeague\Infrastructure\Database\WpdbDb;
 use TTLeague\Rating\RatingService;
+use TTLeague\Results\Results;
 
 /**
  * Berechnet die Wertungszahl neu oder kalibriert ihre Parameter an vergangenen Klassierungen.
@@ -37,8 +38,23 @@ final class RatingCommand {
 		$reanchor = ! ( isset( $assoc_args['reanchor'] ) && false === $assoc_args['reanchor'] );
 		$service  = new RatingService( WpdbDb::from_global() );
 		$start    = microtime( true );
-		$result   = $service->recalc( $reanchor );
-		DataVersion::bump();
+		// Dieselbe Sperre wie der geplante Lauf: Nie rechnen zwei Läufe gleichzeitig, und wer
+		// aktuelle Wertungszahlen braucht (Klassierung), wartet auf diesen.
+		$lock = Results::recalc_lock();
+		if ( ! $lock->acquire( Results::recalc_lock_wait() ) ) {
+			\WP_CLI::error( 'Ein anderer Lauf der Neuberechnung rechnet noch. Bitte später erneut versuchen.' );
+		}
+		try {
+			$token  = Results::rating_pending();
+			$result = $service->recalc( $reanchor );
+			DataVersion::bump();
+			if ( $reanchor ) {
+				// Nur die übliche Berechnung erledigt, was nach Resultatänderungen aussteht.
+				Results::clear_rating_pending( $token );
+			}
+		} finally {
+			$lock->release();
+		}
 		\WP_CLI::success(
 			sprintf(
 				'%d Spieler, %d Ereignisse in %.1f s neu berechnet (Neuverankerung %s).',
