@@ -221,7 +221,8 @@ final class AdminPage {
 					. '<td>' . esc_html( Rounds::status_label( $round['status'] ) ) . '</td>'
 					. '<td>' . esc_html( (string) count( $groups ) ) . '</td>'
 					/* translators: 1: erfasste Gruppen, 2: alle Gruppen */
-					. '<td>' . esc_html( Rounds::PLANNED === $round['status'] ? '–' : sprintf( __( '%1$d von %2$d', 'ttleague' ), $entered, count( $groups ) ) ) . '</td></tr>';
+					// Runden aus Altdaten sind abgeschlossen, ohne dass je ein Gruppenzettel erfasst wurde.
+					. '<td>' . esc_html( Rounds::PLANNED === $round['status'] || ( Rounds::CLOSED === $round['status'] && 0 === $entered ) ? '–' : sprintf( __( '%1$d von %2$d', 'ttleague' ), $entered, count( $groups ) ) ) . '</td></tr>';
 			}
 			$out .= '</tbody></table>';
 		}
