@@ -150,6 +150,69 @@ final class RankingRoundStatusTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'href="#ttl-gesamt-title"', $html, 'der Sprunglink hat ein Ziel' );
 	}
 
+	public function test_an_entered_group_without_games_counts_for_the_overall_ranking(): void {
+		// Nur Muster ist angetreten: Der Gruppenzettel hat Rang und Punkte, aber keine Partie.
+		$this->db->update( 'rl_group_player', array( 'status' => 'absent' ), array( 'rl_group_id' => $this->group_2 ) );
+		$this->db->update(
+			'rl_group_player',
+			array(
+				'status'  => 'played',
+				'rank_no' => 1,
+				'points'  => 12,
+			),
+			array(
+				'rl_group_id' => $this->group_2,
+				'player_id'   => $this->muster,
+			)
+		);
+		$category = (int) $this->db->get_var( "SELECT category FROM {$this->db->table( 'rl_group' )} WHERE id = %d", array( $this->group_2 ) );
+		$row      = fn(): array => array_values( array_filter( $this->model->ranking->get( $this->ids['season_new'] )['overall'][ $category ], fn( array $line ): bool => $this->muster === $line['player']['id'] ) )[0];
+
+		// Ohne Gruppenzettel ist die Gruppe ein Aufgebot und zählt nicht.
+		$before = $row();
+		self::assertArrayNotHasKey( 2, $before['rounds'] );
+		self::assertStringContainsString( 'Aufgebot', $this->view() );
+
+		$this->db->update( 'rl_group', array( 'entered_at' => '2026-11-18 21:00:00' ), array( 'id' => $this->group_2 ) );
+		$after = $row();
+		self::assertSame( 12.0, $after['rounds'][2] );
+		self::assertSame( $before['points'] + 12.0, $after['points'] );
+		$html = $this->view();
+		self::assertStringNotContainsString( 'Aufgebot', $html, 'die erfasste Gruppe zeigt die Rangliste, nicht das Aufgebot' );
+		self::assertStringContainsString( 'abwesend', $html );
+		self::assertStringNotContainsString( '0 Einzelpartien', $html );
+	}
+
+	public function test_a_final_after_fewer_rounds_than_the_regulations_has_no_empty_columns(): void {
+		// Laut Reglement drei Runden, die Finalrunde folgt aber schon als zweite Runde.
+		$this->db->update( 'rl_round', array( 'is_final' => 1 ), array( 'id' => $this->round_2 ) );
+		self::assertSame( array( 1 ), $this->model->ranking->get( $this->ids['season_new'] )['regular_rounds'] );
+		$html = $this->view();
+		self::assertStringContainsString( 'Gesamtrangliste nach 1 Runde<', $html );
+		self::assertStringContainsString( '>R1<', $html );
+		self::assertStringNotContainsString( '>R2<', $html );
+		self::assertStringNotContainsString( '>R3<', $html );
+		self::assertStringContainsString( 'Punkte der 1. Runde;', $html );
+
+		// Vier Runden laut Reglement, zwei gespielt, Finalrunde als dritte: keine Spalte R4.
+		$rl = (int) $this->db->get_var( "SELECT competition_id FROM {$this->db->table( 'rl_round' )} WHERE id = %d", array( $this->round_2 ) );
+		$this->db->update( 'rl_round', array( 'is_final' => 0 ), array( 'id' => $this->round_2 ) );
+		$this->db->update( 'competition', array( 'format_json' => '{"regular_rounds":4}' ), array( 'id' => $rl ) );
+		self::assertSame( array( 1, 2, 3, 4 ), $this->model->ranking->get( $this->ids['season_new'] )['regular_rounds'], 'ohne Finalrunde stehen alle Spalten des Reglements da' );
+		$this->db->insert(
+			'rl_round',
+			array(
+				'competition_id' => $rl,
+				'round_no'       => 3,
+				'is_final'       => 1,
+			)
+		);
+		self::assertSame( array( 1, 2 ), $this->model->ranking->get( $this->ids['season_new'] )['regular_rounds'] );
+		$html = $this->view();
+		self::assertStringNotContainsString( '>R4<', $html );
+		self::assertStringContainsString( 'Punkte der Runden 1 bis 2 addiert;', $html );
+	}
+
 	public function test_season_in_progress_shows_all_columns_of_the_regulations(): void {
 		// Zwei Runden vorhanden, laut Reglement drei: Die dritte Spalte steht von Anfang an da.
 		self::assertSame( array( 1, 2, 3 ), $this->model->ranking->get( $this->ids['season_new'] )['regular_rounds'] );

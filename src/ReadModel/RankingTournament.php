@@ -49,8 +49,8 @@ final class RankingTournament {
 	 */
 	public function get( int $season_id ): ?array {
 		return $this->cache->remember(
-			// v2: mit regular_rounds; ältere Einträge ohne diesen Schlüssel dürfen nicht mehr gelten.
-			'rl_season_v2',
+			// v3: mit regular_rounds und «entered» je Gruppe; ältere Einträge ohne diese Schlüssel dürfen nicht mehr gelten.
+			'rl_season_v3',
 			array( $season_id ),
 			fn(): ?array => $this->load( $season_id )
 		);
@@ -89,7 +89,7 @@ final class RankingTournament {
 
 		$groups = array();
 		foreach ( $this->db->get_results(
-			"SELECT rg.id, rg.rl_round_id, rg.category, rg.group_no, rg.start_at, rg.note, rg.chief_player_id,
+			"SELECT rg.id, rg.rl_round_id, rg.category, rg.group_no, rg.start_at, rg.note, rg.chief_player_id, rg.entered_at,
 				c.short_name AS host_short, c.slug AS host_slug, v.name AS venue_name, v.street, v.zip, v.city
 			FROM {$this->db->table( 'rl_group' )} rg
 			JOIN {$this->db->table( 'rl_round' )} rr ON rr.id = rg.rl_round_id
@@ -121,6 +121,8 @@ final class RankingTournament {
 				'players'   => array(),
 				'games'     => array(),
 				'has_games' => false,
+				// Erfasst ist eine Gruppe mit Gruppenzettel oder mit Partien (ältere Daten ohne Zeitpunkt).
+				'entered'   => null !== $row['entered_at'],
 			);
 		}
 
@@ -186,6 +188,7 @@ final class RankingTournament {
 				);
 			}
 			$group['has_games'] = array() !== $group['games'];
+			$group['entered']   = $group['entered'] || $group['has_games'];
 			if ( null !== $group['chief_id'] && isset( $group_members[ $group['chief_id'] ] ) ) {
 				$group['chief'] = $group_members[ $group['chief_id'] ]['player'];
 			}
@@ -214,8 +217,8 @@ final class RankingTournament {
 
 	/**
 	 * Nummern der regulären Runden für die Spalten der Gesamtrangliste: von 1 bis zur höchsten
-	 * vorhandenen regulären Runde, mindestens bis zur Zahl der Runden laut Reglement, ohne die
-	 * Nummer der Finalrunde.
+	 * vorhandenen regulären Runde, ohne die Nummer der Finalrunde. Solange keine Finalrunde
+	 * öffentlich ist, mindestens bis zur Zahl der Runden laut Reglement.
 	 *
 	 * @param list<array<string,mixed>> $rounds Öffentliche Runden.
 	 * @param mixed                     $format Inhalt von competition.format_json.
@@ -233,7 +236,9 @@ final class RankingTournament {
 			}
 		}
 		$numbers = array();
-		$last    = max( $planned, $highest );
+		// Mit einer Finalrunde ist die Reihe der regulären Runden abgeschlossen: keine Spalte für
+		// eine Runde, die es laut Reglement gäbe, die aber nie stattfand.
+		$last = null === $final ? max( $planned, $highest ) : $highest;
 		for ( $number = 1; $number <= $last; $number++ ) {
 			if ( $number !== $final ) {
 				$numbers[] = $number;
@@ -330,7 +335,8 @@ final class RankingTournament {
 			}
 			foreach ( $round['categories'] as $category => $groups ) {
 				foreach ( $groups as $group ) {
-					if ( ! $group['has_games'] ) {
+					// Auch ein Gruppenzettel ohne Partien zählt, etwa wenn nur eine Person angetreten ist.
+					if ( ! $group['entered'] ) {
 						continue;
 					}
 					foreach ( $group['players'] as $member ) {

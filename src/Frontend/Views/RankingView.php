@@ -155,11 +155,11 @@ final class RankingView extends View {
 			$out .= '<p class="ttl-card__meta">' . implode( ' · ', $meta ) . '</p>';
 		}
 		$note = trim( (string) $group['note'] );
-		if ( '' !== $note && ! $group['has_games'] ) {
+		if ( '' !== $note && ! $group['entered'] ) {
 			$out .= '<p class="ttl-note">' . esc_html( $note ) . '</p>';
 		}
 
-		if ( ! $group['has_games'] ) {
+		if ( ! $group['entered'] ) {
 			$items = array();
 			foreach ( $group['players'] as $member ) {
 				// Im Aufgebot einer freigegebenen Runde ist sichtbar, wer sich abgemeldet hat.
@@ -223,8 +223,11 @@ final class RankingView extends View {
 				. ' <span class="ttl-games-list__score">' . esc_html( Format::ratio( $game['sets_a'], $game['sets_b'] ) ) . '</span>'
 				. ( 'played' === $game['status'] ? '' : ' ' . Html::badge( Format::game_status( $game['status'] ), 'muted' ) ) . '</li>';
 		}
-		/* translators: %d: Anzahl Partien. */
-		$out .= '<details class="ttl-details"><summary>' . esc_html( sprintf( _n( '%d Einzelpartie', '%d Einzelpartien', count( $games ), 'ttleague' ), count( $games ) ) ) . '</summary><ul class="ttl-games-list">' . implode( '', $games ) . '</ul></details>';
+		// Ein Gruppenzettel ohne Partien (nur eine Person angetreten) hat keine Liste der Partien.
+		if ( array() !== $games ) {
+			/* translators: %d: Anzahl Partien. */
+			$out .= '<details class="ttl-details"><summary>' . esc_html( sprintf( _n( '%d Einzelpartie', '%d Einzelpartien', count( $games ), 'ttleague' ), count( $games ) ) ) . '</summary><ul class="ttl-games-list">' . implode( '', $games ) . '</ul></details>';
+		}
 		if ( '' !== $note ) {
 			$out .= '<p class="ttl-footnote">' . esc_html( $note ) . '</p>';
 		}
@@ -311,8 +314,15 @@ final class RankingView extends View {
 				array( 'caption' => sprintf( __( 'Gesamtrangliste %s', 'ttleague' ), $label ) )
 			);
 		}
-		/* translators: 1: Anzahl reguläre Runden, 2: Anzahl Finalplätze. */
-		$out .= '<p class="ttl-footnote">' . esc_html( sprintf( __( 'Punkte der Runden 1 bis %1$d addiert; bei Gleichstand entscheiden Satz- und Ballquotient, sonst das Los. Die besten %2$d jeder Kategorie sind für die Finalrunde qualifiziert.', 'ttleague' ), count( $regular ), $finalists ) ) . '</p>';
+		$last = array() === $regular ? 0 : max( $regular );
+		if ( $last <= 1 ) {
+			/* translators: %d: Anzahl Finalplätze. */
+			$footnote = sprintf( __( 'Punkte der 1. Runde; bei Gleichstand entscheiden Satz- und Ballquotient, sonst das Los. Die besten %d jeder Kategorie sind für die Finalrunde qualifiziert.', 'ttleague' ), $finalists );
+		} else {
+			/* translators: 1: Nummer der letzten regulären Runde, 2: Anzahl Finalplätze. */
+			$footnote = sprintf( __( 'Punkte der Runden 1 bis %1$d addiert; bei Gleichstand entscheiden Satz- und Ballquotient, sonst das Los. Die besten %2$d jeder Kategorie sind für die Finalrunde qualifiziert.', 'ttleague' ), $last, $finalists );
+		}
+		$out .= '<p class="ttl-footnote">' . esc_html( $footnote ) . '</p>';
 		return $out;
 	}
 }
