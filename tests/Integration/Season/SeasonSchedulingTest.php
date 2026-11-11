@@ -310,10 +310,13 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 
 		$overview = $this->scheduling->overview( $next );
 
-		self::assertSame( 4, $overview['hard'] );
+		// Gruppe A spielt in den Wochen 1 bis 3, Gruppe B versetzt in den Wochen 1, 3 und 4:
+		// Die beiden Mannschaften eines Clubs treffen nur in der ersten Woche jeder Halbserie
+		// im selben Lokal aufeinander.
+		self::assertSame( 2, $overview['hard'] );
 		$hard = $this->hard( $next );
-		self::assertSame( array( 'venue_capacity', 'venue_capacity', 'venue_capacity', 'venue_capacity' ), array_column( $hard, 'kind' ) );
-		self::assertSame( array( '2027-09-08', '2027-09-21', '2028-01-11', '2028-01-19' ), array_column( $hard, 'day' ) );
+		self::assertSame( array( 'venue_capacity', 'venue_capacity' ), array_column( $hard, 'kind' ) );
+		self::assertSame( array( '2027-09-08', '2028-01-11' ), array_column( $hard, 'day' ) );
 		self::assertSame( 'Halle Wollishofen', $hard[0]['venue'] );
 		$a = (int) $this->fixture( 'wollishofen_1', 'seefeld_1' )['id'];
 		$b = (int) $this->fixture( 'wollishofen_2', 'seefeld_2' )['id'];
@@ -326,11 +329,11 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 				),
 				array(
 					'fixture_id' => $b,
-					'starts_at'  => '2027-09-29 19:30:00',
+					'starts_at'  => '2027-09-15 19:30:00',
 				),
 			),
 			$hard[0]['suggestions'],
-			'Die Reservewoche vom 27. September, am Heimspieltag des Heimteams.'
+			'Die Woche, in der die Gruppe nicht spielt (A: 27. September, B: 13. September), am Heimspieltag des Heimteams.'
 		);
 		self::assertGreaterThan( 0, $overview['hints'] );
 		$hint = array_values( array_filter( $overview['conflicts'], static fn( array $conflict ): bool => 'club_same_evening' === $conflict['kind'] ) )[0];
@@ -380,7 +383,7 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 		$rules = array( 'schedule_tables_per_match' => 3 );
 		$this->db->update( 'season', array( 'rules_json' => (string) json_encode( $rules ) ), array( 'id' => $next ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Test ohne WordPress.
 
-		self::assertSame( 4, $this->scheduling->overview( $next )['hard'], 'Mit drei Tischen pro Begegnung reichen vier Tische nicht mehr.' );
+		self::assertSame( 2, $this->scheduling->overview( $next )['hard'], 'Mit drei Tischen pro Begegnung reichen vier Tische nicht mehr.' );
 	}
 
 	public function test_accepting_a_suggestion_moves_the_fixture_and_checks_again(): void {
@@ -393,7 +396,7 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 		$row = $this->row( 'fixture', $fixture );
 		self::assertSame( '2027-09-29 19:30:00', $row['scheduled_at'] );
 		self::assertSame( (string) $this->id['venue_wollishofen'], $row['venue_id'] );
-		self::assertSame( array( '2027-09-21', '2028-01-11', '2028-01-19' ), array_column( $this->hard( $next ), 'day' ), 'Die Kollision vom 8. September ist behoben.' );
+		self::assertSame( array( '2028-01-11' ), array_column( $this->hard( $next ), 'day' ), 'Die Kollision vom 8. September ist behoben.' );
 		self::assertSame( 1, $this->rows( 'audit_log', "entity = 'fixture' AND action = 'suggestion_applied' AND entity_id = {$fixture}" ) );
 	}
 
@@ -404,8 +407,8 @@ final class SeasonSchedulingTest extends SeasonTestCase {
 		$other = (int) $this->fixture( 'wollishofen_2', 'seefeld_2' )['id'];
 		$this->scheduling->apply_suggestion( $this->tk, $first, '2027-09-29 19:30:00' );
 
-		// Im zweiten Fenster stand derselbe Vorschlag noch für die andere Begegnung.
-		$this->refused( fn() => $this->scheduling->apply_suggestion( $this->tk, $other, '2027-09-29 19:30:00' ), Refusal::CONFLICT );
+		// Im zweiten Fenster stand noch der Vorschlag für die andere Begegnung; die Kollision ist aber behoben.
+		$this->refused( fn() => $this->scheduling->apply_suggestion( $this->tk, $other, '2027-09-15 19:30:00' ), Refusal::CONFLICT );
 		$this->refused( fn() => $this->scheduling->apply_suggestion( $this->tk, $first, '2027-12-24 19:30:00' ), Refusal::CONFLICT );
 		$this->refused( fn() => $this->scheduling->apply_suggestion( $this->chef, $other, '2027-09-29 19:30:00' ), Refusal::FORBIDDEN );
 
