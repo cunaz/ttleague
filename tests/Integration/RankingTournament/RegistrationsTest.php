@@ -328,4 +328,48 @@ final class RegistrationsTest extends RlTestCase {
 		$this->assert_fails( 404, fn() => $service->configure( $this->tk, $this->id['season'] + 5, array() ) );
 		self::assertSame( array( 'created', 'configured' ), array_column( $this->audit( 'rl_competition', $id ), 'action' ) );
 	}
+
+	public function test_configure_changes_only_what_is_passed(): void {
+		$service = $this->registrations();
+		$service->configure(
+			$this->tk,
+			$this->id['season'],
+			array(
+				'start_time'    => '19:45',
+				'reminder_days' => 9,
+			)
+		);
+
+		// Nur die Spielzeit war übergeben: Anmeldeschluss, Kategorien und Name bleiben.
+		$competition = $service->active_competition();
+		self::assertSame( '19:45:00', $competition['start_time'] );
+		self::assertSame( '2026-09-10', $competition['deadline'] );
+		self::assertSame( array( 16, 9, 1 ), array_column( $competition['categories'], 'min' ) );
+		self::assertSame( 'Ranglistenturnier', $competition['name'] );
+		self::assertArrayNotHasKey( 'reminder_days', $competition['format'], 'Unbekannte Schlüssel der Eingabe werden nicht gespeichert.' );
+
+		// Nur der Name.
+		$service->configure( $this->tk, $this->id['season'], array( 'name' => 'RL Region' ) );
+		$competition = $service->active_competition();
+		self::assertSame( array( 'RL Region', '2026-09-10', '19:45:00' ), array( $competition['name'], $competition['deadline'], $competition['start_time'] ) );
+
+		// Ein ausdrücklich leerer Wert löscht die Einstellung, die anderen bleiben.
+		$service->configure( $this->tk, $this->id['season'], array( 'registration_deadline' => '' ) );
+		$competition = $service->active_competition();
+		self::assertNull( $competition['deadline'] );
+		self::assertSame( '19:45:00', $competition['start_time'] );
+		self::assertCount( 3, $competition['categories'] );
+		$service->configure(
+			$this->tk,
+			$this->id['season'],
+			array(
+				'start_time' => null,
+				'categories' => array(),
+			)
+		);
+		$competition = $service->active_competition();
+		self::assertNull( $competition['start_time'] );
+		self::assertSame( array(), $competition['categories'] );
+		self::assertSame( 'RL Region', $competition['name'] );
+	}
 }

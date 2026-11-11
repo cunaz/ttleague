@@ -318,13 +318,25 @@ final class GroupEntryTest extends RlTestCase {
 			return array_column( $error->errors, 'field' );
 		};
 
-		// Status fehlt oder ist unbekannt («aufgeboten» ist kein Ergebnis).
+		// Status fehlt oder ist unbekannt («aufgeboten» ist kein Ergebnis): genau ein Fehler zur
+		// Person, keiner zu ihren Partien, auch wenn Resultate mitkommen.
 		$sheet = $valid;
 		unset( $sheet['players'][ $this->members[1] ] );
-		self::assertContains( 'players.' . $this->members[1], $fields( $sheet ) );
+		self::assertSame( array( 'players.' . $this->members[1] ), $fields( $sheet ) );
 		$sheet                                 = $valid;
 		$sheet['players'][ $this->members[0] ] = 'scheduled';
-		self::assertContains( 'players.' . $this->members[0], $fields( $sheet ) );
+		self::assertSame( array( 'players.' . $this->members[0] ), $fields( $sheet ) );
+		// Fehlen zwei Status und ein Resultat zwischen Personen mit Status, kommen genau diese drei Fehler.
+		$sheet = $valid;
+		unset( $sheet['players'][ $this->members[0] ], $sheet['players'][ $this->members[1] ] );
+		$between = null;
+		foreach ( Sheet::order( $this->members ) as $i => $game ) {
+			if ( array( $this->members[2], $this->members[3] ) === array( $game['a'], $game['b'] ) ) {
+				$between = $game['sequence'];
+				unset( $sheet['games'][ $i ] );
+			}
+		}
+		self::assertSame( array( 'players.' . $this->members[0], 'players.' . $this->members[1], 'games.' . $between ), $fields( $sheet ) );
 		// Fremde Person.
 		$sheet                                   = $valid;
 		$sheet['players'][ $this->player['s2'] ] = 'played';

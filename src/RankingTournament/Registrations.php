@@ -71,7 +71,10 @@ final class Registrations {
 	}
 
 	/**
-	 * Turnier der Saison anlegen oder seine Einstellungen ändern (TK).
+	 * Turnier der Saison anlegen oder seine Einstellungen ändern (TK). Geändert wird nur, was
+	 * übergeben ist: Fehlt ein Schlüssel, bleibt die bestehende Einstellung. Ein ausdrücklich
+	 * leerer Wert (null, leere Zeichenkette, leere Liste der Kategorien) löscht sie; der Name
+	 * lässt sich nicht löschen.
 	 *
 	 * @param array{name?:string,categories?:mixed,registration_deadline?:string|null,start_time?:string|null} $settings Einstellungen.
 	 * @return int ID der Konkurrenz.
@@ -90,27 +93,37 @@ final class Registrations {
 		if ( mb_strlen( $name ) > 80 ) {
 			$errors[] = self::error( 'name', __( 'Der Name ist zu lang (höchstens 80 Zeichen).', 'ttleague' ) );
 		}
-		$raw        = $settings['categories'] ?? array();
-		$categories = Categories::normalize( $raw );
-		if ( ! is_array( $raw ) || count( $categories ) !== count( $raw ) ) {
-			$errors[] = self::error( 'categories', __( 'Kategorien brauchen eine Nummer ab 1 und eine Klassierung als Grenze; jede Nummer kommt einmal vor.', 'ttleague' ) );
+		// Nur übergebene Einstellungen ändern sich; $changes enthält ihre neuen Werte (null löscht).
+		$changes = array();
+		if ( array_key_exists( 'categories', $settings ) ) {
+			$raw        = $settings['categories'] ?? array();
+			$categories = Categories::normalize( $raw );
+			if ( ! is_array( $raw ) || count( $categories ) !== count( $raw ) ) {
+				$errors[] = self::error( 'categories', __( 'Kategorien brauchen eine Nummer ab 1 und eine Klassierung als Grenze; jede Nummer kommt einmal vor.', 'ttleague' ) );
+			}
+			usort( $categories, static fn( array $a, array $b ): int => $a['no'] <=> $b['no'] );
+			$changes['categories'] = $categories;
 		}
-		$deadline = $settings['registration_deadline'] ?? null;
-		$deadline = '' === $deadline ? null : $deadline;
-		if ( null !== $deadline && null === Repository::date_or_null( $deadline ) ) {
-			$errors[] = self::error( 'registration_deadline', __( 'Der Anmeldeschluss ist kein gültiges Datum.', 'ttleague' ) );
+		if ( array_key_exists( 'registration_deadline', $settings ) ) {
+			$deadline = '' === $settings['registration_deadline'] ? null : $settings['registration_deadline'];
+			if ( null !== $deadline && null === Repository::date_or_null( $deadline ) ) {
+				$errors[] = self::error( 'registration_deadline', __( 'Der Anmeldeschluss ist kein gültiges Datum.', 'ttleague' ) );
+			}
+			$changes['registration_deadline'] = $deadline;
 		}
-		$start = $settings['start_time'] ?? null;
-		$start = '' === $start ? null : $start;
-		if ( null !== $start && null === Repository::time_or_null( $start ) ) {
-			$errors[] = self::error( 'start_time', __( 'Die Spielzeit ist keine gültige Uhrzeit.', 'ttleague' ) );
+		if ( array_key_exists( 'start_time', $settings ) ) {
+			$start = '' === $settings['start_time'] ? null : $settings['start_time'];
+			if ( null !== $start && null === Repository::time_or_null( $start ) ) {
+				$errors[] = self::error( 'start_time', __( 'Die Spielzeit ist keine gültige Uhrzeit.', 'ttleague' ) );
+			}
+			$changes['start_time'] = null === $start ? null : substr( (string) Repository::time_or_null( $start ), 0, 5 );
 		}
 		if ( array() !== $errors ) {
 			Fail::invalid_fields( $errors );
 		}
 
 		$id = $this->db->transaction(
-			function () use ( $actor, $season_id, $name, $categories, $deadline, $start ): int {
+			function () use ( $actor, $season_id, $name, $changes ): int {
 				$this->lock_season( $season_id );
 				$existing = $this->repo->competition_of_season( $season_id );
 				$format   = null === $existing ? array() : $existing['format'];
@@ -118,12 +131,9 @@ final class Registrations {
 					'name'   => $existing['name'],
 					'format' => $format,
 				);
-				usort( $categories, static fn( array $a, array $b ): int => $a['no'] <=> $b['no'] );
-				$format['categories']            = $categories;
-				$format['registration_deadline'] = $deadline;
-				$format['start_time']            = null === $start ? null : substr( (string) Repository::time_or_null( $start ), 0, 5 );
-				$json                            = (string) json_encode( $format, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- läuft auch ohne WordPress.
-				$title                           = '' === $name ? ( null === $existing ? __( 'Ranglistenturnier', 'ttleague' ) : $existing['name'] ) : $name;
+				$format   = array_merge( $format, $changes );
+				$json     = (string) json_encode( $format, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- läuft auch ohne WordPress.
+				$title    = '' === $name ? ( null === $existing ? __( 'Ranglistenturnier', 'ttleague' ) : $existing['name'] ) : $name;
 				if ( null === $existing ) {
 					$id = $this->db->insert(
 						'competition',

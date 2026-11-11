@@ -383,12 +383,15 @@ final class GroupEntry {
 			}
 		}
 		$statuses = array();
+		$unknown  = array();
 		foreach ( $members as $player_id => $member ) {
 			$status = $raw[ $player_id ] ?? null;
 			if ( ! is_string( $status ) || ! in_array( $status, self::STATUSES, true ) ) {
 				/* translators: %s: Name */
 				$errors[] = self::error( 'players.' . $player_id, sprintf( __( '%s: Bitte wähle, ob die Person gespielt hat, abgemeldet war, disqualifiziert wurde oder forfait gab.', 'ttleague' ), $member['name'] ) );
 				$status   = RlPlayerStatus::Scheduled->value;
+				// Ohne gültigen Status lässt sich über die Partien der Person nichts sagen: Der Fehler zur Person genügt.
+				$unknown[ $player_id ] = true;
 			}
 			$statuses[ $player_id ] = $status;
 		}
@@ -409,11 +412,14 @@ final class GroupEntry {
 			$sequence = $game['sequence'];
 			$entry    = $given[ $sequence ] ?? null;
 			unset( $given[ $sequence ] );
+			if ( isset( $unknown[ $game['a'] ] ) || isset( $unknown[ $game['b'] ] ) ) {
+				continue;
+			}
 			$field   = 'games.' . $sequence;
 			$pairing = $members[ $game['a'] ]['name'] . ' – ' . $members[ $game['b'] ]['name'];
 			$status  = array( $statuses[ $game['a'] ], $statuses[ $game['b'] ] );
 			$played  = array( 'played', 'played' ) === $status;
-			$none    = array() !== array_intersect( $status, array( 'absent', 'disqualified', RlPlayerStatus::Scheduled->value ) );
+			$none    = array() !== array_intersect( $status, array( 'absent', 'disqualified' ) );
 			$empty   = null === $entry || ( ( null === ( $entry['sets_a'] ?? null ) || '' === $entry['sets_a'] ) && ( null === ( $entry['sets_b'] ?? null ) || '' === $entry['sets_b'] ) );
 			if ( $empty ) {
 				if ( $played ) {

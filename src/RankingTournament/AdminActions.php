@@ -151,6 +151,10 @@ final class AdminActions {
 				return array( Outcome::success( __( 'Gruppe gelöscht. Ihre Mitglieder sind nicht zugeteilt.', 'ttleague' ) ), null );
 
 			case 'group_reset':
+				// Das Zurücksetzen löscht erfasste Partien: nur mit ausdrücklicher Bestätigung.
+				if ( ! isset( $_POST['confirm'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- in handle() geprüft.
+					return array( Outcome::error( __( 'Nicht zurückgesetzt: Bitte bestätige mit dem Kontrollkästchen, dass alle erfassten Partien der Gruppe gelöscht werden.', 'ttleague' ) ), null );
+				}
 				RankingTournament::entry()->reset( $id, $actor );
 				return array( Outcome::success( __( 'Gruppenzettel zurückgesetzt.', 'ttleague' ) ), null );
 		}

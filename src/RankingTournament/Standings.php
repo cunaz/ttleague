@@ -13,9 +13,11 @@ use TTLeague\Domain\Ranking\FinalQualification;
 use TTLeague\Domain\Ranking\RlPlayerStatus;
 
 /**
- * Addiert pro Kategorie die festgeschriebenen Punkte der abgeschlossenen Runden vor dem Final
- * und ordnet mit FinalQualification (Punkte, dann Satz- und Ballquotient über alle gewerteten
- * Partien). Ohne Cache, direkt aus den Tabellen.
+ * Addiert pro Kategorie die festgeschriebenen Punkte der abgeschlossenen regulären Runden und
+ * ordnet mit FinalQualification. Regulär ist jede Runde, die nicht die Finalrunde ist; ihre Zahl
+ * ist nicht festgelegt (dieselbe Regel wie in ReadModel\RankingTournament). Geordnet wird nach
+ * Punkten, dann nach Satz- und Ballquotient über alle gewerteten Partien. Ohne Cache, direkt
+ * aus den Tabellen.
  */
 final class Standings {
 

@@ -236,6 +236,41 @@ final class AdminTest extends RlTestCase {
 		self::assertStringContainsString( 'abgeschlossen', AdminPage::html( 'runden', 0, null ) );
 	}
 
+	public function test_resetting_a_group_sheet_needs_a_confirmation(): void {
+		wp_set_current_user( $this->users['tk'] );
+		[ $round, $group ] = $this->published_group();
+		RankingTournament::entry()->save( $group, $this->sheet( $group ), $this->tk() );
+
+		// Das Formular verlangt das Kontrollkästchen, auch ohne JavaScript.
+		$html = AdminPage::html( 'runden', $round, null );
+		self::assertSame( 1, preg_match( '~<form[^>]*>(?:(?!</form>).)*name="do" value="group_reset"(?:(?!</form>).)*</form>~s', $html, $form ) );
+		self::assertStringContainsString( '<input type="checkbox" id="ttl-rl-reset-' . $group . '" name="confirm" value="1" required>', $form[0] );
+		self::assertStringContainsString( 'Alle erfassten Partien dieser Gruppe löschen', $form[0] );
+
+		// Ohne das Feld setzt die Aktion nichts zurück.
+		$this->submit( 'group_reset', $group, array( 'round' => (string) $round ) );
+		$flash = \TTLeague\Infrastructure\Flash::take( \TTLeague\Tk\Tk::FLASH, $this->users['tk'] );
+		self::assertSame( 'error', $flash['type'] );
+		self::assertStringContainsString( 'Nicht zurückgesetzt', $flash['message'] );
+		self::assertCount( 6, RankingTournament::repository()->group( $group )['games'] );
+		self::assertNotNull( RankingTournament::repository()->group( $group )['entered_at'] );
+
+		// Mit Bestätigung.
+		$this->submit(
+			'group_reset',
+			$group,
+			array(
+				'round'   => (string) $round,
+				'confirm' => '1',
+			)
+		);
+		self::assertSame( 'success', \TTLeague\Infrastructure\Flash::take( \TTLeague\Tk\Tk::FLASH, $this->users['tk'] )['type'] );
+		$after = RankingTournament::repository()->group( $group );
+		self::assertSame( array(), $after['games'] );
+		self::assertNull( $after['entered_at'] );
+		self::assertSame( array( 'scheduled' ), array_values( array_unique( array_column( $after['members'], 'status' ) ) ) );
+	}
+
 	/**
 	 * Formularfelder einer Aktion mit gültigem Nonce.
 	 *

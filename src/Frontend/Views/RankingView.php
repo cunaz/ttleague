@@ -38,18 +38,32 @@ final class RankingView extends View {
 		$nav[] = '<li>' . Html::link( '#ttl-gesamt', __( 'Gesamtrangliste', 'ttleague' ) ) . '</li>';
 		$out   = '<nav class="ttl-tabs" aria-label="' . esc_attr__( 'Runden', 'ttleague' ) . '"><ul>' . implode( '', $nav ) . '</ul></nav>';
 
-		$overall_html = $this->overall( $rl['overall'], $rl['finalists'], $only );
-		$open         = $this->current_round( $rl['rounds'] );
+		$regular       = $rl['regular_rounds'];
+		$overall_html  = $this->overall( $rl['overall'], $rl['finalists'], $only, $regular );
+		$overall_title = $this->overall_title( count( $regular ) );
+		$open          = $this->current_round( $rl['rounds'] );
 		foreach ( $rl['rounds'] as $round ) {
 			if ( $round['is_final'] ) {
-				$out .= Html::section( __( 'Gesamtrangliste nach drei Runden', 'ttleague' ), $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
+				$out .= Html::section( $overall_title, $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
 			}
 			$out .= $this->round( $round, $only, $round['round_no'] === $open );
 		}
 		if ( ! str_contains( $out, 'id="ttl-gesamt"' ) ) {
-			$out .= Html::section( __( 'Gesamtrangliste nach drei Runden', 'ttleague' ), $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
+			$out .= Html::section( $overall_title, $overall_html, 'ttl-section--overall', 'ttl-gesamt' );
 		}
 		return $out;
+	}
+
+	/**
+	 * Titel der Gesamtrangliste: «nach drei Runden» beim üblichen Modus, sonst mit der Zahl
+	 * der regulären Runden.
+	 */
+	private function overall_title( int $rounds ): string {
+		if ( 3 === $rounds ) {
+			return __( 'Gesamtrangliste nach drei Runden', 'ttleague' );
+		}
+		/* translators: %d: Anzahl reguläre Runden. */
+		return sprintf( _n( 'Gesamtrangliste nach %d Runde', 'Gesamtrangliste nach %d Runden', $rounds, 'ttleague' ), $rounds );
 	}
 
 	/**
@@ -219,8 +233,9 @@ final class RankingView extends View {
 	 * @param array<int,list<array<string,mixed>>> $overall   Kategorie => Zeilen.
 	 * @param int                                  $finalists Anzahl Finalplätze.
 	 * @param int                                  $only      Nur diese Kategorie (0 = alle).
+	 * @param list<int>                            $regular   Nummern der regulären Runden (Spalten).
 	 */
-	private function overall( array $overall, int $finalists, int $only ): string {
+	private function overall( array $overall, int $finalists, int $only, array $regular ): string {
 		if ( array() === $overall ) {
 			return Html::notice( __( 'Noch keine gespielte Runde.', 'ttleague' ) );
 		}
@@ -243,7 +258,7 @@ final class RankingView extends View {
 					$this->player_link( $row['player'] ) . ' ' . Html::classification( $row['classification'] ) . $marks,
 					esc_html( (string) ( $row['club_short'] ?? '' ) ),
 				);
-				for ( $r = 1; $r <= 3; $r++ ) {
+				foreach ( $regular as $r ) {
 					$cells[] = array_key_exists( $r, $row['rounds'] ) ? esc_html( Format::points( $row['rounds'][ $r ] ) ) : '<span class="ttl-muted">–</span>';
 				}
 				$cells[] = '<strong>' . esc_html( Format::points( $row['points'] ) ) . '</strong>';
@@ -254,51 +269,46 @@ final class RankingView extends View {
 				);
 			}
 			/* translators: %d: Kategorie. */
-			$label = sprintf( __( 'Kategorie %d', 'ttleague' ), $category );
-			$out  .= '<h3 class="ttl-subtitle">' . esc_html( $label ) . '</h3>' . Html::table(
+			$label   = sprintf( __( 'Kategorie %d', 'ttleague' ), $category );
+			$columns = array(
 				array(
-					array(
-						'label' => __( 'Rang', 'ttleague' ),
-						'class' => 'ttl-col-rank',
-					),
-					array(
-						'label'      => __( 'Spieler', 'ttleague' ),
-						'primary'    => true,
-						'hide_label' => true,
-					),
-					array( 'label' => __( 'Club', 'ttleague' ) ),
-					array(
-						'label' => __( '1. Runde', 'ttleague' ),
-						'abbr'  => __( 'R1', 'ttleague' ),
-						'class' => 'ttl-num',
-					),
-					array(
-						'label' => __( '2. Runde', 'ttleague' ),
-						'abbr'  => __( 'R2', 'ttleague' ),
-						'class' => 'ttl-num',
-					),
-					array(
-						'label' => __( '3. Runde', 'ttleague' ),
-						'abbr'  => __( 'R3', 'ttleague' ),
-						'class' => 'ttl-num',
-					),
-					array(
-						'label' => __( 'Punkte total', 'ttleague' ),
-						'abbr'  => __( 'Total', 'ttleague' ),
-						'class' => 'ttl-num ttl-col-points',
-					),
-					array(
-						'label' => __( 'Sätze', 'ttleague' ),
-						'class' => 'ttl-num',
-					),
+					'label' => __( 'Rang', 'ttleague' ),
+					'class' => 'ttl-col-rank',
 				),
+				array(
+					'label'      => __( 'Spieler', 'ttleague' ),
+					'primary'    => true,
+					'hide_label' => true,
+				),
+				array( 'label' => __( 'Club', 'ttleague' ) ),
+			);
+			foreach ( $regular as $r ) {
+				$columns[] = array(
+					/* translators: %d: Runde. */
+					'label' => sprintf( __( '%d. Runde', 'ttleague' ), $r ),
+					/* translators: %d: Runde, Kurzform für enge Spalten. */
+					'abbr'  => sprintf( __( 'R%d', 'ttleague' ), $r ),
+					'class' => 'ttl-num',
+				);
+			}
+			$columns[] = array(
+				'label' => __( 'Punkte total', 'ttleague' ),
+				'abbr'  => __( 'Total', 'ttleague' ),
+				'class' => 'ttl-num ttl-col-points',
+			);
+			$columns[] = array(
+				'label' => __( 'Sätze', 'ttleague' ),
+				'class' => 'ttl-num',
+			);
+			$out      .= '<h3 class="ttl-subtitle">' . esc_html( $label ) . '</h3>' . Html::table(
+				$columns,
 				$rows,
 				/* translators: %s: Kategorie. */
 				array( 'caption' => sprintf( __( 'Gesamtrangliste %s', 'ttleague' ), $label ) )
 			);
 		}
-		/* translators: %d: Anzahl Finalplätze. */
-		$out .= '<p class="ttl-footnote">' . esc_html( sprintf( __( 'Punkte der Runden 1 bis 3 addiert; bei Gleichstand entscheiden Satz- und Ballquotient, sonst das Los. Die besten %d jeder Kategorie sind für die Finalrunde qualifiziert.', 'ttleague' ), $finalists ) ) . '</p>';
+		/* translators: 1: Anzahl reguläre Runden, 2: Anzahl Finalplätze. */
+		$out .= '<p class="ttl-footnote">' . esc_html( sprintf( __( 'Punkte der Runden 1 bis %1$d addiert; bei Gleichstand entscheiden Satz- und Ballquotient, sonst das Los. Die besten %2$d jeder Kategorie sind für die Finalrunde qualifiziert.', 'ttleague' ), count( $regular ), $finalists ) ) . '</p>';
 		return $out;
 	}
 }

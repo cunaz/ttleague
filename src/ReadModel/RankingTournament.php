@@ -23,8 +23,15 @@ use TTLeague\ReadModel\Support\Sql;
  * Siege und Sätze einer Gruppe rechnet GroupRanking aus den Partien. Rang und Punkte
  * kommen aus rl_group_player (offiziell; bei Gleichstand teilt die TK Punkte, z. B. 5.5);
  * fehlen sie, gelten die mit GroupRanking berechneten Werte. Die Gesamtrangliste addiert
- * die gespeicherten Punkte der Runden 1 bis 3 pro Kategorie (float) und ordnet mit
- * FinalQualification.
+ * die gespeicherten Punkte aller regulären Runden pro Kategorie (float) und ordnet mit
+ * FinalQualification. Regulär ist jede Runde, die nicht die Finalrunde ist (is_final); feste
+ * Rundennummern kennt das Lesemodell nicht. Dieselbe Regel gilt im Dienst
+ * (RankingTournament\Standings) für Export und Finalqualifikation.
+ *
+ * «regular_rounds» nennt die Nummern der regulären Runden für die Spalten der Gesamtrangliste:
+ * die vorhandenen, aufgefüllt bis zur Zahl der Runden laut Reglement (competition.format_json
+ * «regular_rounds», Standard REGULAR_ROUNDS). So zeigt eine laufende Saison von Anfang an alle
+ * Spalten.
  *
  * Runden mit Status «planned» sind ein Vorschlag der TK und fehlen hier ganz: weder die Runde
  * noch ihre Gruppen, Personen oder Partien erscheinen. Freigegebene Runden («published»)
@@ -32,10 +39,13 @@ use TTLeague\ReadModel\Support\Sql;
  */
 final class RankingTournament {
 
+	/** Reguläre Runden laut Reglement, wenn competition.format_json nichts anderes sagt. */
+	public const REGULAR_ROUNDS = 3;
+
 	public function __construct( private readonly Db $db, private readonly Cache $cache, private readonly Seasons $seasons ) {}
 
 	/**
-	 * @return array{competition:array{id:int,name:string},rounds:list<array<string,mixed>>,overall:array<int,list<array<string,mixed>>>,finalists:int}|null
+	 * @return array{competition:array{id:int,name:string},rounds:list<array<string,mixed>>,regular_rounds:list<int>,overall:array<int,list<array<string,mixed>>>,finalists:int}|null
 	 */
 	public function get( int $season_id ): ?array {
 		return $this->cache->remember(
@@ -50,7 +60,7 @@ final class RankingTournament {
 	 */
 	private function load( int $season_id ): ?array {
 		$competition = $this->db->get_row(
-			"SELECT id, name FROM {$this->db->table( 'competition' )} WHERE season_id = %d AND type = 'RL' ORDER BY id LIMIT 1",
+			"SELECT id, name, format_json FROM {$this->db->table( 'competition' )} WHERE season_id = %d AND type = 'RL' ORDER BY id LIMIT 1",
 			array( $season_id )
 		);
 		if ( null === $competition ) {
@@ -190,14 +200,45 @@ final class RankingTournament {
 		unset( $round );
 
 		return array(
-			'competition' => array(
+			'competition'    => array(
 				'id'   => $competition_id,
 				'name' => (string) $competition['name'],
 			),
-			'rounds'      => array_values( $rounds ),
-			'overall'     => $this->overall( array_values( $rounds ), $rules ),
-			'finalists'   => $rules->rl_finalists,
+			'rounds'         => array_values( $rounds ),
+			'regular_rounds' => self::regular_rounds( array_values( $rounds ), json_decode( (string) $competition['format_json'], true ) ),
+			'overall'        => $this->overall( array_values( $rounds ), $rules ),
+			'finalists'      => $rules->rl_finalists,
 		);
+	}
+
+	/**
+	 * Nummern der regulären Runden für die Spalten der Gesamtrangliste: von 1 bis zur höchsten
+	 * vorhandenen regulären Runde, mindestens bis zur Zahl der Runden laut Reglement, ohne die
+	 * Nummer der Finalrunde.
+	 *
+	 * @param list<array<string,mixed>> $rounds Öffentliche Runden.
+	 * @param mixed                     $format Inhalt von competition.format_json.
+	 * @return list<int>
+	 */
+	private static function regular_rounds( array $rounds, mixed $format ): array {
+		$planned = is_array( $format ) && is_numeric( $format['regular_rounds'] ?? null ) && (int) $format['regular_rounds'] >= 1 ? (int) $format['regular_rounds'] : self::REGULAR_ROUNDS;
+		$highest = 0;
+		$final   = null;
+		foreach ( $rounds as $round ) {
+			if ( $round['is_final'] ) {
+				$final = $round['round_no'];
+			} else {
+				$highest = max( $highest, $round['round_no'] );
+			}
+		}
+		$numbers = array();
+		$last    = max( $planned, $highest );
+		for ( $number = 1; $number <= $last; $number++ ) {
+			if ( $number !== $final ) {
+				$numbers[] = $number;
+			}
+		}
+		return $numbers;
 	}
 
 	/**
@@ -273,7 +314,7 @@ final class RankingTournament {
 	}
 
 	/**
-	 * Gesamtrangliste pro Kategorie über die Runden 1 bis 3.
+	 * Gesamtrangliste pro Kategorie über alle regulären Runden (jede Runde ausser der Finalrunde).
 	 *
 	 * @param list<array<string,mixed>> $rounds Runden mit Gruppen.
 	 * @return array<int,list<array<string,mixed>>>
@@ -283,7 +324,7 @@ final class RankingTournament {
 		$players = array();
 		$detail  = array();
 		foreach ( $rounds as $round ) {
-			if ( $round['is_final'] || $round['round_no'] > 3 ) {
+			if ( $round['is_final'] ) {
 				continue;
 			}
 			foreach ( $round['categories'] as $category => $groups ) {

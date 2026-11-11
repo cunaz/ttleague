@@ -34,7 +34,75 @@ final class RoundsTest extends RlTestCase {
 		$this->assert_fails( 422, fn() => $rounds->create( $this->tk, $this->id['competition'], '2026-10-22', '2026-10-25' ) );
 		$final = $rounds->create( $this->tk, $this->id['competition'], '2026-10-23', '2026-10-25', true );
 		self::assertTrue( $this->repo()->round( $final )['is_final'] );
+		// Die Finalrunde ist die letzte Runde: danach weder eine reguläre noch eine zweite Finalrunde.
 		$this->assert_fails( 409, fn() => $rounds->create( $this->tk, $this->id['competition'], '2026-12-07', '2026-12-10' ) );
+		$this->assert_fails( 409, fn() => $rounds->create( $this->tk, $this->id['competition'], '2026-12-07', '2026-12-10', true ) );
+		self::assertCount( 3, $this->repo()->rounds( $this->id['competition'] ) );
+		// Auch nachträglich wird keine frühere Runde zur Finalrunde.
+		$this->assert_fails( 422, fn() => $rounds->reschedule( $this->tk, $first, '2026-09-21', '2026-09-24', true ) );
+		self::assertSame( array( false, false, true ), array_column( $this->repo()->rounds( $this->id['competition'] ), 'is_final' ) );
+	}
+
+	public function test_four_regular_rounds_count_the_same_in_service_and_public_view(): void {
+		// Regulär ist jede Runde vor der Finalrunde, auch eine vierte. In der vierten Runde gewinnt
+		// die Person an Position 4 alles: Wer sie nicht zählt, erhält eine andere Rangliste.
+		$this->seed( array( 'rl_finalists' => 2 ) );
+		$this->register( array( 's1', 's2', 'w1', 'w2' ) );
+		$rounds  = $this->rounds();
+		$members = array();
+		foreach ( array( '2026-09-21', '2026-10-19', '2026-11-16', '2026-12-14' ) as $number => $monday ) {
+			$round = $this->round( $monday );
+			self::assertSame( $number + 1, $this->repo()->round( $round )['round_no'] );
+			$rounds->propose( $this->tk, $round );
+			$rounds->publish( $this->tk, $round );
+			$group = $this->repo()->groups( $round )[0];
+			$sheet = $this->sheet( $group['id'] );
+			if ( 3 === $number ) {
+				$members = array_column( $group['members'], 'player_id' );
+				foreach ( \TTLeague\RankingTournament\Sheet::order( $members ) as $i => $game ) {
+					// Die erstgenannte Person hat die kleinere Position und gewinnt, ausser gegen Position 4.
+					$wins                           = $game['b'] !== $members[3];
+					$sheet['games'][ $i ]['sets_a'] = $wins ? 3 : 0;
+					$sheet['games'][ $i ]['sets_b'] = $wins ? 0 : 3;
+				}
+			}
+			$this->entry()->save( $group['id'], $sheet, $this->tk );
+			$rounds->close( $this->tk, $round );
+		}
+
+		$service = ( new Standings( $this->repo() ) )->overall( $this->repo()->competition( $this->id['competition'] ) )[1];
+		$model   = new \TTLeague\ReadModel\ReadModel( $this->db, new \TTLeague\ReadModel\Cache\NullCache() );
+		$public  = $model->ranking->get( $this->id['season'] );
+		self::assertSame( array( 1, 2, 3, 4 ), $public['regular_rounds'] );
+		self::assertSame( array( 1, 2, 3, 4 ), array_keys( $service[0]['rounds'] ), 'Der Dienst zählt die vierte Runde.' );
+		$columns = static fn( array $rows ): array => array_map(
+			static fn( array $row ): array => array(
+				'player'    => $row['player_id'] ?? $row['player']['id'],
+				'rank'      => $row['rank'],
+				'points'    => (float) $row['points'],
+				'rounds'    => array_map( 'floatval', $row['rounds'] ),
+				'sets'      => $row['sets_won'] . ':' . $row['sets_lost'],
+				'qualified' => $row['qualified'],
+			),
+			$rows
+		);
+		self::assertSame( $columns( $service ), $columns( $public['overall'][1] ), 'Dienst (Export, Finalqualifikation) und öffentliche Rangliste stimmen überein.' );
+		// Die Person an Position 4 hat mit 3 + 3 + 3 + 6 = 15 Punkten die an Position 3 (4 + 4 + 4 + 3) eingeholt.
+		$points = array_column( $service, 'points', 'player_id' );
+		self::assertSame( 15.0, $points[ $members[3] ] );
+		self::assertSame( 15.0, $points[ $members[2] ] );
+
+		// Auch die Ansicht zeigt vier Runden, und die Finalrunde nimmt die Besten aus allen vier.
+		$html = ( new \TTLeague\Frontend\Views\RankingView( $model, new \TTLeague\Frontend\Support\Urls( 'https://liga.example/' ) ) )->render( array() );
+		self::assertStringContainsString( 'Gesamtrangliste nach 4 Runden', $html );
+		self::assertStringContainsString( '>R4<', $html );
+		$final = $this->round( '2027-01-18', true );
+		$rounds->propose( $this->tk, $final );
+		$finalists = array_column( $this->repo()->groups( $final )[0]['members'], 'player_id' );
+		sort( $finalists );
+		$expected = array_column( array_slice( $service, 0, 2 ), 'player_id' );
+		sort( $expected );
+		self::assertSame( $expected, $finalists );
 	}
 
 	public function test_proposal_is_saved_as_planned_groups(): void {

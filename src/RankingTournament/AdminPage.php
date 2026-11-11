@@ -418,7 +418,7 @@ final class AdminPage {
 			. '<button type="submit" class="button button-primary">' . esc_html__( 'Gruppe speichern', 'ttleague' ) . '</button></form>'
 			. '<div class="ttl-tk-filter">'
 			. ( $entered
-				? self::button( 'group_reset', $id, $round['id'], __( 'Gruppenzettel zurücksetzen', 'ttleague' ), false )
+				? self::reset_form( $id, $round['id'] )
 				: self::button( 'group_delete', $id, $round['id'], __( 'Gruppe löschen', 'ttleague' ), false ) )
 			. '</div></details>';
 		return $out;
@@ -510,6 +510,19 @@ final class AdminPage {
 			. '<input type="hidden" name="id" value="' . esc_attr( (string) $id ) . '">'
 			. ( $round > 0 ? '<input type="hidden" name="round" value="' . esc_attr( (string) $round ) . '">' : '' )
 			. wp_nonce_field( AdminActions::nonce( $task, $id ), '_wpnonce', true, false );
+	}
+
+	/**
+	 * Formular «Gruppenzettel zurücksetzen». Das Zurücksetzen löscht alle erfassten Partien der
+	 * Gruppe; ohne JavaScript bestätigt die TK das mit einem Pflicht-Kontrollkästchen, das auch
+	 * die Aktion prüft.
+	 */
+	private static function reset_form( int $group_id, int $round_id ): string {
+		$field = 'ttl-rl-reset-' . $group_id;
+		return '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="ttl-tk-inline">' . self::hidden( 'group_reset', $group_id, $round_id )
+			. '<input type="checkbox" id="' . esc_attr( $field ) . '" name="confirm" value="1" required> '
+			. '<label for="' . esc_attr( $field ) . '">' . esc_html__( 'Alle erfassten Partien dieser Gruppe löschen', 'ttleague' ) . '</label> '
+			. '<button type="submit" class="button">' . esc_html__( 'Gruppenzettel zurücksetzen', 'ttleague' ) . '</button></form>';
 	}
 
 	/**

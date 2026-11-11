@@ -88,6 +88,89 @@ final class RankingRoundStatusTest extends IntegrationTestCase {
 		self::assertStringNotContainsString( 'abgemeldet', $html );
 	}
 
+	public function test_imported_season_with_three_rounds_and_final_looks_as_before(): void {
+		// Wie importiert: Runden 1 bis 3 und die Finalrunde 4 (is_final), alle «closed». Im Final spielt Muster gegen Exempel.
+		$rl      = (int) $this->db->get_var( "SELECT competition_id FROM {$this->db->table( 'rl_round' )} WHERE id = %d", array( $this->round_2 ) );
+		$exempel = (int) $this->db->get_var( "SELECT player_id FROM {$this->db->table( 'rl_group_player' )} WHERE rl_group_id = %d AND player_id <> %d ORDER BY id LIMIT 1", array( $this->group_2, $this->muster ) );
+		$before  = $this->model->ranking->get( $this->ids['season_new'] );
+		$this->db->insert(
+			'rl_round',
+			array(
+				'competition_id' => $rl,
+				'round_no'       => 3,
+				'date_from'      => '2027-01-18',
+				'date_to'        => '2027-01-21',
+			)
+		);
+		$final = $this->db->insert(
+			'rl_round',
+			array(
+				'competition_id' => $rl,
+				'round_no'       => 4,
+				'date_from'      => '2027-03-13',
+				'date_to'        => '2027-03-13',
+				'is_final'       => 1,
+			)
+		);
+		$group = $this->db->insert(
+			'rl_group',
+			array(
+				'rl_round_id' => $final,
+				'category'    => 1,
+				'group_no'    => 1,
+				'start_at'    => '2027-03-13 14:00:00',
+			)
+		);
+		foreach ( array( $this->muster, $exempel ) as $player ) {
+			$this->db->insert(
+				'rl_group_player',
+				array(
+					'rl_group_id' => $group,
+					'player_id'   => $player,
+					'status'      => 'played',
+				)
+			);
+		}
+		( new Seeder( $this->db ) )->rl_game( $group, 1, $this->muster, $exempel, '3:0', '2027-03-13 14:00:00' );
+
+		$rl_data = $this->model->ranking->get( $this->ids['season_new'] );
+		self::assertSame( array( 1, 2, 3, 4 ), array_column( $rl_data['rounds'], 'round_no' ) );
+		self::assertSame( array( 1, 2, 3 ), $rl_data['regular_rounds'], 'Spalten der Gesamtrangliste: die regulären Runden, ohne die Finalrunde.' );
+		self::assertSame( $before['overall'], $rl_data['overall'], 'Die Finalrunde zählt nicht zur Gesamtrangliste.' );
+		$html = $this->view();
+		self::assertStringContainsString( '>Gesamtrangliste nach drei Runden</h2>', $html );
+		self::assertStringContainsString( '>R1<', $html );
+		self::assertStringContainsString( '>R3<', $html );
+		self::assertStringNotContainsString( '>R4<', $html );
+		self::assertStringContainsString( 'Punkte der Runden 1 bis 3 addiert;', $html );
+		self::assertStringContainsString( 'Finalrunde', $html );
+		// Die Gesamtrangliste steht vor der Finalrunde.
+		self::assertLessThan( strpos( $html, 'id="ttl-runde-4"' ), strpos( $html, 'id="ttl-gesamt-title"' ) );
+	}
+
+	public function test_season_in_progress_shows_all_columns_of_the_regulations(): void {
+		// Zwei Runden vorhanden, laut Reglement drei: Die dritte Spalte steht von Anfang an da.
+		self::assertSame( array( 1, 2, 3 ), $this->model->ranking->get( $this->ids['season_new'] )['regular_rounds'] );
+		self::assertStringContainsString( '>R3<', $this->view() );
+
+		// Ein Turnier mit zwei regulären Runden (format_json) und der Finalrunde als dritter Runde.
+		$rl = (int) $this->db->get_var( "SELECT competition_id FROM {$this->db->table( 'rl_round' )} WHERE id = %d", array( $this->round_2 ) );
+		$this->db->update( 'competition', array( 'format_json' => '{"regular_rounds":2}' ), array( 'id' => $rl ) );
+		$this->db->insert(
+			'rl_round',
+			array(
+				'competition_id' => $rl,
+				'round_no'       => 3,
+				'is_final'       => 1,
+			)
+		);
+		self::assertSame( array( 1, 2 ), $this->model->ranking->get( $this->ids['season_new'] )['regular_rounds'] );
+		$html = $this->view();
+		self::assertStringContainsString( 'Gesamtrangliste nach 2 Runden', $html );
+		self::assertStringNotContainsString( '>R3<', $html );
+		self::assertStringContainsString( 'Punkte der Runden 1 bis 2 addiert;', $html );
+	}
+
 	public function test_planned_round_appears_nowhere(): void {
 		$before = $this->model->ranking->get( $this->ids['season_new'] );
 		$this->set_status( 'planned', 'scheduled' );
