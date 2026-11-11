@@ -48,7 +48,7 @@ Alle Eingaben sind unveränderliche Wertobjekte; ungültige Werte lösen eine `I
 | `VenueClosure` | `venue_id`, `from`, `to`, `reason` | ganze Kalendertage, erster und letzter Tag eingeschlossen; Uhrzeiten zählen nicht |
 | `ScheduleInput` | `groups`, `first_leg_weeks`, `second_leg_weeks`, `closures`, `venue_tables` | siehe unten |
 
-**Spielwochen.** Die TK wählt die Spielwochen selbst und lässt Ferien und die Wochen des Ranglistenturniers weg. Jede Spielwoche ist ihr Montag als `DateTimeImmutable`. Vor- und Rückrunde haben **getrennte Listen**: So beginnt die Rückrunde für alle Gruppen in derselben Woche, auch wenn eine Gruppe mit sechs Teams (fünf Runden pro Halbserie) früher fertig ist als eine mit sieben (sieben Runden). Jede Liste muss aufsteigend und ohne Wiederholung sein, und die Rückrunde beginnt nach der letzten Spielwoche der Vorrunde. Wochen, die eine Gruppe nicht braucht, bleiben Reserve und sind Kandidaten für Ausweichvorschläge.
+**Spielwochen.** Die TK wählt die Spielwochen selbst und lässt Ferien und die Wochen des Ranglistenturniers weg. Jede Spielwoche ist ihr Montag als `DateTimeImmutable`. Vor- und Rückrunde haben **getrennte Listen**: So liegt die Rückrunde für alle Gruppen in denselben Spielwochen, auch wenn eine Gruppe mit sechs Teams (fünf Runden pro Halbserie) weniger Runden hat als eine mit sieben (sieben Runden). Jede Liste muss aufsteigend und ohne Wiederholung sein, und die Rückrunde beginnt nach der letzten Spielwoche der Vorrunde. Meldet die TK genau so viele Spielwochen, wie eine Gruppe Runden hat, fällt Runde n in die n-te Spielwoche. Meldet sie mehr, verteilt der Generator die Runden jeder Gruppe gleichmässig über alle Spielwochen der Halbserie und versetzt die Gruppen gegeneinander (siehe «Verteilung auf die Spielwochen»). Wochen, in denen eine Gruppe nicht spielt, sind Kandidaten für Ausweichvorschläge.
 
 **Tische.** `venue_tables` ordnet der Lokal-ID die Anzahl Tische zu (ganze Zahl ab 1). `null` oder kein Eintrag heisst «unbekannt». Wie viele Tische eine Begegnung braucht, ist ein Parameter des Konstruktors von `SchedulePlanner` und `ScheduleChecker` (Standard 2).
 
@@ -102,6 +102,23 @@ Gibt es keinen freien Termin, bleibt die Liste der Vorschläge leer. Das ist der
 
 Jeder Vorschlag gilt für sich und gegen den geprüften Plan. Bei einer Kapazitätskollision mit zwei Begegnungen können beide denselben Abend vorgeschlagen bekommen; es genügt, eine zu verlegen. Nach jeder Verlegung wird neu geprüft.
 
+## Verteilung auf die Spielwochen
+
+`ScheduleGenerator::weeks_for( $weeks, $rounds, $position )` wählt für eine Gruppe pro Halbserie eine Spielwoche je Runde:
+
+- **Gleich viele Spielwochen wie Runden:** Runde n fällt in die n-te Spielwoche.
+- **Mehr Spielwochen als Runden:** Die Runden werden gleichmässig über alle Spielwochen verteilt, die erste Runde früh, die letzte spät. Passen die Runden mehrfach in die Spielwochen (aufgerundet `p` Mal), beginnt jede Gruppe um einen Bruchteil des Abstands später als die vorherige: Gruppe 1 in Phase 0, Gruppe 2 in Phase 1, bis `p − 1`, dann wieder von vorn. Massgebend ist die Reihenfolge der Gruppen in der Eingabe.
+
+Beispiel mit 18 Spielwochen und 7 Runden (drei Phasen), Nummern der Spielwochen ab 1:
+
+| Gruppe | Spielwochen |
+|---|---|
+| 1 und 4 | 1, 3, 6, 8, 11, 13, 16 |
+| 2 | 1, 4, 7, 9, 12, 14, 17 |
+| 3 | 2, 5, 7, 10, 13, 15, 18 |
+
+Der Grund: Mannschaften desselben Clubs spielen meist in verschiedenen Gruppen und am selben Heimspieltag. Spielen alle Gruppen in denselben Wochen, treffen ihre Heimspiele regelmässig auf denselben Abend, und Ersatzspieler fehlen. Mit dem Versatz sinkt die Zahl dieser Hinweise im Entwurf deutlich. Harte Kollisionen entstehen dadurch nicht neu; der Prüfer bleibt derselbe.
+
 ## Abgleich zweier Pläne
 
 `ScheduleComparator::compare()` ordnet die Begegnungen zweier Pläne über Heim, Gast und Halbserie einander zu und zählt in `ScheduleComparison`:
@@ -119,7 +136,7 @@ Die Anteile beziehen sich auf `matched` und sind `null`, wenn keine Begegnung zu
 ## Grenzen
 
 - Der Entwurf optimiert nicht. Er verteilt keine Runden um, um Kollisionen zu vermeiden, und tauscht kein Heimrecht.
-- Gruppen mit weniger Runden belegen die ersten Spielwochen jeder Halbserie. Wer eine Gruppe über die ganze Halbserie strecken will, verlegt von Hand.
+- Welche Gruppe in welcher Woche spielt, folgt allein aus der Reihenfolge der Gruppen und der Zahl der Spielwochen. Wer es anders will, meldet genau so viele Spielwochen wie Runden oder verlegt von Hand.
 - Vorschläge bleiben am Heimspieltag, im Lokal der Begegnung und in der eigenen Halbserie. Andere Wochentage, andere Lokale und Wochen ausserhalb der gemeldeten Spielwochen schlägt die Prüfung nicht vor.
 - Die Domäne kennt das heutige Datum nicht. Wird ein laufender Plan geprüft, kann ein früherer Ausweichtermin in der Vergangenheit liegen; die Anwendung muss solche Vorschläge ausblenden.
 - Die Kapazität gilt pro Kalendertag, unabhängig von der Anspielzeit. Zwei Begegnungen nacheinander am selben Abend zählen wie zwei gleichzeitige.
@@ -134,7 +151,7 @@ Unit-Tests ohne WordPress und ohne Datenbank in `tests/Unit/Domain/`, gemeinsame
 | Datei | Inhalt |
 |---|---|
 | `ScheduleInputTest` | Wertobjekte: Heimspieltag, Anspielzeit, Gruppen, Spielwochen (Montag, aufsteigend, Rückrunde nach Vorrunde), Sperre am ersten und letzten Tag, unbekannte Tischzahl, Woche über den Jahreswechsel |
-| `ScheduleGeneratorTest` | 6 und 7 Teams, Vor- und Rückrunde gespiegelt, Termin aus Spielwoche und Heimspieltag, Reservewochen, Jahreswechsel, zu wenige Spielwochen, gleiche Eingabe ergibt gleichen Plan |
+| `ScheduleGeneratorTest` | 6 und 7 Teams, Vor- und Rückrunde gespiegelt, Termin aus Spielwoche und Heimspieltag, Verteilung auf mehr Spielwochen als Runden und Versatz der Gruppen, Jahreswechsel, zu wenige Spielwochen, gleiche Eingabe ergibt gleichen Plan |
 | `ScheduleCheckerTest` | jede Kollisionsart mit und ohne Ausweichvorschlag, Suchreihenfolge, Sperre an den Grenzen, unbekannte Tischzahl, Tische pro Begegnung, Clubduell, Jahreswechsel, Reihenfolge des Berichts |
 | `SchedulePlannerTest` | Entwurf mit Bericht, Entwurf bleibt trotz Kollision unverändert, von Hand geänderter Plan wird neu geprüft, Vorschlag übernehmen |
 | `ScheduleComparatorTest` | gleicher Tag, gleiche Woche, gleicher Wochentag, Zuordnung über Heim, Gast und Halbserie, fehlende Gegenstücke, doppelte Paarungen |
