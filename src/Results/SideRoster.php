@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Results;
 
+use TTLeague\Domain\Cup\LineupRule;
 use TTLeague\Domain\Eligibility\Eligibility;
 use TTLeague\Domain\Eligibility\EligibilityChecker;
 use TTLeague\Domain\Eligibility\EligibilityReason;
@@ -21,6 +22,8 @@ final class SideRoster {
 	 * @param int|null                                                                                                                          $team_id       Meisterschaft: Team.
 	 * @param list<int>                                                                                                                         $entry_players Cup: gemeldete Spieler der Mannschaft.
 	 * @param string                                                                                                                            $name          Name der Mannschaft.
+	 * @param int|null                                                                                                                          $points_total  Cup: Punktesumme der Meldung.
+	 * @param array<int,string>                                                                                                                 $other_teams   Cup: Spieler => andere Cupmannschaft der Saison, in der er gemeldet ist oder für die er gespielt hat.
 	 */
 	public function __construct(
 		public readonly array $players,
@@ -28,6 +31,8 @@ final class SideRoster {
 		public readonly ?int $team_id,
 		public readonly array $entry_players = array(),
 		public readonly string $name = '',
+		public readonly ?int $points_total = null,
+		public readonly array $other_teams = array(),
 	) {}
 
 	public function check( int $player_id ): Eligibility {
@@ -39,6 +44,11 @@ final class SideRoster {
 		}
 		if ( in_array( $player_id, $this->entry_players, true ) ) {
 			return new Eligibility( true, EligibilityReason::Stamm, 0, null, __( 'Für die Cup-Mannschaft gemeldet.', 'ttleague' ) );
+		}
+		$other = LineupRule::blocked_by( $player_id, $this->entry_players, $this->other_teams );
+		if ( null !== $other ) {
+			/* translators: %s: Cupmannschaft */
+			return new Eligibility( false, EligibilityReason::BlockedBoundElsewhere, 0, null, sprintf( __( 'In der Cupmannschaft %s gemeldet oder eingesetzt; ein Spieler spielt in der Saison nur für eine Cupmannschaft (Art. 20.2).', 'ttleague' ), $other ) );
 		}
 		return new Eligibility( true, EligibilityReason::Substitute, 0, null, __( 'Nicht für diese Cup-Mannschaft gemeldet (Ersatz aus dem Club).', 'ttleague' ) );
 	}

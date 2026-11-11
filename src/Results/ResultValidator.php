@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Results;
 
+use TTLeague\Domain\Cup\LineupRule;
 use TTLeague\Domain\Eligibility\EligibilityReason;
 use TTLeague\Domain\Match\GameOrder;
 use TTLeague\Domain\Match\GameResult;
@@ -221,6 +222,10 @@ final class ResultValidator {
 				$sides[ $side ][] = $player_id;
 			}
 
+			if ( $roster->is_cup() ) {
+				$this->cup_lineup( $side, $roster, array_keys( $seen ), $lenient );
+			}
+
 			if ( count( $input->present( $side ) ) < 2 ) {
 				$this->error(
 					'lineup.' . $side,
@@ -236,6 +241,33 @@ final class ResultValidator {
 			$this->error( 'lineup', sprintf( __( '%s kann nicht für beide Seiten spielen.', 'ttleague' ), ( $this->names )( $player_id ) ) );
 		}
 		return $rows;
+	}
+
+	/**
+	 * Aufstellungsregel einer Cup-Mannschaft (Art. 20.1, Domain\Cup\LineupRule): mindestens ein
+	 * Spieler der ursprünglichen Meldung, Summe der Klassierungen höchstens die der Meldung.
+	 * Verstösse sind Fehler an der Seite; im nachsichtigen Modus (Korrektur der TK) Hinweise.
+	 * Ersatzspieler aus einer anderen Cup-Mannschaft (Art. 20.2) sperrt SideRoster::check().
+	 *
+	 * @param list<int> $player_ids Eingesetzte Spieler der Seite.
+	 */
+	private function cup_lineup( string $side, SideRoster $roster, array $player_ids, bool $lenient ): void {
+		$fielded = array();
+		foreach ( $player_ids as $player_id ) {
+			$fielded[ $player_id ] = $roster->players[ $player_id ]['classification'] ?? null;
+		}
+		foreach ( LineupRule::violations( $roster->entry_players, $roster->points_total, $fielded ) as $violation ) {
+			$message = LineupRule::NO_ORIGINAL === $violation
+				/* translators: %s: Cup-Mannschaft */
+				? sprintf( __( '%s: Mindestens ein Spieler der ursprünglichen Meldung muss spielen (Art. 20.1).', 'ttleague' ), $roster->name )
+				/* translators: 1: Cup-Mannschaft, 2: Summe der eingesetzten Spieler, 3: Punktesumme der Meldung */
+				: sprintf( __( '%1$s: Die Klassierungen der eingesetzten Spieler ergeben %2$d, die Meldung erlaubt höchstens %3$d (Art. 20.1).', 'ttleague' ), $roster->name, LineupRule::points( $fielded ), (int) $roster->points_total );
+			if ( $lenient ) {
+				$this->warnings[] = $message;
+			} else {
+				$this->error( 'lineup.' . $side, $message );
+			}
+		}
 	}
 
 	/**
