@@ -72,6 +72,14 @@ final class CupRepository {
 	}
 
 	/**
+	 * Saison zu einem Slug (z. B. «2026-27»), auch eine geplante.
+	 */
+	public function season_by_slug( string $slug ): ?int {
+		$id = $this->db->get_var( "SELECT id FROM {$this->db->table( 'season' )} WHERE slug = %s", array( $slug ) );
+		return null === $id ? null : (int) $id;
+	}
+
+	/**
 	 * @param array<string,mixed> $format Parameter der Konkurrenz.
 	 */
 	public function save_format( int $competition_id, array $format ): void {
