@@ -34,7 +34,15 @@ final class MyGames {
 		$actor    = new Actor( $context->user_id, $context->person_id, $context->is_tk );
 		$fixtures = Results::service()->my_fixtures( $actor );
 		wp_enqueue_style( EntryBlock::STYLE );
-		echo self::render( $fixtures, array( Results::class, 'entry_url' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render() escaped jede Ausgabe.
+		/**
+		 * Weitere Links zu einer Begegnung in «Meine Spiele», z. B. «Termin verschieben».
+		 * Fertiges, escaptes HTML.
+		 *
+		 * @param string              $html    Links.
+		 * @param array<string,mixed> $fixture Begegnung aus ResultService::my_fixtures().
+		 */
+		$actions = static fn( array $fixture ): string => (string) apply_filters( 'ttleague_my_games_actions', '', $fixture );
+		echo self::render( $fixtures, array( Results::class, 'entry_url' ), $actions ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render() escaped jede Ausgabe.
 	}
 
 	/**
@@ -42,8 +50,9 @@ final class MyGames {
 	 *
 	 * @param array{to_enter:list<array<string,mixed>>,to_confirm:list<array<string,mixed>>,upcoming:list<array<string,mixed>>} $fixtures Aus ResultService::my_fixtures().
 	 * @param callable(int):string                                                                                            $entry_url Adresse der Erfassungsseite.
+	 * @param (callable(array<string,mixed>):string)|null                                                                     $actions   Fertiges HTML weiterer Links zu einer Begegnung (Module).
 	 */
-	public static function render( array $fixtures, callable $entry_url ): string {
+	public static function render( array $fixtures, callable $entry_url, ?callable $actions = null ): string {
 		$lists = array(
 			'to_enter'   => array(
 				__( 'Zu erfassen', 'ttleague' ),
@@ -70,7 +79,7 @@ final class MyGames {
 			}
 			$out .= '<ul class="ttl-my-games__list" aria-labelledby="ttl-my-games-' . esc_attr( str_replace( '_', '-', $key ) ) . '">';
 			foreach ( $items as $fixture ) {
-				$out .= self::item( $fixture, $key, $entry_url );
+				$out .= self::item( $fixture, $key, $entry_url, $actions );
 			}
 			$out .= '</ul>';
 		}
@@ -81,9 +90,10 @@ final class MyGames {
 	 * Eine Begegnung mit Link auf die Erfassungsseite.
 	 *
 	 * @param array<string,mixed>  $fixture   Begegnung.
-	 * @param callable(int):string $entry_url Adresse der Erfassungsseite.
+	 * @param callable(int):string                        $entry_url Adresse der Erfassungsseite.
+	 * @param (callable(array<string,mixed>):string)|null $actions   Fertiges HTML weiterer Links (Module).
 	 */
-	private static function item( array $fixture, string $group, callable $entry_url ): string {
+	private static function item( array $fixture, string $group, callable $entry_url, ?callable $actions = null ): string {
 		$home  = 'home' === $fixture['side'];
 		$label = match ( $group ) {
 			'to_enter'   => __( 'Resultat erfassen', 'ttleague' ),
@@ -108,6 +118,7 @@ final class MyGames {
 			. '<span class="ttl-my-games__pairing">' . esc_html( $pairing ) . $score . '</span>'
 			. '<a class="ttl-button ttl-my-games__action' . ( 'upcoming' === $group ? ' ttl-button--secondary' : '' ) . '" href="' . esc_url( $entry_url( (int) $fixture['id'] ) ) . '">'
 			. esc_html( $label ) . '<span class="screen-reader-text">: ' . esc_html( $pairing ) . '</span></a>'
+			. ( null === $actions ? '' : $actions( $fixture ) )
 			. '</li>';
 	}
 }
