@@ -13,7 +13,7 @@ Alles arbeitet auf der **aktiven** Saison. Die Seite im Backend heisst «Spielbe
 | `current_value` | Klassierung dieser Saison (`player_season.classification`) |
 | `rating` | Wertungszahl beim Berechnen (`player_rating.rating`); 0 für Spieler ohne Wertungszahl |
 | `games_count` | gewertete Spiele in dieser Saison (Einzel und Doppel, wie in der Wertungszahl) |
-| `proposed` | `ClassificationScale::from_rating()` mit `rating_points_per_class`; bei weniger als `classification_min_games` Spielen und ohne Wertungszahl die bisherige Klassierung |
+| `proposed` | `ClassificationScale::from_rating()` mit `rating_points_per_class`; bei weniger als `classification_min_games` Spielen oder ohne Wertungszahl die bisherige Klassierung |
 
 - **Gewertete Spiele** sind die Einträge in `rating_event` des Spielers, deren Spiel zu dieser Saison gehört: über die Begegnung (`fixture.competition_id`) oder die Gruppe des Ranglistenturniers (`rl_group` → `rl_round.competition_id`). Eine Abfrage zählt für alle Spieler. Was nicht in die Wertungszahl eingeht (kampflos, nicht gespielt, Doppel mit Gewicht 0), zählt auch hier nicht.
 - **Ohne Wertungszahl** (kein Eintrag in `player_rating`): Die Spalte `rating` ist nicht leer erlaubt, deshalb steht dort 0 bei 0 Spielen. Seite und Export zeigen dann keinen Wert.
