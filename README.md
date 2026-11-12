@@ -26,7 +26,7 @@ Das Plugin enthält nur generischen Code und keine Personendaten. Alles, was zu 
 
 ## Entwicklung
 
-Voraussetzungen: PHP 8.2 oder neuer, Composer, für Integrationstests MariaDB oder MySQL.
+Voraussetzungen: PHP 8.2 oder neuer, Composer, für Integrationstests MariaDB oder MySQL. Die JavaScript-Tests und die Vergleichstests zwischen PHP und JavaScript verwenden Node.js 24; das Plugin selbst braucht Node nicht.
 
 Nach dem Klonen die Git-Hooks aktivieren. Sie verhindern, dass KI-Verläufe, Zugangsdaten, lokale Pfade oder Links auf KI-Sitzungen versioniert werden; dieselbe Prüfung läuft in der CI:
 
@@ -37,10 +37,13 @@ git config core.hooksPath .githooks
 ```bash
 composer install
 composer test
+composer test:js
 composer lint
 ```
 
 Integrationstests verbinden sich standardmässig mit `mysql:host=127.0.0.1;dbname=ttleague_test` (Benutzer und Passwort `ttleague`) und werden übersprungen, wenn keine Datenbank erreichbar ist. Andere Verbindungen über `TTLEAGUE_TEST_DB_DSN`, `TTLEAGUE_TEST_DB_USER`, `TTLEAGUE_TEST_DB_PASS`.
+
+`composer test -- --fail-on-skipped` verlangt wie die CI einen vollständigen Lauf mit Datenbank und Node. `composer test:js` prüft die Browserlogik für Resultatentwürfe und Service Worker mit dem Test-Runner von Node, ohne zusätzliche npm-Pakete. Diese Tests ersetzen keinen Test im Browser. Test- und Lint-Befehle haben kein Composer-Prozesszeitlimit; umfangreiche Datenbanktests dürfen auch länger als fünf Minuten laufen.
 
 WordPress lokal mit dem Plugin starten, wenn Docker verfügbar ist:
 

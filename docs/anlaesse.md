@@ -16,6 +16,8 @@ Eingaben (`Events\EventInput`): Titel Pflicht, höchstens 160 Zeichen; Ort höch
 
 **Zeit:** `starts_at`, `ends_at` und `deadline` sind Ortszeit der Website, `registration.created_at` ist UTC. «Jetzt» kommt von `Clock` und wird in der Zeitzone der Website verglichen. Genau zum Anmeldeschluss ist die Anmeldung noch möglich, eine Sekunde danach nicht mehr. Ohne Anmeldeschluss gilt der Beginn als Frist.
 
+Nach dem Erlangen der Sperre des Anlasses wird die Uhr erneut gelesen. Eine während der Wartezeit verstrichene Frist verhindert die An- oder Abmeldung; bei einer neuen Anmeldung bestimmt die Zeit nach der Sperre auch die Reihenfolge auf der Warteliste.
+
 **Saison:** `event.season_id` bestimmt, in welcher Saison die Clubzugehörigkeit gilt (für TK-Chefs und die Clubspalte der Teilnehmerliste). Ohne Saison gilt die aktive. Neue Anlässe schlagen die aktive Saison vor.
 
 ## Anmeldung

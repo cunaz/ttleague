@@ -49,9 +49,19 @@
         }
     },
     "scripts": {
-        "test": "phpunit",
-        "test:wp": "phpunit -c phpunit-wp.xml.dist",
-        "lint": "phpcs",
+        "test": [
+            "Composer\\Config::disableProcessTimeout",
+            "phpunit"
+        ],
+        "test:wp": [
+            "Composer\\Config::disableProcessTimeout",
+            "phpunit -c phpunit-wp.xml.dist"
+        ],
+        "test:js": "node --test tests/JavaScript/*.test.cjs",
+        "lint": [
+            "Composer\\Config::disableProcessTimeout",
+            "phpcs"
+        ],
         "lint:fix": "phpcbf",
         "setup-phpcs": "phpcs --config-set installed_paths ../../wp-coding-standards/wpcs,../../phpcsstandards/phpcsutils,../../phpcsstandards/phpcsextra",
         "post-install-cmd": [

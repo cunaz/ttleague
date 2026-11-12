@@ -7,6 +7,7 @@ Dieses Dokument beschreibt, wie die Daten in den Tabellen `wp_ttl_*` abgelegt we
 - Alle Zugriffe laufen über `TTLeague\Infrastructure\Database\Db` (Produktion: `WpdbDb::from_global()`, Tests: `PdoDb`).
 - SQL mit Platzhaltern wie bei `$wpdb->prepare()`: `%d`, `%s`, `%f`, `%%` für ein Prozentzeichen. Tabellennamen über `$db->table( 'fixture' )`.
 - Ergebnisse sind assoziative Arrays mit String-Werten, `NULL` bleibt `null`.
+- Verschachtelte `transaction()`-Aufrufe auf derselben `Db` gehören zu einer gemeinsamen Transaktion. Scheitert ein innerer Aufruf, wird die gesamte Transaktion zurückgerollt, auch wenn die innere Ausnahme abgefangen wird. Ein Wiederholungsversuch beginnt erst nach dem Ende des äusseren Aufrufs.
 
 ## Zeit
 
