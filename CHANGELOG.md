@@ -5,6 +5,9 @@ Alle nennenswerten Änderungen an ttleague werden hier festgehalten.
 ## [Unreleased]
 
 ### Korrigiert
+- Fotos der Spielberichte sind auf fünf gespeicherte Anhänge pro Begegnung begrenzt, einschliesslich Historie und Papierkorb; eine Datenbanksperre verhindert parallele Überschreitungen. Bestehende Belege werden nicht automatisch gelöscht.
+- Die Rate-Limits für Anmeldelinks und Club-Einladungen zählen atomar in der Datenbank statt über Transients; gleichzeitige Anfragen können die Grenzen nicht mehr überschreiten. Schemaversion 2026111201 ergänzt die Zählertabelle und deren tägliche Bereinigung.
+- Die Sitzungsdauer von 60 Tagen gilt nur für den Magic-Link-Login gewöhnlicher Spielerkonten, nicht für normale WordPress-Anmeldungen oder privilegierte Konten.
 - Datenbanktransaktionen rollen auch dann vollständig zurück, wenn eine innere Ausnahme abgefangen wurde. Ein fehlgeschlagener Commit beschädigt den Zustand für die nächste Transaktion nicht; wpdb bewahrt die ursprüngliche Fehlermeldung.
 - An- und Abmeldungen prüfen die Frist erneut mit der Zeit nach dem Erlangen der Datenbanksperre. Der Anmeldezeitpunkt stammt ebenfalls aus diesem Moment.
 - Hinweise auf verspätete oder frühe Resultaterfassung rechnen auch über die Zeitumstellung mit tatsächlich verstrichenen Stunden.
