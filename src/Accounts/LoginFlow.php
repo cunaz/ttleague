@@ -37,7 +37,6 @@ final class LoginFlow {
 		}
 		add_action( 'admin_post_' . self::CONSENT, array( self::class, 'handle_consent' ) );
 		add_action( 'admin_post_' . self::PROFILE, array( self::class, 'handle_profile' ) );
-		add_filter( 'auth_cookie_expiration', array( self::class, 'cookie_expiration' ), 10, 3 );
 		add_action( 'template_redirect', array( self::class, 'private_pages' ) );
 		add_filter( 'wp_robots', array( self::class, 'robots' ) );
 	}
@@ -135,7 +134,14 @@ final class LoginFlow {
 			exit;
 		}
 		wp_set_current_user( $user_id );
-		wp_set_auth_cookie( $user_id, true, is_ssl() );
+		$expiration = static fn( int $length, int $id, bool $remember ): int => $id === $user_id
+			? self::cookie_expiration( $length, $id, $remember ) : $length;
+		add_filter( 'auth_cookie_expiration', $expiration, 10, 3 );
+		try {
+			wp_set_auth_cookie( $user_id, true, is_ssl() );
+		} finally {
+			remove_filter( 'auth_cookie_expiration', $expiration, 10 );
+		}
 		do_action( 'wp_login', $user->user_login, $user ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- WordPress-Kernaktion.
 		Services::audit()->record( 'person', $person, 'login', $user_id, null, null, 'magic_link' );
 
@@ -198,10 +204,10 @@ final class LoginFlow {
 	}
 
 	/**
-	 * «Angemeldet bleiben» gilt 60 Tage.
+	 * Nur gewöhnliche Spielerkonten erhalten beim Anmeldelink 60 Tage.
 	 */
 	public static function cookie_expiration( int $length, int $user_id, bool $remember ): int {
-		return $remember ? self::SESSION_DAYS * DAY_IN_SECONDS : $length;
+		return $remember && ! AccountService::is_elevated( $user_id ) ? self::SESSION_DAYS * DAY_IN_SECONDS : $length;
 	}
 
 	/**

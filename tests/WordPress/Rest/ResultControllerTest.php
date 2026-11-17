@@ -215,6 +215,60 @@ final class ResultControllerTest extends TestCase {
 		self::assertNull( $this->fixture()['photo_attachment_id'] );
 	}
 
+	public function test_photo_history_limits_uploads_before_a_file_is_stored(): void {
+		$photos = array();
+		for ( $i = 0; $i < 5; ++$i ) {
+			$photos[] = self::factory()->attachment->create(
+				array(
+					'post_status' => 0 === $i ? 'trash' : 'private',
+					'meta_input'  => array( '_ttleague_fixture' => $this->league->id['f1'] ),
+				)
+			);
+		}
+		// Auch nach dem Zurücksetzen (kein aktuelles Foto) bleibt die Historie massgebend.
+		self::assertNull( $this->fixture()['photo_attachment_id'] );
+		wp_set_current_user( $this->users['captain_h1'] );
+		$this->assert_error( 409, 'ttl_conflict', $this->request( 'POST', 'photo' ) );
+		wp_set_current_user( $this->account( 'ttl_tk', 'tk@example.invalid' ) );
+		$this->assert_error( 409, 'ttl_conflict', $this->request( 'POST', 'photo' ) );
+		foreach ( $photos as $photo ) {
+			self::assertNotNull( get_post( $photo ), 'Belege nicht automatisch löschen' );
+		}
+		wp_delete_attachment( $photos[0], true );
+		$this->assert_error( 422, 'ttl_invalid', $this->request( 'POST', 'photo' ), 'Platz frei: erst jetzt fehlt die Datei' );
+	}
+
+	public function test_current_and_historical_photos_keep_their_access_rules(): void {
+		$file   = (string) tempnam( get_temp_dir(), 'ttl-photo' );
+		$photos = array();
+		try {
+			for ( $i = 0; $i < 5; ++$i ) {
+				$photo = self::factory()->attachment->create(
+					array(
+						'post_status' => 'private',
+						'meta_input'  => array( '_ttleague_fixture' => $this->league->id['f1'] ),
+					)
+				);
+				update_attached_file( $photo, $file );
+				$photos[] = $photo;
+			}
+			$this->db->update( 'fixture', array( 'photo_attachment_id' => $photos[4] ), array( 'id' => $this->league->id['f1'] ) );
+			wp_set_current_user( $this->users['captain_h1'] );
+			self::assertSame( 200, $this->request( 'GET', 'photo' )->get_status() );
+			$history = new \WP_REST_Request( 'GET', '/ttleague/v1/fixtures/' . $this->league->id['f1'] . '/photo' );
+			$history->set_param( 'attachment', $photos[0] );
+			$this->assert_error( 404, 'ttl_not_found', rest_get_server()->dispatch( $history ) );
+			wp_set_current_user( $this->users['captain_a1'] );
+			self::assertSame( 200, $this->request( 'GET', 'photo' )->get_status() );
+			wp_set_current_user( $this->account( 'ttl_tk', 'tk@example.invalid' ) );
+			self::assertSame( 200, rest_get_server()->dispatch( $history )->get_status(), 'TK sieht Belege auch bei vollem Kontingent' );
+			$this->db->update( 'fixture', array( 'photo_attachment_id' => null ), array( 'id' => $this->league->id['f1'] ) );
+			self::assertSame( 200, rest_get_server()->dispatch( $history )->get_status(), 'Zurücksetzen löscht die Historie nicht' );
+		} finally {
+			wp_delete_file( $file );
+		}
+	}
+
 	public function test_my_fixtures_lists_the_entry_for_the_home_captain(): void {
 		wp_set_current_user( $this->users['captain_h1'] );
 

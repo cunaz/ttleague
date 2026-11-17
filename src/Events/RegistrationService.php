@@ -77,8 +77,10 @@ final class RegistrationService {
 		}
 
 		$result = $this->db->transaction(
-			function () use ( $event_id, $person_id, $actor, $note, $now ): array {
+			function () use ( $event_id, $person_id, $actor, $note ): array {
 				$current = $this->locked( $event_id );
+				// Die Sperre kann warten: Für Frist und Wartelistenreihenfolge zählt die Zeit danach.
+				$now = $this->clock->now();
 				// Unter der Sperre erneut: Die TK kann die Saison des Anlasses inzwischen geändert haben.
 				$this->require_may_act( $actor, $person_id, $current );
 				$this->require_open( $current, $actor, $now );
@@ -124,10 +126,10 @@ final class RegistrationService {
 		$this->require_open( $event, $actor, $now );
 
 		[ $removed, $promoted ] = $this->db->transaction(
-			function () use ( $event_id, $person_id, $actor, $now ): array {
+			function () use ( $event_id, $person_id, $actor ): array {
 				$current = $this->locked( $event_id );
 				$this->require_may_act( $actor, $person_id, $current );
-				$this->require_open( $current, $actor, $now );
+				$this->require_open( $current, $actor, $this->clock->now() );
 				$existing = $this->repo->registration( $event_id, $person_id );
 				if ( null === $existing ) {
 					throw EventException::conflict( __( 'Diese Person ist nicht angemeldet.', 'ttleague' ) );

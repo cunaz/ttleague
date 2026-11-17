@@ -4,6 +4,19 @@ Alle nennenswerten Änderungen an ttleague werden hier festgehalten.
 
 ## [Unreleased]
 
+### Korrigiert
+- Fotos der Spielberichte sind auf fünf gespeicherte Anhänge pro Begegnung begrenzt, einschliesslich Historie und Papierkorb; eine Datenbanksperre verhindert parallele Überschreitungen. Bestehende Belege werden nicht automatisch gelöscht.
+- Die Rate-Limits für Anmeldelinks und Club-Einladungen zählen atomar in der Datenbank statt über Transients; gleichzeitige Anfragen können die Grenzen nicht mehr überschreiten. Schemaversion 2026111201 ergänzt die Zählertabelle und deren tägliche Bereinigung.
+- Die Sitzungsdauer von 60 Tagen gilt nur für den Magic-Link-Login gewöhnlicher Spielerkonten, nicht für normale WordPress-Anmeldungen oder privilegierte Konten.
+- Datenbanktransaktionen rollen auch dann vollständig zurück, wenn eine innere Ausnahme abgefangen wurde. Ein fehlgeschlagener Commit beschädigt den Zustand für die nächste Transaktion nicht; wpdb bewahrt die ursprüngliche Fehlermeldung.
+- An- und Abmeldungen prüfen die Frist erneut mit der Zeit nach dem Erlangen der Datenbanksperre. Der Anmeldezeitpunkt stammt ebenfalls aus diesem Moment.
+- Hinweise auf verspätete oder frühe Resultaterfassung rechnen auch über die Zeitumstellung mit tatsächlich verstrichenen Stunden.
+- Die Resultaterfassung weist übergrosse Spieler-IDs und Zahlen mit nachgestelltem Zeilenumbruch zurück.
+- Resultatentwürfe werden beim Ausblenden und Verlassen sofort gesichert. Ungespeicherte Eingaben und laufende Uploads lösen beim Verlassen eine Browserwarnung aus. Beschädigte Entwürfe blockieren das Formular nicht; fehlerhafte Erfolgsantworten löschen keine Eingaben.
+- Die Web-App bleibt bei gesperrtem oder vollem Cache nutzbar, beachtet Antwortvarianten und entfernt alte Offline-Kopien nach privaten Antworten oder entfernten Seiten. Push-Nachrichten ohne Ziel öffnen auch bei Installationen im Unterverzeichnis die Liga.
+- Links, Schaltflächen, Hinweistexte und Fokusmarkierungen nutzen die Grund- und Kontrastfarbe des Themes. Helle Dekorationsfarben wie das Gelb von Twenty Twenty-Five beeinträchtigen die Lesbarkeit nicht mehr; auch die Offline-Seite verwendet das Kontrastpaar.
+- Die CI führt ausführbare JavaScript-Tests aus und meldet übersprungene PHP-Tests als Fehler. Test- und Lint-Befehle brechen nicht mehr am pauschalen Composer-Zeitlimit ab.
+
 ### Hinzugefügt
 - Plugin-Gerüst mit Composer, PHPUnit, PHPCS und GitHub-Actions-CI.
 - Domänenschicht: Saison-Parameter, Spielfolge, Resultatlogik, Tabellenrechner mit Tiebreaks, Spielberechtigung, Ranglistenturnier-Wertung, Finalqualifikation, Wertungszahl, Spielplan-Generator.

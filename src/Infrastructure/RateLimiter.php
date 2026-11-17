@@ -9,58 +9,55 @@ declare(strict_types=1);
 
 namespace TTLeague\Infrastructure;
 
+use TTLeague\Infrastructure\Database\Db;
+use TTLeague\Infrastructure\Database\DbException;
+use TTLeague\Infrastructure\Database\WpdbDb;
 use TTLeague\Infrastructure\Time\Clock;
 
 /**
- * Zählt Versuche pro Schlüssel in einem Zeitfenster. Speicherung über zwei Callbacks
- * (in WordPress Transients, in Tests ein Array), damit die Klasse ohne WordPress testbar ist.
- *
- * Bewusste Vereinfachung: Lesen und Schreiben sind nicht atomar. Gleichzeitige Anfragen können
- * denselben Stand lesen und das Limit um die Zahl paralleler Anfragen überschreiten. Das Limit
- * bremst Mail-Fluten und Ausprobieren von Adressen, es ist keine harte Grenze. Für eine harte
- * Grenze bräuchte es einen atomaren Zähler (persistenter Objekt-Cache mit wp_cache_incr oder
- * eine Tabelle mit INSERT … ON DUPLICATE KEY UPDATE).
+ * Zählt Versuche pro Schlüssel und festem Zeitfenster direkt in der Datenbank. Ein bedingtes
+ * UPDATE vergibt jeden Platz atomar, unabhängig von WordPress-Transients oder Objekt-Caches.
+ * Ohne bestätigten Schreibzugriff wird kein Versuch zugelassen.
  */
 final class RateLimiter {
 
-	/** @var callable(string):mixed */
-	private $read;
-
-	/** @var callable(string,mixed,int):void */
-	private $write;
-
-	/**
-	 * @param callable(string):mixed            $read  Liest einen gespeicherten Wert (false, wenn keiner).
-	 * @param callable(string,mixed,int):void   $write Speichert einen Wert mit Ablauf in Sekunden.
-	 */
-	public function __construct( private readonly Clock $clock, callable $read, callable $write ) {
-		$this->read  = $read;
-		$this->write = $write;
-	}
+	public function __construct( private readonly Db $db, private readonly Clock $clock ) {}
 
 	public static function wordpress( Clock $clock ): self {
-		return new self(
-			$clock,
-			static fn( string $key ) => get_transient( $key ),
-			static function ( string $key, $value, int $ttl ): void {
-				set_transient( $key, $value, $ttl );
-			}
-		);
+		return new self( WpdbDb::from_global(), $clock );
 	}
 
 	/**
 	 * Registriert einen Versuch und meldet, ob er erlaubt ist.
 	 */
 	public function hit( string $bucket, string $subject, int $limit, int $window_seconds ): bool {
-		$now    = $this->clock->now()->getTimestamp();
-		$window = intdiv( $now, $window_seconds );
-		$key    = 'ttl_rl_' . md5( $bucket . '|' . $subject . '|' . $window );
-		$stored = ( $this->read )( $key );
-		$count  = is_numeric( $stored ) ? (int) $stored : 0;
-		if ( $count >= $limit ) {
+		if ( $limit < 1 || $window_seconds < 1 ) {
+			throw new \InvalidArgumentException( 'Limit und Zeitfenster müssen positiv sein.' );
+		}
+		$window = intdiv( $this->clock->now()->getTimestamp(), $window_seconds );
+		$key    = hash( 'sha256', implode( '|', array( strlen( $bucket ), $bucket, strlen( $subject ), $subject, $window_seconds, $window ) ) );
+		$table  = $this->db->table( 'rate_limit' );
+		try {
+			$this->db->query(
+				"INSERT IGNORE INTO $table (bucket_key, attempts, expires_at) VALUES (%s, 0, %s)",
+				array( $key, gmdate( 'Y-m-d H:i:s', ( $window + 1 ) * $window_seconds ) )
+			);
+			return 1 === $this->db->query(
+				"UPDATE $table SET attempts = attempts + 1 WHERE bucket_key = %s AND attempts < %d",
+				array( $key, $limit )
+			);
+		} catch ( DbException | \PDOException $e ) {
 			return false;
 		}
-		( $this->write )( $key, $count + 1, $window_seconds );
-		return true;
+	}
+
+	/**
+	 * Abgelaufene Fenster einen Tag behalten, damit laufende Anfragen sie nicht neu anlegen.
+	 */
+	public function purge(): int {
+		return $this->db->query(
+			"DELETE FROM {$this->db->table( 'rate_limit' )} WHERE expires_at <= %s",
+			array( $this->clock->now()->modify( '-1 day' )->format( 'Y-m-d H:i:s' ) )
+		);
 	}
 }

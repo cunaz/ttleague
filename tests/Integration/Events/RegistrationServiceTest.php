@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace TTLeague\Tests\Integration\Events;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use TTLeague\Infrastructure\Time\Clock;
 use TTLeague\Infrastructure\Time\FixedClock;
 use TTLeague\Tests\Integration\Database\RecordingDb;
 use TTLeague\Tests\Integration\Results\TriggerClock;
@@ -18,6 +19,45 @@ use TTLeague\Tests\Integration\Results\TriggerClock;
  * Daten siehe EventTestCase.
  */
 final class RegistrationServiceTest extends EventTestCase {
+
+	public function test_a_deadline_passed_while_waiting_rejects_both_registration_and_cancellation(): void {
+		$event = $this->event( array( 'max_participants' => '1' ) );
+		$this->register_all( $event, array( 'h1', 'h2' ) );
+		$this->listener->calls = array();
+		$before                = $this->audit_actions( 'registration' );
+		$clock                 = $this->createMock( Clock::class );
+		$clock->method( 'now' )->willReturnCallback(
+			fn() => ( new FixedClock( $this->db->pdo()->inTransaction() ? '2026-11-15 17:00:01' : '2026-11-15 16:59:59' ) )->now()
+		);
+		$service = $this->registration_service( $clock, $this->listener );
+
+		$register   = $this->failure( fn() => $service->register( $event, $this->person['h3'], $this->actor['h3'] ) );
+		$unregister = $this->failure( fn() => $service->unregister( $event, $this->person['h1'], $this->actor['h1'] ) );
+
+		self::assertSame( 409, $register->status );
+		self::assertSame( 409, $unregister->status );
+		self::assertSame(
+			array(
+				'h1' => 'registered',
+				'h2' => 'waitlist',
+			),
+			$this->list_of( $event )
+		);
+		self::assertSame( $before, $this->audit_actions( 'registration' ), 'keine Änderung und kein Nachrücken' );
+		self::assertSame( array(), $this->listener->calls );
+	}
+
+	public function test_registration_time_is_taken_after_acquiring_the_event_lock(): void {
+		$event = $this->event();
+		$clock = $this->createMock( Clock::class );
+		$clock->method( 'now' )->willReturnCallback(
+			fn() => ( new FixedClock( $this->db->pdo()->inTransaction() ? '2026-11-10 12:00:10' : '2026-11-10 12:00:00' ) )->now()
+		);
+		$service = $this->registration_service( $clock, $this->listener );
+		$result  = $service->register( $event, $this->person['h1'], $this->actor['h1'] );
+
+		self::assertSame( '2026-11-10 12:00:10', $this->db->get_var( "SELECT created_at FROM {$this->db->table( 'registration' )} WHERE id = %d", array( $result['id'] ) ) );
+	}
 
 	public function test_a_person_registers_herself_with_a_note(): void {
 		$event = $this->event();

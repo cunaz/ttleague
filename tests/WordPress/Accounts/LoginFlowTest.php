@@ -110,6 +110,48 @@ final class LoginFlowTest extends TestCase {
 		self::assertSame( 5, $this->tokens() );
 	}
 
+	public function test_the_ip_limit_applies_across_different_email_addresses(): void {
+		$_SERVER['REMOTE_ADDR'] = '192.0.2.1';
+		for ( $i = 0; $i < 19; ++$i ) {
+			self::assertSame( self::SENT, $this->request_link( 'unknown' . $i . '@example.invalid' ) );
+		}
+		self::assertSame( self::SENT, $this->request_link( self::EMAIL ) );
+		self::assertSame( self::SENT, $this->request_link( self::EMAIL ) );
+		self::assertCount( 1, $this->mails, 'der 21. Versuch verschickt keinen Link' );
+	}
+
+	public function test_flushing_caches_and_changing_ip_cannot_reset_the_email_limit(): void {
+		for ( $i = 0; $i < 6; ++$i ) {
+			wp_cache_flush();
+			$_SERVER['REMOTE_ADDR'] = '192.0.2.' . ( $i + 1 );
+			self::assertSame( self::SENT, $this->request_link( 0 === $i % 2 ? self::EMAIL : strtoupper( self::EMAIL ) ) );
+		}
+		self::assertCount( 5, $this->mails );
+		self::assertSame( 5, $this->tokens() );
+	}
+
+	#[DataProvider( 'elevated_roles' )]
+	public function test_remembered_password_sessions_keep_the_wordpress_lifetime( string $role ): void {
+		$user = $this->account( $role, self::EMAIL, $this->person );
+		wp_set_auth_cookie( $user, true );
+		self::assertEqualsWithDelta( time() + 14 * DAY_IN_SECONDS, $this->cookie_expirations[0], 5 );
+	}
+
+	public function test_other_subscribers_and_custom_session_policies_are_not_extended(): void {
+		$user = $this->account( 'subscriber', self::EMAIL );
+		add_filter( 'auth_cookie_expiration', static fn(): int => HOUR_IN_SECONDS, 5 );
+		wp_set_auth_cookie( $user, true );
+		self::assertEqualsWithDelta( time() + HOUR_IN_SECONDS, $this->cookie_expirations[0], 5 );
+	}
+
+	public function test_an_explicitly_allowed_privileged_magic_login_keeps_its_session_policy(): void {
+		$this->account( 'ttl_tk', self::EMAIL, $this->person );
+		add_filter( 'ttleague_magic_link_allowed', '__return_true' );
+		add_filter( 'auth_cookie_expiration', static fn(): int => HOUR_IN_SECONDS, 5 );
+		$this->log_in( Services::links()->create( $this->person, MagicLinks::LOGIN_TTL ), array( 'HTTP_ORIGIN' => 'http://example.org' ) );
+		self::assertEqualsWithDelta( time() + HOUR_IN_SECONDS, $this->cookie_expirations[0], 5 );
+	}
+
 	public function test_valid_token_logs_in_and_creates_the_account(): void {
 		$token = Services::links()->create( $this->person, MagicLinks::LOGIN_TTL );
 
@@ -125,6 +167,25 @@ final class LoginFlowTest extends TestCase {
 		self::assertSame( 'magic_link', $this->db->get_var( "SELECT note FROM {$this->db->table( 'audit_log' )} WHERE entity = 'person' AND entity_id = %d AND action = 'login'", array( $this->person ) ) );
 		self::assertCount( 1, $this->cookie_expirations );
 		self::assertEqualsWithDelta( time() + 60 * DAY_IN_SECONDS, $this->cookie_expirations[0], 60, 'angemeldet bleiben: 60 Tage' );
+		wp_set_auth_cookie( $user_id, true );
+		self::assertEqualsWithDelta( time() + 14 * DAY_IN_SECONDS, $this->cookie_expirations[1], 5, 'Filter danach entfernt, auch für dasselbe Konto' );
+	}
+
+	public function test_cookie_filter_is_removed_when_a_login_hook_throws(): void {
+		$fail = static function (): void {
+			throw new \RuntimeException( 'Cookie-Hook fehlgeschlagen' );
+		};
+		add_action( 'set_auth_cookie', $fail );
+		try {
+			$this->log_in( Services::links()->create( $this->person, MagicLinks::LOGIN_TTL ), array( 'HTTP_ORIGIN' => 'http://example.org' ) );
+			self::fail( 'Ausnahme erwartet' );
+		} catch ( \RuntimeException $e ) {
+			self::assertSame( 'Cookie-Hook fehlgeschlagen', $e->getMessage() );
+		} finally {
+			remove_action( 'set_auth_cookie', $fail );
+		}
+		wp_set_auth_cookie( get_current_user_id(), true );
+		self::assertEqualsWithDelta( time() + 14 * DAY_IN_SECONDS, $this->cookie_expirations[1], 5 );
 	}
 
 	public function test_login_redirects_only_to_pages_of_this_site(): void {

@@ -58,7 +58,7 @@ function excluded( url ) {
  * @return {boolean} Nur erfolgreiche Antworten gleicher Herkunft ohne private/no-store.
  */
 function storable( response, type ) {
-	if ( ! response || ! response.ok || 'basic' !== response.type ) {
+	if ( ! response || 200 !== response.status || response.redirected || 'basic' !== response.type ) {
 		return false;
 	}
 	const control = ( response.headers.get( 'Cache-Control' ) || '' ).toLowerCase();
@@ -78,11 +78,51 @@ function storable( response, type ) {
  * @return {Promise<void>}
  */
 async function put( name, request, response, max ) {
-	const cache = await caches.open( name );
-	await cache.put( request, response );
-	const keys = await cache.keys();
-	for ( let i = 0; i < keys.length - max; i++ ) {
-		await cache.delete( keys[ i ] );
+	try {
+		const cache = await caches.open( name );
+		await cache.put( request, response );
+		const keys = await cache.keys();
+		for ( let i = 0; i < keys.length - max; i++ ) {
+			await cache.delete( keys[ i ] );
+		}
+	} catch ( error ) {
+		// Gesperrter oder voller Speicher darf erfolgreiche Netzantworten nicht verhindern.
+	}
+}
+
+/**
+ * Gespeicherte Antwort lesen; gesperrten Speicher wie einen leeren Cache behandeln.
+ * Vary bleibt wirksam, damit keine andere Antwortvariante ausgeliefert wird.
+ *
+ * @param {string}  name    Cache-Name.
+ * @param {Request} request Anfrage.
+ * @return {Promise<Response|undefined>} Gespeicherte Antwort, falls verfügbar.
+ */
+async function stored( name, request ) {
+	try {
+		return await ( await caches.open( name ) ).match( request );
+	} catch ( error ) {
+		return undefined;
+	}
+}
+
+/**
+ * Eine inzwischen private oder entfernte Antwort darf nicht als alte Offline-Kopie bleiben.
+ * Vorübergehende Serverfehler lassen die letzte gültige Kopie bestehen.
+ *
+ * @param {string}   name     Cache-Name.
+ * @param {Request}  request  Anfrage.
+ * @param {Response} response Netzantwort.
+ * @return {Promise<void>}
+ */
+async function forget( name, request, response ) {
+	if ( response.status >= 500 ) {
+		return;
+	}
+	try {
+		await ( await caches.open( name ) ).delete( request, { ignoreVary: true } );
+	} catch ( error ) {
+		// Auch das Entfernen ist bei gesperrtem Speicher nicht möglich.
 	}
 }
 
@@ -113,9 +153,9 @@ function offlinePage() {
 		'h1{font-size:1.75rem;line-height:1.2;margin:0 0 .75rem}' +
 		'p{margin:0 0 1.25rem}' +
 		'.site{font-weight:700;margin-bottom:2rem}' +
-		'a{display:inline-flex;align-items:center;min-height:2.75rem;padding:.4rem 1.1rem;margin:0 .5rem .5rem 0;border-radius:.4rem;font-weight:700;text-decoration:none;border:1px solid ' + c.accent + ';color:' + c.accent + '}' +
-		'a.primary{background:' + c.accent + ';color:' + c.background + '}' +
-		'a:focus-visible{outline:3px solid currentColor;outline-offset:2px}' +
+		'a{display:inline-flex;align-items:center;min-height:2.75rem;padding:.4rem 1.1rem;margin:0 .5rem .5rem 0;border-radius:.4rem;font-weight:700;text-decoration:none;border:1px solid ' + c.text + ';color:' + c.text + '}' +
+		'a.primary{background:' + c.text + ';color:' + c.background + '}' +
+		'a:focus-visible{outline:3px solid ' + c.text + ';outline-offset:2px}' +
 		'</style></head><body><main>' +
 		'<p class="site">' + escapeHtml( t.site ) + '</p>' +
 		'<h1>' + escapeHtml( t.heading ) + '</h1>' +
@@ -143,11 +183,12 @@ async function page( event ) {
 		const response = await fetch( request );
 		if ( storable( response, 'text/html' ) ) {
 			event.waitUntil( put( PAGES, request, response.clone(), CONFIG.maxPages ) );
+		} else {
+			event.waitUntil( forget( PAGES, request, response ) );
 		}
 		return response;
 	} catch ( error ) {
-		const cache = await caches.open( PAGES );
-		const cached = await cache.match( request, { ignoreVary: true } );
+		const cached = await stored( PAGES, request );
 		return cached || offlinePage();
 	}
 }
@@ -174,13 +215,12 @@ async function networkOnly( request ) {
  */
 async function asset( event ) {
 	const request = event.request;
-	const cache = await caches.open( ASSETS );
-	const cached = await cache.match( request, { ignoreVary: true } );
+	const cached = await stored( ASSETS, request );
 	const network = fetch( request ).then( ( response ) => {
 		if ( storable( response, '' ) ) {
 			return put( ASSETS, request, response.clone(), CONFIG.maxAssets ).then( () => response );
 		}
-		return response;
+		return forget( ASSETS, request, response ).then( () => response );
 	} );
 	if ( cached ) {
 		event.waitUntil( network.catch( () => undefined ) );
@@ -228,10 +268,14 @@ self.addEventListener( 'activate', ( event ) => {
 	event.waitUntil(
 		( async () => {
 			const keep = [ PAGES, ASSETS ];
-			for ( const name of await caches.keys() ) {
-				if ( name.startsWith( CONFIG.prefix ) && ! keep.includes( name ) ) {
-					await caches.delete( name );
+			try {
+				for ( const name of await caches.keys() ) {
+					if ( name.startsWith( CONFIG.prefix ) && ! keep.includes( name ) ) {
+						await caches.delete( name );
+					}
 				}
+			} catch ( error ) {
+				// Der Service Worker funktioniert auch ohne Zugriff auf den Offline-Speicher.
 			}
 			await self.clients.claim();
 		} )()
@@ -267,7 +311,7 @@ self.addEventListener( 'fetch', ( event ) => {
  */
 function pushTarget( value ) {
 	try {
-		const url = new URL( String( value || '' ), self.location.origin );
+		const url = new URL( String( value || CONFIG.base ), self.location.origin );
 		if ( url.origin === self.location.origin ) {
 			return url.href;
 		}

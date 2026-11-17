@@ -17,6 +17,8 @@ final class WpdbDb implements Db {
 
 	private int $depth = 0;
 
+	private bool $rollback_only = false;
+
 	public function __construct( private readonly \wpdb $wpdb ) {}
 
 	public static function from_global(): self {
@@ -85,27 +87,35 @@ final class WpdbDb implements Db {
 
 	public function transaction( callable $work ): mixed {
 		$outer = 0 === $this->depth;
-		if ( $outer && false === $this->wpdb->query( 'START TRANSACTION' ) ) {
-			$this->throw_on_error();
-			throw new DbException( 'Datenbankfehler: Transaktion konnte nicht gestartet werden.' );
+		if ( $outer ) {
+			if ( false === $this->wpdb->query( 'START TRANSACTION' ) ) {
+				$this->throw_on_error();
+				throw new DbException( 'Datenbankfehler: Transaktion konnte nicht gestartet werden.' );
+			}
+			$this->rollback_only = false;
 		}
 		++$this->depth;
 		try {
 			$result = $work( $this );
+			if ( $outer ) {
+				if ( $this->rollback_only ) {
+					throw new DbException( 'Eine Teiltransaktion ist fehlgeschlagen; die gesamte Transaktion wird zurückgerollt.' );
+				}
+				if ( false === $this->wpdb->query( 'COMMIT' ) ) {
+					$this->throw_on_error();
+					throw new DbException( 'Datenbankfehler: Transaktion konnte nicht abgeschlossen werden.' );
+				}
+			}
+			return $result;
 		} catch ( \Throwable $e ) {
-			--$this->depth;
+			$this->rollback_only = true;
 			if ( $outer ) {
 				$this->wpdb->query( 'ROLLBACK' );
 			}
 			throw $e;
+		} finally {
+			--$this->depth;
 		}
-		--$this->depth;
-		if ( $outer && false === $this->wpdb->query( 'COMMIT' ) ) {
-			$this->wpdb->query( 'ROLLBACK' );
-			$this->throw_on_error();
-			throw new DbException( 'Datenbankfehler: Transaktion konnte nicht abgeschlossen werden.' );
-		}
-		return $result;
 	}
 
 

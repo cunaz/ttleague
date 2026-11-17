@@ -10,7 +10,9 @@ declare(strict_types=1);
 namespace TTLeague\Rest;
 
 use TTLeague\Domain\Match\FixtureWorkflow as Flow;
+use TTLeague\Infrastructure\Database\WpdbDb;
 use TTLeague\Results\PhotoStorage;
+use TTLeague\Results\PhotoUploads;
 use TTLeague\Results\ResultException;
 use TTLeague\Results\ResultInput;
 use TTLeague\Results\Results;
@@ -173,17 +175,22 @@ final class ResultController {
 				if ( ! $service->may_attach_photo( $ctx, $service->roles( $ctx, $actor ) ) ) {
 					throw ResultException::forbidden( __( 'Du kannst zu dieser Begegnung kein Foto hochladen.', 'ttleague' ) );
 				}
-				$attachment_id = self::store_photo( $fixture_id, $request->get_file_params()['file'] ?? null );
-				try {
-					$service->attach_photo( $fixture_id, $actor, $attachment_id );
-				} catch ( \Throwable $e ) {
-					// Kein verwaister Anhang, wenn sich die Begegnung inzwischen geändert hat. Wirft erst
-					// ein Listener nach dem Speichern, ist das Foto schon verknüpft und bleibt.
-					if ( (int) $service->context( $fixture_id )->photo_id !== $attachment_id ) {
-						wp_delete_attachment( $attachment_id, true );
+				$attachment_id = ( new PhotoUploads( WpdbDb::from_global() ) )->run(
+					$fixture_id,
+					static function () use ( $fixture_id, $request, $service, $actor ): int {
+						$attachment_id = self::store_photo( $fixture_id, $request->get_file_params()['file'] ?? null );
+						try {
+							$service->attach_photo( $fixture_id, $actor, $attachment_id );
+						} catch ( \Throwable $e ) {
+							// Kein verwaister Anhang bei einem Konflikt. Ein bereits verknüpftes Foto bleibt.
+							if ( (int) $service->context( $fixture_id )->photo_id !== $attachment_id ) {
+								wp_delete_attachment( $attachment_id, true );
+							}
+							throw $e;
+						}
+						return $attachment_id;
 					}
-					throw $e;
-				}
+				);
 				return array(
 					'attachment_id' => $attachment_id,
 					'url'           => Results::photo_url( $fixture_id ),
@@ -289,6 +296,7 @@ final class ResultController {
 						/* translators: %d: Nummer der Begegnung */
 						'post_title'  => sprintf( __( 'Spielbericht Begegnung %d', 'ttleague' ), $fixture_id ),
 						'post_status' => 'private',
+						'meta_input'  => array( '_ttleague_fixture' => $fixture_id ),
 					),
 					array(
 						'test_form' => false,
@@ -302,7 +310,10 @@ final class ResultController {
 		if ( is_wp_error( $attachment_id ) ) {
 			throw ResultException::invalid( array( ResultInput::error( 'file', $attachment_id->get_error_message() ) ) );
 		}
-		update_post_meta( $attachment_id, '_ttleague_fixture', $fixture_id );
+		if ( (int) get_post_meta( $attachment_id, '_ttleague_fixture', true ) !== $fixture_id ) {
+			wp_delete_attachment( $attachment_id, true );
+			throw ResultException::unavailable( __( 'Das Foto konnte nicht der Begegnung zugeordnet werden.', 'ttleague' ) );
+		}
 		return (int) $attachment_id;
 	}
 

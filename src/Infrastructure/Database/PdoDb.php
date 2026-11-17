@@ -15,6 +15,8 @@ final class PdoDb implements Db {
 
 	private int $depth = 0;
 
+	private bool $rollback_only = false;
+
 	public function __construct( private readonly \PDO $pdo, private readonly string $prefix = 'wp_' ) {
 		$this->pdo->setAttribute( \PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION );
 		$this->pdo->setAttribute( \PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC );
@@ -100,23 +102,29 @@ final class PdoDb implements Db {
 	}
 
 	public function transaction( callable $work ): mixed {
-		if ( 0 === $this->depth ) {
+		$outer = 0 === $this->depth;
+		if ( $outer ) {
 			$this->pdo->beginTransaction();
+			$this->rollback_only = false;
 		}
 		++$this->depth;
 		try {
 			$result = $work( $this );
-			--$this->depth;
-			if ( 0 === $this->depth ) {
+			if ( $outer ) {
+				if ( $this->rollback_only ) {
+					throw new DbException( 'Eine Teiltransaktion ist fehlgeschlagen; die gesamte Transaktion wird zurückgerollt.' );
+				}
 				$this->pdo->commit();
 			}
 			return $result;
 		} catch ( \Throwable $e ) {
-			--$this->depth;
-			if ( 0 === $this->depth && $this->pdo->inTransaction() ) {
+			$this->rollback_only = true;
+			if ( $outer && $this->pdo->inTransaction() ) {
 				$this->pdo->rollBack();
 			}
 			throw $e;
+		} finally {
+			--$this->depth;
 		}
 	}
 

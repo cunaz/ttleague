@@ -111,22 +111,13 @@ final class ClubAccountsTest extends IntegrationTestCase {
 	}
 
 	private function build(): void {
-		$store         = array();
 		$this->service = new ClubAccounts(
 			new AccountService( $this->db ),
 			new AccessPolicy( $this->db ),
 			new ClubPeople( $this->db, $this->users, $this->clock ),
 			$this->users,
 			new AuditLog( $this->db ),
-			new RateLimiter(
-				$this->clock,
-				static function ( string $key ) use ( &$store ) {
-					return $store[ $key ] ?? false;
-				},
-				static function ( string $key, $value ) use ( &$store ): void {
-					$store[ $key ] = $value;
-				}
-			),
+			new RateLimiter( $this->db, $this->clock ),
 			function ( int $person_id, int $user_id ): void {
 				if ( null !== $this->invite_error ) {
 					throw $this->invite_error;

@@ -1102,6 +1102,42 @@ final class ResultServiceTest extends IntegrationTestCase {
 		self::assertSame( array( 'Erfasst nach Ablauf der Frist von 48 Stunden.' ), $warnings );
 	}
 
+	/** @return iterable<string,array{string,string,bool}> */
+	public static function daylight_saving_deadlines(): iterable {
+		yield 'Frühling vor 48 Stunden' => array( '2027-03-27 20:00:00', '2027-03-29 18:30:00', false );
+		yield 'Frühling genau 48 Stunden' => array( '2027-03-27 20:00:00', '2027-03-29 19:00:00', false );
+		yield 'Frühling nach 48 Stunden' => array( '2027-03-27 20:00:00', '2027-03-29 19:00:01', true );
+		yield 'Herbst genau 48 Stunden' => array( '2026-10-24 20:00:00', '2026-10-26 18:00:00', false );
+		yield 'Herbst nach 48 Stunden' => array( '2026-10-24 20:00:00', '2026-10-26 18:30:00', true );
+	}
+
+	#[DataProvider( 'daylight_saving_deadlines' )]
+	public function test_entry_deadlines_use_elapsed_hours_across_daylight_saving( string $scheduled, string $now_utc, bool $late ): void {
+		$this->db->update( 'fixture', array( 'scheduled_at' => $scheduled ), array( 'id' => $this->id['f1'] ) );
+		$service  = $this->service_with( new FixedClock( $now_utc ) );
+		$warnings = $service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] )['warnings'];
+
+		self::assertSame( $late ? array( 'Erfasst nach Ablauf der Frist von 48 Stunden.' ) : array(), $warnings );
+	}
+
+	/** @return iterable<string,array{string,string,bool}> */
+	public static function early_entries_at_daylight_saving(): iterable {
+		yield 'Frühling innerhalb von zwei Stunden' => array( '2027-03-28 04:00:00', '2027-03-28 00:30:00', false );
+		yield 'Herbst mehr als zwei Stunden vorher' => array( '2026-10-25 03:30:00', '2026-10-25 00:00:00', true );
+	}
+
+	#[DataProvider( 'early_entries_at_daylight_saving' )]
+	public function test_early_entry_warning_uses_elapsed_hours( string $scheduled, string $now_utc, bool $early ): void {
+		$this->db->update( 'fixture', array( 'scheduled_at' => $scheduled ), array( 'id' => $this->id['f1'] ) );
+		$service  = $this->service_with( new FixedClock( $now_utc ) );
+		$warnings = $service->submit( $this->id['f1'], $this->six_four(), $this->actor['captain_h1'] )['warnings'];
+
+		self::assertCount( $early ? 1 : 0, $warnings );
+		if ( $early ) {
+			self::assertStringContainsString( 'erst am', $warnings[0] );
+		}
+	}
+
 	public function test_my_fixtures(): void {
 		$home = $this->service->my_fixtures( $this->actor['captain_h1'] );
 		self::assertSame( array( $this->id['f1'] ), array_column( $home['to_enter'], 'id' ) );

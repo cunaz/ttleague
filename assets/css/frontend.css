@@ -9,11 +9,12 @@
 .ttl {
 	--ttl-ink: var(--wp--preset--color--contrast, #13213a);
 	--ttl-surface: var(--wp--preset--color--base, #ffffff);
-	--ttl-muted: var(--wp--preset--color--accent-4, #4d5b70);
-	--ttl-accent: var(--wp--preset--color--accent-1, #0b4a9e);
-	--ttl-highlight: var(--wp--preset--color--accent-2, #c2410c);
-	--ttl-soft: var(--wp--preset--color--accent-5, #f1f4f9);
-	--ttl-line: var(--wp--preset--color--accent-6, color-mix(in srgb, currentColor 16%, transparent));
+	/* Nummerierte Akzentfarben können helle Dekorationsfarben sein. */
+	--ttl-muted: color-mix(in srgb, var(--ttl-ink) 75%, var(--ttl-surface));
+	--ttl-accent: var(--wp--preset--color--contrast, #0b4a9e);
+	--ttl-highlight: var(--ttl-accent);
+	--ttl-soft: color-mix(in srgb, var(--ttl-ink) 5%, var(--ttl-surface));
+	--ttl-line: color-mix(in srgb, var(--ttl-ink) 20%, var(--ttl-surface));
 	--ttl-win: #1d7a3a;
 	--ttl-loss: #b42318;
 	--ttl-warn: #a15c00;

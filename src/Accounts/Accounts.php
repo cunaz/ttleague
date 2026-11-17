@@ -32,7 +32,7 @@ final class Accounts {
 	}
 
 	/**
-	 * Tägliches Aufräumen abgelaufener Anmeldelinks einplanen.
+	 * Tägliches Aufräumen abgelaufener Anmeldelinks und Rate-Limit-Fenster einplanen.
 	 */
 	public static function schedule(): void {
 		if ( ! wp_next_scheduled( self::PURGE_HOOK ) ) {
@@ -87,6 +87,7 @@ final class Accounts {
 
 	public static function purge_tokens(): void {
 		Services::links()->purge();
+		Services::limiter()->purge();
 	}
 
 	public static function deactivate(): void {

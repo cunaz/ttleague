@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026111007';
+	public const VERSION = '2026111201';
 
 	/**
 	 * Indizes, die eine neuere Schemaversion ersetzt hat. dbDelta() entfernt keine Indizes;
@@ -62,6 +62,7 @@ final class Schema {
 		'event',
 		'registration',
 		'login_token',
+		'rate_limit',
 		'push_subscription',
 		'notification_pref',
 		'notification_log',
@@ -562,6 +563,14 @@ final class Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY token_hash (token_hash),
   KEY person_id (person_id)
+) $charset_collate;",
+
+			$t( 'rate_limit' )              => "CREATE TABLE {$t('rate_limit')} (
+  bucket_key char(64) NOT NULL,
+  attempts int(10) unsigned NOT NULL DEFAULT 0,
+  expires_at datetime NOT NULL,
+  PRIMARY KEY  (bucket_key),
+  KEY expires_at (expires_at)
 ) $charset_collate;",
 
 			$t( 'push_subscription' )       => "CREATE TABLE {$t('push_subscription')} (

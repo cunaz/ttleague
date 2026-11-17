@@ -186,4 +186,21 @@ final class ResultInputTest extends TestCase {
 		);
 		self::assertSame( array( 'comment' ), $fields );
 	}
+
+	public function test_ids_must_fit_in_an_integer_without_coercion(): void {
+		self::assertSame( PHP_INT_MAX, ResultInput::int( (string) PHP_INT_MAX ) );
+		foreach ( array( '9999999999999999999', (string) PHP_INT_MAX . '0', "12\n", '1.0', '1e2', true, 1.0, array( 1 ), '01', '-1', '0' ) as $invalid ) {
+			self::assertNull( ResultInput::int( $invalid ) );
+		}
+	}
+
+	public function test_overflowing_player_ids_are_reported_at_the_lineup_field(): void {
+		$errors = self::errors(
+			array(
+				'lineup' => array( 'home' => array( 'A' => '9999999999999999999' ) ),
+				'games'  => array(),
+			)
+		);
+		self::assertSame( array( 'lineup.home.A' ), array_column( $errors, 'field' ) );
+	}
 }
