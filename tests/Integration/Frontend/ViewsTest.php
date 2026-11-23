@@ -116,6 +116,23 @@ final class ViewsTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'Die Begegnung Nr. 999999 gibt es nicht.', $missing );
 	}
 
+	public function test_public_reports_expose_a_fragment_for_each_player_game(): void {
+		$profile = $this->model->profiles->get( $this->ids['player_muster'] );
+		$ranking = ( new RankingView( $this->model, $this->urls ) )->render( array() );
+		$view    = new MatchReportView( $this->model, $this->urls );
+		$reports = array();
+		foreach ( $profile['games'] as $game ) {
+			if ( 'RL' === $game['kind'] ) {
+				$html = $ranking;
+			} else {
+				$fixture_id               = $game['fixture_id'];
+				$reports[ $fixture_id ] ??= $view->render( array( 'fixture' => $fixture_id ) );
+				$html                     = $reports[ $fixture_id ];
+			}
+			self::assertSame( 1, substr_count( $html, 'id="ttl-partie-' . $game['id'] . '"' ), 'Direktlink zum Spiel in ' . $game['kind'] );
+		}
+	}
+
 	public function test_match_report_offers_sharing_once_there_is_a_result(): void {
 		$html = ( new MatchReportView( $this->model, $this->urls ) )->render( array( 'fixture' => $this->ids['fixture_1'] ) );
 		self::assertSame( 1, substr_count( $html, 'data-ttl-share ' ) );

@@ -19,11 +19,23 @@ final class Assets {
 	/** Skript des Knopfs «Teilen»; eingereiht nur, wo der Knopf erscheint (ShareButton). */
 	public const SHARE = 'ttleague-share';
 
+	public const RATING_CHART = 'ttleague-rating-chart';
+
 	/**
 	 * Registriert Stil, Editor-Skript und das Skript des Knopfs «Teilen» (init, vor den Blöcken).
 	 */
 	public static function register(): void {
 		wp_register_style( self::STYLE, TTLEAGUE_URL . 'assets/css/frontend.css', array(), self::version( 'assets/css/frontend.css' ) );
+		wp_register_script(
+			self::RATING_CHART,
+			TTLEAGUE_URL . 'assets/js/rating-chart.js',
+			array(),
+			self::version( 'assets/js/rating-chart.js' ),
+			array(
+				'in_footer' => true,
+				'strategy'  => 'defer',
+			)
+		);
 		wp_register_script(
 			self::EDITOR,
 			TTLEAGUE_URL . 'assets/js/editor.js',

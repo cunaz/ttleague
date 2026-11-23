@@ -850,23 +850,49 @@
 	background: var(--ttl-accent);
 }
 
-/* Verlaufsgrafik: gestrecktes SVG, Beschriftungen als HTML */
+/* Wertungsverlauf. Nur die Spielachse scrollt, die Wertungsskala bleibt sichtbar. */
 
 .ttl-chart {
+	max-width: 100%;
+	min-width: 0;
 	margin: 0 0 var(--ttl-gap);
 	--ttl-chart-line: var(--ttl-accent);
+	--ttl-chart-height: clamp(9rem, 23vw, 14rem);
+}
+
+.ttl-chart__frame {
+	display: grid;
+	grid-template-columns: 2.75rem minmax(0, 1fr);
+	font-variant-numeric: tabular-nums;
+}
+
+.ttl-chart__scale {
+	position: relative;
+	height: var(--ttl-chart-height);
+	margin-top: 2rem;
+}
+
+.ttl-chart__scroll {
+	min-width: 0;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: thin;
+	scrollbar-color: var(--ttl-line) transparent;
+}
+
+/* Ohne Skript öffnet auch der native Scrollbereich am jüngsten Ende. */
+.ttl-chart:not([data-interactive]) .ttl-chart__scroll {
+	direction: rtl;
 }
 
 .ttl-chart__plot {
-	position: relative;
-	height: clamp(13rem, 42vw, 18rem);
-	padding: 1.6rem 3.4rem 1.9rem 2.9rem;
+	direction: ltr;
+	padding-block: 2rem;
 }
 
 .ttl-chart__area {
 	position: relative;
-	width: 100%;
-	height: 100%;
+	height: var(--ttl-chart-height);
 }
 
 .ttl-chart__svg {
@@ -875,16 +901,12 @@
 	width: 100%;
 	height: 100%;
 	overflow: visible;
+	pointer-events: none;
 }
 
 .ttl-chart__grid line,
-.ttl-chart__axis line {
-	stroke: var(--ttl-line);
-	stroke-width: 1px;
-}
-
 .ttl-chart__boundary {
-	stroke: color-mix(in srgb, var(--ttl-ink) 45%, transparent);
+	stroke: var(--ttl-line);
 	stroke-width: 1px;
 }
 
@@ -896,26 +918,15 @@
 	stroke-linecap: round;
 }
 
-.ttl-chart__band rect {
-	fill: transparent;
-}
-
-.ttl-chart__band line {
-	stroke: transparent;
-	stroke-width: 1px;
-}
-
-.ttl-chart__band:hover rect {
-	fill: color-mix(in srgb, var(--ttl-accent) 7%, transparent);
-}
-
-.ttl-chart__band:hover line {
-	stroke: var(--ttl-muted);
+.ttl-chart__reset {
+	stroke: var(--ttl-chart-line);
+	stroke-width: 1.5px;
+	stroke-dasharray: 4 4;
 }
 
 .ttl-chart__ytick,
 .ttl-chart__season,
-.ttl-chart__year {
+.ttl-chart__date {
 	position: absolute;
 	font-size: 0.75rem;
 	line-height: 1;
@@ -925,40 +936,64 @@
 }
 
 .ttl-chart__ytick {
-	right: calc(100% + 0.45rem);
+	right: 0.5rem;
 	transform: translateY(-50%);
 }
 
 .ttl-chart__season {
-	top: -1.25rem;
+	top: -1.35rem;
 	font-weight: 700;
-	padding-inline-start: 0.2rem;
 }
 
-.ttl-chart__year {
-	top: calc(100% + 0.5rem);
+.ttl-chart__season span {
+	position: sticky;
+	left: 0;
+	padding-inline: 0.2rem;
+}
+
+.ttl-chart__date {
+	top: calc(100% + 0.6rem);
 	transform: translateX(-50%);
 }
 
-.ttl-chart__end {
+.ttl .ttl-chart__point {
 	position: absolute;
-	width: 0.75rem;
-	height: 0.75rem;
-	margin: -0.375rem 0 0 -0.375rem;
+	display: grid;
+	place-items: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	min-width: 0;
+	min-height: 0;
+	padding: 0;
+	margin: 0;
+	transform: translate(-50%, -50%);
+	border: 0;
 	border-radius: 50%;
-	background: var(--ttl-chart-line);
-	box-shadow: 0 0 0 2px var(--ttl-surface);
-	pointer-events: none;
+	background: transparent;
+	color: var(--ttl-chart-line);
+	box-shadow: none;
+	cursor: pointer;
 }
 
-.ttl-chart__end-value {
-	position: absolute;
-	left: calc(100% + 0.4rem);
-	top: 50%;
-	transform: translateY(-50%);
-	font-size: 0.85rem;
-	font-weight: 800;
-	color: var(--ttl-ink);
+.ttl .ttl-chart__point:disabled {
+	opacity: 1;
+	cursor: default;
+}
+
+.ttl-chart__point::before {
+	content: "";
+	width: 0.38rem;
+	height: 0.38rem;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.ttl-chart__point:enabled:hover::before,
+.ttl-chart__point:focus-visible::before,
+.ttl-chart__point[aria-pressed="true"]::before {
+	width: 0.65rem;
+	height: 0.65rem;
+	box-shadow: 0 0 0 2px var(--ttl-surface), 0 0 0 3px currentColor;
 }
 
 /* Saisonwahl (Kopfzeile) */
@@ -1502,9 +1537,6 @@
 		display: none;
 	}
 
-	.ttl-chart__plot {
-		padding-inline: 2.6rem 2.9rem;
-	}
 }
 
 /* Ab Tablet */
@@ -1566,11 +1598,12 @@
 	.ttl-class,
 	.ttl-tabs a,
 	.ttl-card,
-	.ttl-chart__end {
+	.ttl-chart__point::before {
 		border: 1px solid CanvasText;
 	}
 
-	.ttl-chart__line {
+	.ttl-chart__line,
+	.ttl-chart__reset {
 		stroke: CanvasText;
 	}
 }
@@ -1743,4 +1776,67 @@
 	.ttl-details > *:not(summary) {
 		display: block;
 	}
+}
+
+.ttl-chart__nav:not([hidden]) {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.35rem;
+	margin-block-end: 0.45rem;
+}
+
+.ttl-chart__nav button {
+	min-height: 2rem;
+	padding: 0.2rem 0.65rem;
+	border: 1px solid var(--ttl-line);
+	border-radius: 0.25rem;
+	background: transparent;
+	color: var(--ttl-ink);
+	font: inherit;
+	font-size: var(--ttl-small);
+	cursor: pointer;
+}
+
+.ttl-chart__nav button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.ttl-rating-game {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 0.2rem 1rem;
+	align-items: baseline;
+	padding-block: 0.8rem;
+	border-block: 1px solid var(--ttl-line);
+	font-variant-numeric: tabular-nums;
+}
+
+.ttl-rating-game__meta {
+	grid-column: 1 / -1;
+	color: var(--ttl-muted);
+	font-size: var(--ttl-small);
+}
+
+.ttl-rating-game__pairing {
+	overflow-wrap: anywhere;
+}
+
+.ttl-rating-game > a {
+	grid-column: 1 / -1;
+	justify-self: start;
+	font-size: var(--ttl-small);
+}
+
+@media (max-width: 36rem) {
+	.ttl-rating-game {
+		grid-template-columns: 1fr;
+	}
+}
+
+.ttl-games tr:target,
+.ttl-games-list > li:target {
+	outline: 2px solid var(--ttl-highlight);
+	outline-offset: -2px;
+	scroll-margin-block-start: 3rem;
 }

@@ -105,7 +105,7 @@ final class Html {
 	 *
 	 * Spalten: list<array{label:string,abbr?:string,card?:string,class?:string,primary?:bool,hide_label?:bool}>;
 	 * card ist eine kürzere Beschriftung für die Kartenansicht.
-	 * Zeilen: list<array{cells:list<string>,class?:string}>; Zellen sind sicheres HTML.
+	 * Zeilen: list<array{cells:list<string>,class?:string,id?:string}>; Zellen sind sicheres HTML.
 	 * Optionen: class (zusätzliche Klassen), caption (Beschriftung, für Screenreader sichtbar),
 	 * caption_visible (bool), cards (bool, Standard true), first_header (erste Spalte als th scope=row).
 	 *
@@ -131,7 +131,12 @@ final class Html {
 		}
 		$out .= '</tr></thead><tbody>';
 		foreach ( $rows as $row ) {
-			$out .= '<tr' . self::attrs( array( 'class' => (string) ( $row['class'] ?? '' ) ) ) . '>';
+			$out .= '<tr' . self::attrs(
+				array(
+					'id'    => (string) ( $row['id'] ?? '' ),
+					'class' => (string) ( $row['class'] ?? '' ),
+				)
+			) . '>';
 			foreach ( $columns as $i => $column ) {
 				$cell    = (string) ( $row['cells'][ $i ] ?? '' );
 				$class   = trim( (string) ( $column['class'] ?? '' ) . ( empty( $column['primary'] ) ? '' : ' ttl-cell--primary' ) . ( '' === $cell ? ' ttl-cell--empty' : '' ) );
