@@ -273,6 +273,7 @@ final class PersonalDataTest extends IntegrationTestCase {
 				'preferences'        => 1,
 				'push_subscriptions' => 1,
 				'login_tokens'       => 2,
+				'withdrawal_notices' => 0,
 			),
 			$removed
 		);
@@ -300,6 +301,7 @@ final class PersonalDataTest extends IntegrationTestCase {
 				'preferences'        => 0,
 				'push_subscriptions' => 0,
 				'login_tokens'       => 0,
+				'withdrawal_notices' => 0,
 			),
 			$this->data->erase( $this->id['hanna'] )
 		);
@@ -323,6 +325,7 @@ final class PersonalDataTest extends IntegrationTestCase {
 				'preferences'        => 1,
 				'push_subscriptions' => 1,
 				'login_tokens'       => 2,
+				'withdrawal_notices' => 0,
 			),
 			$result
 		);

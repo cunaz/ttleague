@@ -11,14 +11,20 @@ namespace TTLeague\Tests\Integration\Season;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use TTLeague\Access\AccessPolicy;
+use TTLeague\Classification\ProposalFilter;
+use TTLeague\Classification\ProposalService;
 use TTLeague\Domain\Season\LifecycleRules;
 use TTLeague\Infrastructure\AuditLog;
 use TTLeague\Infrastructure\Time\FixedClock;
 use TTLeague\ReadModel\Cache\NullCache;
 use TTLeague\ReadModel\ReadModel;
+use TTLeague\Registration\ClubRegistration;
+use TTLeague\Registration\RegistrationAccess;
+use TTLeague\Registration\Review;
 use TTLeague\Results\ResultException;
 use TTLeague\Results\ResultService;
 use TTLeague\Season\SeasonException as Refusal;
+use TTLeague\Tests\Integration\Registration\RecordingEvents as RegistrationEvents;
 use TTLeague\Tests\Integration\Results\RecordingEvents;
 
 /**
@@ -82,6 +88,72 @@ final class SeasonLifecycleTest extends SeasonTestCase {
 		self::assertSame( 1, $this->rows( 'season', "status = 'active'" ) );
 		self::assertSame( array( array( $next, $this->id['active'], 900 ) ), $this->events->published );
 		self::assertSame( 12, $this->rows( 'fixture', "status = 'scheduled'" ), 'Die Begegnungen des Entwurfs bleiben, wie sie sind.' );
+	}
+
+	public function test_publication_applies_late_classification_decisions_after_registration_review(): void {
+		$this->league();
+		$next = $this->scheduled();
+		$club = $this->seed->club( 'Seeclub', 5 );
+		$this->setup->add_club( $this->tk, $next, $club );
+
+		$clock        = new FixedClock( '2027-06-01 12:00:00' );
+		$access       = new RegistrationAccess( $this->db, new AccessPolicy( $this->db ), $clock, new \DateTimeZone( 'Europe/Zurich' ) );
+		$audit        = new AuditLog( $this->db );
+		$events       = new RegistrationEvents();
+		$registration = new ClubRegistration( $this->db, $access, $audit, $events );
+		$review       = new Review( $this->db, $access, $registration, $audit, $events );
+
+		$rows    = array();
+		$players = array();
+		foreach ( array( 'carried', 'manual', 'legacy', 'request', 'unknown' ) as $key ) {
+			$player          = $this->seed->player( $key, 'Test' );
+			$players[ $key ] = $player;
+			$this->seed->register( $player, $this->id['active'], $club, 6 );
+			// Die TK kann auch ausdrücklich den bisherigen Wert festsetzen.
+			$rows[ $key ] = $registration->confirm_player( $this->tk, $next, $club, $player, 'manual' === $key ? 6 : null );
+		}
+		$request = $registration->request_player(
+			$this->tk,
+			$next,
+			$club,
+			array(
+				'last_name'      => 'Test',
+				'first_name'     => 'Neu',
+				'classification' => 9,
+			)
+		);
+		$review->approve_request( $this->tk, $request, array( 'person_id' => $this->seed->person_of( $players['request'] ) ) );
+		$review->approve( $this->tk, $next, $club );
+		// Schon vor dem Upgrade geprüfte Meldung sowie eine über eine Neumeldung entschiedene Klassierung.
+		foreach ( array( 'manual', 'legacy', 'request', 'unknown' ) as $key ) {
+			$this->db->update( 'player_season', array( 'classification_carried' => null ), array( 'id' => $rows[ $key ] ) );
+		}
+
+		$this->db->update(
+			'audit_log',
+			array( 'after_json' => '{' ),
+			array(
+				'entity'    => 'player_season',
+				'entity_id' => $rows['unknown'],
+				'action'    => 'registered',
+			)
+		);
+
+		$proposals = new ProposalService( $this->db, $clock );
+		$proposals->compute( $this->tk );
+		foreach ( $proposals->overview( new ProposalFilter() )['rows'] as $proposal ) {
+			$proposals->override( $this->tk, $proposal['id'], 8, 'Entscheid am Saisonende' );
+		}
+		$proposals->close( $this->tk );
+		$this->lifecycle->publish( $this->tk, $next, '2027/28' );
+
+		self::assertSame( '8', $this->row( 'player_season', $rows['carried'] )['classification'] );
+		self::assertSame( '6', $this->row( 'player_season', $rows['manual'] )['classification'] );
+		self::assertSame( '8', $this->row( 'player_season', $rows['legacy'] )['classification'] );
+		self::assertSame( '9', $this->row( 'player_season', $rows['request'] )['classification'] );
+		self::assertSame( '6', $this->row( 'player_season', $rows['unknown'] )['classification'] );
+		self::assertSame( '1', $this->row( 'player_season', $rows['legacy'] )['classification_carried'] );
+		self::assertSame( 5, $this->rows( 'player_season', "season_id = {$this->id['active']} AND classification = 6" ) );
 	}
 
 	public function test_the_publication_is_logged_for_both_seasons(): void {
@@ -673,6 +745,7 @@ final class SeasonLifecycleTest extends SeasonTestCase {
 		self::assertSame( 'active', $this->row( 'team', $this->id['seefeld_1'] )['status'] );
 		self::assertSame( 'scheduled', $this->row( 'fixture', $first )['status'] );
 		self::assertSame( 'scheduled', $this->row( 'fixture', $second )['status'] );
+		self::assertSame( '0', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'withdrawal_notice' )}" ), 'Auch die Versandaufträge sind zurückgerollt.' );
 		self::assertSame( 0, $this->rows( 'fixture_event' ) );
 		self::assertSame( array(), $this->events->withdrawn );
 	}

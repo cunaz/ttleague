@@ -1,6 +1,6 @@
 <?php
 /**
- * Mitteilung «Spielplan freigegeben» an Captains und TK-Chefs, in begrenzten Schritten.
+ * Mitteilungen an Captains und TK-Chefs zur Freigabe des Spielplans und zum Mannschaftsrückzug.
  *
  * @package TTLeague
  */
@@ -25,8 +25,9 @@ use TTLeague\ReadModel\Support\Slug;
  * einen Stapel und ist beliebig oft wiederholbar; wer die Mitteilung hat, erhält sie nicht noch
  * einmal (NotificationLog). Die WordPress-Schicht plant die Schritte ein (SeasonAdmin).
  *
- * Mitteilungen gibt es nur für eine Saison, die über den Assistenten freigegeben wurde (Eintrag
- * «published» im audit_log), nicht für eine importierte aktive Saison.
+ * Die Freigabemitteilung setzt die Freigabe über den Assistenten voraus (Eintrag «published»
+ * im audit_log). Beim Mannschaftsrückzug in der aktiven Saison erhalten die Captains und
+ * TK-Chefs der Gegner eine eigene Mitteilung.
  */
 final class SeasonNotifications {
 
@@ -50,6 +51,64 @@ final class SeasonNotifications {
 		?callable $on_error = null,
 	) {
 		$this->on_error = $on_error ?? static function (): void {};
+	}
+
+	/**
+	 * Einen Stapel bearbeiten. Der nächste Schritt beginnt nach der zurückgegebenen Person.
+	 * Fehler bleiben für den stündlichen Lauf vorgemerkt, auch nach einem Prozessabbruch.
+	 */
+	public function send_withdrawal( int $team_id, int $after_person = 0, int $limit = self::BATCH ): ?int {
+		$ids = array_map(
+			'intval',
+			$this->db->get_col(
+				"SELECT person_id FROM {$this->db->table( 'withdrawal_notice' )}
+				WHERE team_id = %d AND person_id > %d AND queued_at >= UTC_TIMESTAMP() - INTERVAL %d DAY ORDER BY person_id LIMIT %d",
+				array( $team_id, $after_person, self::CATCH_UP_DAYS, $limit + 1 )
+			)
+		);
+		if ( array() === $ids ) {
+			return null;
+		}
+		$has_more = count( $ids ) > $limit;
+		$ids      = array_slice( $ids, 0, $limit );
+		$team     = $this->db->get_row(
+			"SELECT t.name, s.slug FROM {$this->db->table( 'team' )} t JOIN {$this->db->table( 'season' )} s ON s.id = t.season_id
+			WHERE t.id = %d AND t.status = 'withdrawn'",
+			array( $team_id )
+		);
+		if ( null === $team ) {
+			$this->db->delete( 'withdrawal_notice', array( 'team_id' => $team_id ) );
+			return null;
+		}
+		$message = $this->messages->withdrawn( $team_id, (string) $team['name'], (string) $team['slug'] );
+		$people  = array_column( $this->recipients->persons( $ids ), null, 'person_id' );
+		foreach ( $ids as $id ) {
+			try {
+				if ( ! isset( $people[ $id ] ) || $this->notifier->send_confirmed( $message, $people[ $id ] ) ) {
+					$this->db->delete(
+						'withdrawal_notice',
+						array(
+							'team_id'   => $team_id,
+							'person_id' => $id,
+						)
+					);
+				}
+			} catch ( \Throwable $e ) {
+				( $this->on_error )( $e, $message->event . ' p' . $id );
+			}
+		}
+		return $has_more ? end( $ids ) : null;
+	}
+
+	/**
+	 * Nur neue Rückzüge haben Versandaufträge. Abgelaufene Aufträge ausräumen.
+	 *
+	 * @return list<int> Mannschaften mit offenen Zustellungen.
+	 */
+	public function withdrawals_to_catch_up(): array {
+		$table = $this->db->table( 'withdrawal_notice' );
+		$this->db->query( "DELETE FROM {$table} WHERE queued_at < UTC_TIMESTAMP() - INTERVAL %d DAY", array( self::CATCH_UP_DAYS ) );
+		return array_map( 'intval', $this->db->get_col( "SELECT DISTINCT team_id FROM {$table} ORDER BY team_id" ) );
 	}
 
 	/**

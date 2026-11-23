@@ -21,6 +21,9 @@ Jeder Schritt zeigt, was noch fehlt. Die Schritte 2 bis 5 lassen sich bis zur Fr
 - **Mit aktiver Saison:** Name `2027/28`, Kürzel `2027-28`, Beginn und Ende ein Jahr nach der aktiven (`Domain\Season\SeasonDates::following()`). `rules_json` wird unverändert kopiert. Eine offene Meldung (`club_season.status = open`) erhält jeder Club mit mindestens einer nicht zurückgezogenen Mannschaft in der aktiven Saison; die TK-Chefs dieser Clubs werden in `club_role` vorgetragen, Captains nicht.
 - **Ohne aktive Saison** (frische Installation): Name, Beginn und Ende kommen aus dem Formular, die Regeln sind die Standardwerte. Der Name hat die Form `2027/28`, der Beginn liegt im ersten Jahr, die Saison dauert höchstens ein Jahr.
 - **Clubs aufnehmen und herausnehmen:** `add_club()` legt für einen weiteren Club die offene Meldung an (neuer Club, Club ohne Mannschaft im Vorjahr, jeder Club einer ersten Saison) und trägt seine TK-Chefs der Vorsaison vor, falls er in der geplanten Saison noch keinen hat. `remove_club()` geht, solange der Club nichts gemeldet hat.
+- Auf einer leeren Installation legt die TK in Schritt 1 zuerst die Saison und dann unter «Neuen Club anlegen» die Clubnummer des Verbands, den Namen, den Kurznamen und das URL-Kürzel an. Der Club erhält sofort seine offene Meldung. Für die erste Kontaktperson verwendet die TK «Neue Person als TK-Chef erfassen». Dafür genügen Nachname und E-Mail-Adresse, der Vorname ist optional. Kennt WordPress oder die Liga die Adresse bereits, prüft die TK die bestehende Zuordnung.
+- «Einladen» neben der zugewiesenen Person verschickt den Anmeldelink. Nach der Anmeldung und der Einwilligung kann sie im offenen Meldefenster unter «Mein Bereich» für ihren Club melden. Das Meldefenster setzt die TK in Schritt 3. Bei fehlgeschlagenem Versand lässt sich die Einladung am selben Ort erneut senden.
+- Unter «Teilnehmende Clubs» weist die TK auch für einen Club ohne Vorsaison einen TK-Chef zu. Sie wählt den Club und eine aktive Person aus den Stammdaten. Mehrere TK-Chefs können denselben Club betreuen. «Zuweisung aufheben» entfernt die gewählte Person für diesen Club in der geplanten Saison.
 - **Höchstens eine geplante Saison:** `create()` sperrt in seiner Transaktion alle Saisons (`SELECT … FOR UPDATE`) und prüft erst dann. Ein Kürzel oder Name, den es schon gibt, wird abgelehnt.
 - **Löschen:** Die geplante Saison lässt sich löschen, solange sie leer ist: keine gemeldeten Spieler, Neumeldungen, eingereichten oder geprüften Meldungen, Mannschaften, Begegnungen und nichts im Cup oder Ranglistenturnier. Mit ihr verschwinden die offenen Meldungen, die vorgetragenen Funktionen und die leeren Konkurrenzen. Bestätigung mit dem Namen der Saison.
 - **Regeln:** `Domain\Season\RulesInput` kennt jedes Feld von `SeasonRules` mit Typ und Grenzen und wandelt die Texte des Formulars um (Listen und Kategorien mit Komma). Ein Fehler in einem Feld verhindert das Speichern aller Felder; die Eingabe bleibt im Formular stehen.
@@ -33,6 +36,7 @@ Jeder Schritt zeigt, was noch fehlt. Die Schritte 2 bis 5 lassen sich bis zur Fr
 - Neue Mannschaften stehen zuerst ohne Gruppe da.
 - Weiche Hinweise (`Domain\Season\GroupingRules::hints()`): mehr als zwei Mannschaften eines Vereins in einer Kategorie, ausser in der untersten (Art. 11.4; alle Gruppen der Kategorie zählen zusammen, die unterste ist der im Alphabet letzte Buchstabe); Gruppe mit weniger als drei Mannschaften; Mannschaft ohne Gruppe. Sie verhindern nichts. Die Freigabe verlangt aber, dass jede Mannschaft zugeteilt ist.
 - Eine Mannschaft mit Begegnungen im Spielplanentwurf wechselt die Gruppe nicht; zuerst wird der Entwurf ihrer Gruppe gelöscht.
+- Der Mannschaftscup A oder B lässt sich auch in der ersten Saison anlegen. Die TK setzt danach unter «Spielbetrieb → Cup» die Parameter der Kategorie.
 - «Cup und Ranglistenturnier übernehmen» kopiert die Cup-Konkurrenzen je Kategorie und das Ranglistenturnier der Vorsaison: Typ, Name, Kategorie und `format_json` ohne die Schlüssel mit «deadline» (Fristen der alten Saison). Was es schon gibt (gleicher Typ, gleiche Kategorie), bleibt.
 
 ## Spielplan (`Season\Scheduling`)
@@ -62,7 +66,7 @@ Voraussetzungen (`Domain\Season\LifecycleRules::publish_blockers()`), als Liste 
 
 Zur letzten Zeile: Die Klassierung arbeitet nur auf der aktiven Saison. Wird diese mit der Freigabe archiviert, bevor die Klassierung abgeschlossen ist, lässt sie sich über die Oberfläche nicht mehr abschliessen. Die TK muss das deshalb wissen und bestätigen.
 
-In einer Transaktion unter der Sperre der Saisons und der teilnehmenden Clubs: Voraussetzungen prüfen, jede bisher aktive Saison `archived`, geplante `active`, beides im `audit_log`. Gemeldete Spieler bleiben, wie sie sind, auch `provisional`. Danach `DataVersion::bump()`, die Aktion `ttleague_season_published` (Saison, archivierte Saison, Konto) und die Mitteilungen. Die Rechte der Captains gelten ab jetzt; die Begegnungen des Entwurfs sind gewöhnliche Begegnungen.
+In einer Transaktion unter der Sperre der Saisons und der teilnehmenden Clubs: Voraussetzungen prüfen, jede bisher aktive Saison `archived`, geplante `active`, beides im `audit_log`. Automatisch übernommene Klassierungen werden mit der Vorsaison abgeglichen. Der Protokolleintrag `published` zählt geänderte Werte in `classifications_refreshed`. Alle Spieler behalten ihren Meldestatus. Danach `DataVersion::bump()`, die Aktion `ttleague_season_published` (Saison, archivierte Saison, Konto) und die Mitteilungen. Die Rechte der Captains gelten ab jetzt; die Begegnungen des Entwurfs sind gewöhnliche Begegnungen.
 
 Die Freigabe ist nicht umkehrbar über die Oberfläche. Deshalb verlangt sie eine Bestätigung mit dem Namen der Saison.
 
@@ -76,6 +80,7 @@ Die Freigabe ist nicht umkehrbar über die Oberfläche. Deshalb verlangt sie ein
 
 - **Rückzug einer Mannschaft** (Art. 13.3, `Lifecycle::withdraw_team()`): `team.status = withdrawn`. Alle ihre Begegnungen werden als Forfait gegen sie gewertet, auch gespielte; die Wertung kommt aus `SeasonRules::forfeit_score` (10 für 0:10). Geschrieben wird über `ResultService::decide()`, also mit denselben Folgen wie ein Forfait von Hand (Aufstellung und Spiele entfernt, Bindungen neu bestimmt, Verlauf, Protokoll), aber ohne Mitteilung je Begegnung. Abgesagte Begegnungen und Begegnungen gegen eine ebenfalls zurückgezogene Mannschaft bleiben, wie sie sind. Mit Begründung im `audit_log`. Danach wird die Wertungszahl neu gerechnet.
 - **Tabellenende:** `StandingsCalculator::calculate()` nimmt die zurückgezogenen Teams entgegen und reiht sie hinter alle anderen, unter sich nach den üblichen Kriterien. `ReadModel\Championship` liefert in jeder Tabellenzeile `withdrawn`; die Tabellen kennzeichnen die Mannschaft mit «(zurückgezogen)».
+- Der Rückzug merkt die Captains der gegnerischen Mannschaften und die TK-Chefs ihrer Clubs in derselben Transaktion für den Versand vor. WP-Cron versendet in Schritten von höchstens 25 Personen die Mitteilung `team_withdrawn` über ihre gewählten Kanäle. Sie nennt die zurückgezogene Mannschaft und verlinkt auf die Meisterschaft. Bei mehreren Begegnungen oder Rollen erhält jede Person die Mitteilung je Kanal einmal. Abgesagte Begegnungen und bereits zurückgezogene Gegner lösen keine Mitteilung aus. Der stündliche Lauf holt verlorene Schritte und fehlgeschlagene Zustellungen sieben Tage lang nach. Vor dem Update zurückgezogene Mannschaften haben keine Versandaufträge.
 - **Einzelne Begegnung ansetzen oder absagen** (Entscheidungsspiel, Art. 15): im Schritt Spielplan.
 - **Frist der Nachmeldung** der aktiven Saison: im Schritt 7.
 
@@ -104,8 +109,4 @@ Voraussetzungen: keine Begegnung der Meisterschaft oder des Cups mehr `scheduled
 
 ## Offen
 
-- Die Klassierungen provisorisch gemeldeter Spieler führt die Freigabe nicht nach (siehe «Offen» in [meldung.md](meldung.md)); gemeldete Spieler bleiben unverändert.
-- Der Rückzug benachrichtigt die Gegner nicht; sie sehen die Wertung in Tabelle und Matchreport.
 - Personen ohne erreichbaren Kanal bleiben für `season_published` «ausstehend»: Der stündliche Lauf plant für sie sieben Tage lang einen Schritt ein, der nichts versendet.
-- TK-Chefs eines neuen Clubs ohne Vorsaison trägt der Assistent nicht ein; dafür gibt es noch keine Oberfläche.
-- [spielplan.md](spielplan.md) nennt die Tische pro Begegnung noch einen Parameter des Konstruktors; der Assistent übergibt den Wert aus `SeasonRules`.

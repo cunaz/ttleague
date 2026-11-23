@@ -79,6 +79,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: dom, mbstring, json, intl, mysqli, pdo_mysql
+          tools: wp-cli:2.12.0
           coverage: none
 
       - name: Node für die PHP/JavaScript-Vergleichstests einrichten
@@ -100,6 +101,31 @@ jobs:
 
       - name: WordPress-Tests
         run: composer test:wp
+
+      - name: Installierbares ZIP in einem frischen WordPress prüfen
+        if: matrix.php == '8.3'
+        run: |
+          bin/package.sh HEAD
+          site="$RUNNER_TEMP/ttleague-package-test"
+          cp -R vendor/roots/wordpress-full "$site"
+          wp --path="$site" config create --dbname="$TTLEAGUE_WP_TEST_DB_NAME" --dbhost="$TTLEAGUE_WP_TEST_DB_HOST" \
+            --dbuser="$TTLEAGUE_WP_TEST_DB_USER" --dbpass="$TTLEAGUE_WP_TEST_DB_PASS" --dbprefix=package_
+          wp --path="$site" core install --url=http://example.invalid --title=Testliga \
+            --admin_user=ligatest --admin_email=liga@example.invalid --admin_password="$(openssl rand -hex 24)" --skip-email
+          wp --path="$site" rewrite structure '/%postname%/'
+          wp --path="$site" plugin install "$GITHUB_WORKSPACE/dist/ttleague.zip" --activate
+          wp --path="$site" ttleague info
+          wp --path="$site" eval '
+            if (get_option(TTLeague\Infrastructure\Database\Installer::OPTION) !== TTLeague\Infrastructure\Database\Schema::VERSION
+                || TTLeague\Frontend\PageInstaller::problems()
+                || !wp_next_scheduled("ttleague_notifications_hourly")) {
+                WP_CLI::error("Schema, Seiten oder Fristenlauf fehlen nach Aktivierung des Pakets.");
+            }
+            foreach (TTLeague\Frontend\PageInstaller::definitions() as $page) {
+                if (!WP_Block_Type_Registry::get_instance()->is_registered($page["block"])) {
+                    WP_CLI::error("Block fehlt im Paket: " . $page["block"]);
+                }
+            }'
 
       - name: Coding Standards
         if: matrix.php == '8.3'

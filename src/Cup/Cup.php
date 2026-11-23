@@ -69,9 +69,6 @@ final class Cup {
 		add_action( self::ROUND_HOOK, array( self::class, 'send_round' ), 10, 2 );
 		add_action( Notifications::CRON_HOOK, array( self::class, 'run_deadlines' ) );
 		add_action( Notifications::CRON_HOOK, array( self::class, 'catch_up_rounds' ), 20 );
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
-		}
 	}
 
 	public static function deactivate(): void {

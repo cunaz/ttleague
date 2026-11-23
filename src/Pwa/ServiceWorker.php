@@ -60,19 +60,21 @@ final class ServiceWorker {
 	 * @param list<string>         $exclude Pfade, die nie gespeichert werden.
 	 * @param array<string,string> $offline Texte der Offline-Seite (lang, title, heading, text, retry, home, site).
 	 * @param array<string,string> $colors  Farben der Offline-Seite (background, text, accent).
+	 * @param list<int>            $private_ids IDs privater Seiten bei einfachen Permalinks.
 	 * @return array<string,mixed>
 	 */
-	public static function config( string $base, string $start, array $exclude, array $offline, array $colors ): array {
+	public static function config( string $base, string $start, array $exclude, array $offline, array $colors, array $private_ids = array() ): array {
 		$base = Manifest::base( $base );
 		return array(
-			'prefix'    => 'ttleague:' . $base . ':',
-			'base'      => $base,
-			'start'     => $start,
-			'never'     => self::never( $exclude ),
-			'maxPages'  => self::MAX_PAGES,
-			'maxAssets' => self::MAX_ASSETS,
-			'offline'   => $offline,
-			'colors'    => $colors,
+			'prefix'         => 'ttleague:' . $base . ':',
+			'base'           => $base,
+			'start'          => $start,
+			'never'          => self::never( $exclude ),
+			'privatePageIds' => $private_ids,
+			'maxPages'       => self::MAX_PAGES,
+			'maxAssets'      => self::MAX_ASSETS,
+			'offline'        => $offline,
+			'colors'         => $colors,
 		);
 	}
 

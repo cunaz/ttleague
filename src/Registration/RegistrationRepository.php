@@ -279,6 +279,58 @@ final class RegistrationRepository {
 	}
 
 	/**
+	 * Bei der Saisonfreigabe unter den Sperren für Saisons und Meldungen. Nur die Klassierung
+	 * der unmittelbaren Vorsaison konnte sich seit der Meldung durch einen TK-Abschluss ändern.
+	 * Bei alten Meldungen ohne Herkunft gilt die protokollierte provisorische Anmeldung, sofern
+	 * die TK für diesen Spieler nicht doch eine Neumeldung mit eigener Klassierung bewilligt hat.
+	 *
+	 * @param array{id:int,start_date:string} $season Geplante Saison.
+	 * @return int Anzahl geänderter Klassierungen.
+	 */
+	public function refresh_carried_classifications( array $season ): int {
+		$previous = $this->previous_season( $season );
+		if ( null === $previous ) {
+			return 0;
+		}
+		$this->mark_legacy_carried_classifications( $season['id'] );
+		$value = $previous['closed'] ? 'COALESCE(cp.decided, prev.classification)' : 'prev.classification';
+		return $this->db->query(
+			"UPDATE {$this->db->table( 'player_season' )} ps
+			JOIN {$this->db->table( 'player_season' )} prev ON prev.season_id = %d AND prev.player_id = ps.player_id
+			LEFT JOIN {$this->db->table( 'classification_proposal' )} cp ON cp.season_id = prev.season_id AND cp.player_id = ps.player_id
+			SET ps.classification = {$value}
+			WHERE ps.season_id = %d AND ps.classification_carried = 1 AND ps.classification <> {$value}",
+			array( $previous['id'], $season['id'] )
+		);
+	}
+
+	/**
+	 * Altmeldungen mit belegter Übernahme für den gemeinsamen Abgleich kennzeichnen.
+	 */
+	private function mark_legacy_carried_classifications( int $season_id ): void {
+		$rows = $this->db->get_results(
+			"SELECT ps.id, a.after_json FROM {$this->db->table( 'player_season' )} ps
+			JOIN {$this->db->table( 'audit_log' )} a ON a.entity = 'player_season' AND a.entity_id = ps.id AND a.action = 'registered'
+			WHERE ps.season_id = %d AND ps.classification_carried IS NULL
+			AND NOT EXISTS (SELECT 1 FROM {$this->db->table( 'player_request' )} r
+				WHERE r.season_id = ps.season_id AND r.player_id = ps.player_id AND r.club_id = ps.club_id
+				AND r.status = 'approved' AND (r.decided_at IS NULL OR ps.registered_at IS NULL OR r.decided_at >= ps.registered_at))",
+			array( $season_id )
+		);
+		$ids  = array();
+		foreach ( $rows as $row ) {
+			$registration = json_decode( (string) $row['after_json'], true );
+			if ( ClubRegistration::PROVISIONAL === ( $registration['status'] ?? null ) ) {
+				$ids[] = (int) $row['id'];
+			}
+		}
+		foreach ( array_chunk( $ids, 500 ) as $batch ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $batch ), '%d' ) );
+			$this->db->query( "UPDATE {$this->db->table( 'player_season' )} SET classification_carried = 1 WHERE id IN ($placeholders)", $batch );
+		}
+	}
+
+	/**
 	 * Neumeldungen eines Clubs, neueste zuerst.
 	 *
 	 * @param string|null $status Nur dieser Status (requested, approved, rejected).

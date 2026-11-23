@@ -56,9 +56,6 @@ final class Events {
 		add_action( 'ttleague_event_cancelled', array( self::class, 'on_cancelled' ), 10, 2 );
 		add_action( self::CANCELLATION_HOOK, array( self::class, 'send_cancellations' ), 10, 2 );
 		add_action( Notifications::CRON_HOOK, array( self::class, 'catch_up_cancellations' ), 20 );
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
-		}
 	}
 
 	public static function deactivate(): void {

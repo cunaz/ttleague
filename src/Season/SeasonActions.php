@@ -15,6 +15,7 @@ use TTLeague\Accounts\Services;
 use TTLeague\Domain\Season\LifecycleRules;
 use TTLeague\Domain\Season\RulesInput;
 use TTLeague\Infrastructure\Flash;
+use TTLeague\Registration\RegistrationRepository;
 use TTLeague\Results\Actor;
 use TTLeague\Results\Results;
 use TTLeague\Tk\Tk;
@@ -32,13 +33,19 @@ final class SeasonActions {
 	public const DELETE         = 'ttleague_season_delete';
 	public const RULES          = 'ttleague_season_rules';
 	public const WINDOW         = 'ttleague_season_window';
+	public const CLUB_CREATE    = 'ttleague_season_club_create';
+	public const OFFICER_CREATE = 'ttleague_season_officer_create';
 	public const CLUB_ADD       = 'ttleague_season_club_add';
+	public const OFFICER_ADD    = 'ttleague_season_officer_add';
+	public const OFFICER_INVITE = 'ttleague_season_officer_invite';
+	public const OFFICER_REMOVE = 'ttleague_season_officer_remove';
 	public const CLUB_REMOVE    = 'ttleague_season_club_remove';
 	public const GROUP_CREATE   = 'ttleague_season_group_create';
 	public const GROUP_RENAME   = 'ttleague_season_group_rename';
 	public const GROUP_DELETE   = 'ttleague_season_group_delete';
 	public const ASSIGN         = 'ttleague_season_assign';
 	public const PROPOSAL       = 'ttleague_season_proposal';
+	public const CUP_CREATE     = 'ttleague_season_cup_create';
 	public const COPY           = 'ttleague_season_copy';
 	public const WEEKS          = 'ttleague_season_weeks';
 	public const GENERATE       = 'ttleague_season_generate';
@@ -58,13 +65,19 @@ final class SeasonActions {
 		self::DELETE         => 'delete',
 		self::RULES          => 'rules',
 		self::WINDOW         => 'window',
+		self::CLUB_CREATE    => 'club_create',
+		self::OFFICER_CREATE => 'officer_create',
 		self::CLUB_ADD       => 'club_add',
+		self::OFFICER_ADD    => 'officer_add',
+		self::OFFICER_INVITE => 'officer_invite',
+		self::OFFICER_REMOVE => 'officer_remove',
 		self::CLUB_REMOVE    => 'club_remove',
 		self::GROUP_CREATE   => 'group_create',
 		self::GROUP_RENAME   => 'group_rename',
 		self::GROUP_DELETE   => 'group_delete',
 		self::ASSIGN         => 'assign',
 		self::PROPOSAL       => 'proposal',
+		self::CUP_CREATE     => 'cup_create',
 		self::COPY           => 'copy',
 		self::WEEKS          => 'weeks',
 		self::GENERATE       => 'generate',
@@ -216,6 +229,68 @@ final class SeasonActions {
 		);
 	}
 
+	public static function club_create(): void {
+		$season = self::int( 'season' );
+		self::request( self::CLUB_CREATE, $season );
+		self::finish(
+			SeasonPage::url( SeasonPage::CREATE ),
+			static function ( Actor $actor ) use ( $season ): string {
+				SeasonAdmin::club_setup()->create_club( $actor, $season, self::text( 'number' ), self::text( 'name' ), self::text( 'short_name' ), self::text( 'slug' ) );
+				return __( 'Der neue Club ist aufgenommen. Weise ihm jetzt einen TK-Chef zu.', 'ttleague' );
+			}
+		);
+	}
+
+	public static function officer_create(): void {
+		$season = self::int( 'season' );
+		self::request( self::OFFICER_CREATE, $season );
+		self::finish(
+			SeasonPage::url( SeasonPage::CREATE ),
+			static function ( Actor $actor ) use ( $season ): string {
+				SeasonAdmin::club_setup()->create_officer( $actor, $season, self::int( 'club' ), self::text( 'first_name' ), self::text( 'last_name' ), self::text( 'email' ) );
+				return __( 'Die Person ist als TK-Chef zugewiesen und kann eingeladen werden.', 'ttleague' );
+			}
+		);
+	}
+
+	public static function officer_invite(): void {
+		$season = self::int( 'season' );
+		self::request( self::OFFICER_INVITE, $season );
+		self::finish(
+			SeasonPage::url( SeasonPage::CREATE ),
+			static function ( Actor $actor ) use ( $season ): Outcome {
+				$db     = Services::db();
+				$person = self::int( 'person' );
+				( new SeasonGuard( $db ) )->planned( $season );
+				$officers = ( new RegistrationRepository( $db ) )->tk_chefs( $season, self::int( 'club' ) );
+				if ( ! in_array( $person, $officers, true ) || 'active' !== ( Services::accounts()->person( $person )['status'] ?? null ) ) {
+					throw SeasonException::conflict( __( 'Diese Person ist dem Club nicht als aktiver TK-Chef zugewiesen.', 'ttleague' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Ausgabe als Flash-Meldung.
+				}
+				return Services::club_accounts()->invite( $actor, $person );
+			}
+		);
+	}
+
+	public static function officer_add(): void {
+		self::officer( true );
+	}
+
+	public static function officer_remove(): void {
+		self::officer( false );
+	}
+
+	private static function officer( bool $assign ): void {
+		$season = self::int( 'season' );
+		self::request( $assign ? self::OFFICER_ADD : self::OFFICER_REMOVE, $season );
+		self::finish(
+			SeasonPage::url( SeasonPage::CREATE ),
+			static function ( Actor $actor ) use ( $season, $assign ): string {
+				SeasonAdmin::setup()->set_club_officer( $actor, $season, self::int( 'club' ), self::int( 'person' ), $assign );
+				return $assign ? __( 'Der TK-Chef ist zugewiesen.', 'ttleague' ) : __( 'Die Zuweisung als TK-Chef ist aufgehoben.', 'ttleague' );
+			}
+		);
+	}
+
 	public static function group_create(): void {
 		$season = self::int( 'season' );
 		self::request( self::GROUP_CREATE, $season );
@@ -288,6 +363,19 @@ final class SeasonActions {
 				$result = SeasonAdmin::grouping()->apply_proposal( $actor, $season );
 				/* translators: 1: Anzahl Gruppen, 2: Anzahl Mannschaften */
 				return sprintf( __( 'Vorschlag übernommen: %1$d Gruppen angelegt, %2$d Mannschaften zugeteilt. Auf- und Abstieg setzt du von Hand.', 'ttleague' ), $result['groups'], $result['teams'] );
+			}
+		);
+	}
+
+	public static function cup_create(): void {
+		$season = self::int( 'season' );
+		self::request( self::CUP_CREATE, $season );
+		$category = self::text( 'category' );
+		self::finish(
+			SeasonPage::url( SeasonPage::GROUPS ),
+			static function ( Actor $actor ) use ( $season, $category ): string {
+				SeasonAdmin::grouping()->create_cup( $actor, $season, $category );
+				return __( 'Die Kategorie ist unter «Spielbetrieb → Cup» eingerichtet.', 'ttleague' );
 			}
 		);
 	}
@@ -492,14 +580,15 @@ final class SeasonActions {
 	 * Dienst aufrufen, Rückmeldung ablegen, zurückleiten.
 	 *
 	 * @param string                 $url      Ziel nach dem Erfolg.
-	 * @param callable(Actor):string $work     Aufruf des Dienstes; liefert die Erfolgsmeldung.
+	 * @param callable(Actor):(string|Outcome) $work     Aufruf des Dienstes; liefert die Erfolgsmeldung.
 	 * @param string|null            $form     Formular, dessen Eingabe bei Feldfehlern gemerkt wird.
 	 * @param array<string,mixed>    $values   Eingabe des Formulars.
 	 * @param string|null            $error_url Ziel nach einer Ablehnung; ohne Angabe wie beim Erfolg.
 	 */
 	private static function finish( string $url, callable $work, ?string $form = null, array $values = array(), ?string $error_url = null ): never {
 		try {
-			$outcome = Outcome::success( $work( Results::current_actor() ) );
+			$result  = $work( Results::current_actor() );
+			$outcome = $result instanceof Outcome ? $result : Outcome::success( $result );
 		} catch ( SeasonException $e ) {
 			$details = array_values( array_unique( array_column( $e->errors, 'message' ) ) );
 			$outcome = Outcome::error( $e->getMessage(), array( $e->getMessage() ) === $details ? array() : $details );

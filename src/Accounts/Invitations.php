@@ -39,22 +39,28 @@ final class Invitations {
 		$first   = AccountService::salutation( $person );
 
 		/* translators: 1: Vorname, 2: einladende Person, 3: Name der Seite, 4: Link, 5: Adresse der Anmeldeseite */
-		$text = sprintf( __( "Hallo %1\$s\n\n%2\$s hat dich zu %3\$s eingeladen. Dort trägst du Resultate nach, bestätigst sie und siehst deine Spiele.\n\nMit diesem Link meldest du dich an. Er ist 7 Tage gültig und funktioniert einmal:\n%4\$s\n\nEin Passwort brauchst du nicht: Später forderst du auf %5\$s einfach einen neuen Link an.", 'ttleague' ), $first, $by, $site, $url, LoginFlow::page_url() );
+		$text = sprintf( __( "Hallo %1\$s\n\n%2\$s hat dich zu %3\$s eingeladen. Unter «Mein Bereich» findest du deine Spiele und die Aufgaben für deine Funktion im Club. Als TK-Chef erfasst du dort auch die Clubmeldung für die neue Saison.\n\nMit diesem Link meldest du dich an. Er ist 7 Tage gültig und funktioniert einmal:\n%4\$s\n\nEin Passwort brauchst du nicht: Später forderst du auf %5\$s einfach einen neuen Link an.", 'ttleague' ), $first, $by, $site, $url, LoginFlow::page_url() );
 		$html = '<p>' . esc_html( sprintf( /* translators: %s: Vorname */ __( 'Hallo %s', 'ttleague' ), $first ) ) . '</p>'
-			. '<p>' . esc_html( sprintf( /* translators: 1: einladende Person, 2: Name der Seite */ __( '%1$s hat dich zu %2$s eingeladen. Dort trägst du Resultate nach, bestätigst sie und siehst deine Spiele.', 'ttleague' ), $by, $site ) ) . '</p>'
+			. '<p>' . esc_html( sprintf( /* translators: 1: einladende Person, 2: Name der Seite */ __( '%1$s hat dich zu %2$s eingeladen. Unter «Mein Bereich» findest du deine Spiele und die Aufgaben für deine Funktion im Club. Als TK-Chef erfasst du dort auch die Clubmeldung für die neue Saison.', 'ttleague' ), $by, $site ) ) . '</p>'
 			. Mailer::button( $url, __( 'Jetzt anmelden', 'ttleague' ) )
 			. '<p>' . esc_html__( 'Der Link ist 7 Tage gültig und funktioniert einmal. Ein Passwort brauchst du nicht: Später forderst du auf der Anmeldeseite einfach einen neuen Link an.', 'ttleague' ) . '</p>';
 
-		$this->mailer->send(
-			new Message(
-				(string) $person['email'],
-				/* translators: %s: Name der Seite */
-				sprintf( __( 'Einladung zu %s', 'ttleague' ), $site ),
-				$text,
-				$html,
-				'invitation'
-			)
+		$message = new Message(
+			(string) $person['email'],
+			/* translators: %s: Name der Seite */
+			sprintf( __( 'Einladung zu %s', 'ttleague' ), $site ),
+			$text,
+			$html,
+			'invitation'
 		);
+		try {
+			if ( ! $this->mailer->send_or_throw( $message ) ) {
+				throw new \RuntimeException( esc_html__( 'Der Mailversand wurde unterdrückt.', 'ttleague' ) );
+			}
+		} catch ( \Throwable $e ) {
+			$this->links->consume( $token );
+			throw $e;
+		}
 		$this->audit->record( 'person', $person_id, 'invited', $by_user_id );
 	}
 }

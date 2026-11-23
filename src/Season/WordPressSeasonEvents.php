@@ -23,6 +23,7 @@ final class WordPressSeasonEvents implements SeasonEvents {
 
 	public function changed( int $season_id ): void {
 		DataVersion::bump();
+		Capabilities::use_policy( null );
 		$this->data_changed( $season_id );
 	}
 

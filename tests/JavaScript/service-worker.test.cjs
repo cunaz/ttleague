@@ -70,7 +70,7 @@ function worker( { fetch, cacheError, putError, cleanupError, cached, config = {
 	};
 	runInNewContext( source, {
 		CONFIG: {
-			prefix: 'test:', version: '1', base: '/', start: '/', never: [ 'mein-bereich', 'wp-json' ],
+			prefix: 'test:', version: '1', base: '/', start: '/', never: [ 'mein-bereich', 'wp-json' ], privatePageIds: [ 42 ],
 			maxPages: 2, maxAssets: 2,
 			offline: { lang: 'de', site: 'Liga', title: 'Offline', heading: 'Keine Verbindung' },
 			colors: { background: '#fff', text: '#111', accent: '#123' },
@@ -178,6 +178,9 @@ test( 'Vary wird beim Lesen einer Offline-Kopie beachtet', async () => {
 test( 'Private Seiten und REST-Anfragen werden nicht gespeichert', async () => {
 	const sw = worker();
 	await sw.request( '/mein-bereich/' );
+	await sw.request( '/index.php/mein-bereich/' );
+	await sw.request( '/?page_id=42' );
+	await sw.request( '/?anmeldung=einmalig' );
 	await sw.request( '/?rest_route=/ttleague/v1/fixtures' );
 	await sw.request( '/spielplan/?preview=true' );
 	assert.equal( sw.entries.size, 0 );

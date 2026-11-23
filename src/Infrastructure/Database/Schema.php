@@ -17,7 +17,7 @@ namespace TTLeague\Infrastructure\Database;
  */
 final class Schema {
 
-	public const VERSION = '2026111201';
+	public const VERSION = '2026112301';
 
 	/**
 	 * Indizes, die eine neuere Schemaversion ersetzt hat. dbDelta() entfernt keine Indizes;
@@ -65,6 +65,7 @@ final class Schema {
 		'rate_limit',
 		'push_subscription',
 		'notification_pref',
+		'withdrawal_notice',
 		'notification_log',
 		'fixture_event',
 		'audit_log',
@@ -80,10 +81,12 @@ final class Schema {
 	/**
 	 * @param string $prefix          WordPress-Tabellenpräfix ($wpdb->prefix).
 	 * @param string $charset_collate Zeichensatz-Klausel ($wpdb->get_charset_collate()).
+	 * @param bool   $unique_user_id  false, solange die Umstellung alter Personenverknüpfungen aussteht.
 	 * @return array<string,string> Tabellenname => CREATE TABLE.
 	 */
-	public static function statements( string $prefix, string $charset_collate ): array {
-		$t = static fn( string $name ): string => self::table( $name, $prefix );
+	public static function statements( string $prefix, string $charset_collate, bool $unique_user_id = true ): array {
+		$t             = static fn( string $name ): string => self::table( $name, $prefix );
+		$user_id_index = $unique_user_id ? 'UNIQUE KEY' : 'KEY';
 
 		// Transaktionen (Erfassung, Verknüpfungen mit Änderungsprotokoll) brauchen InnoDB;
 		// ausdrücklich, damit ein anderer Server-Standard nichts ändert.
@@ -186,7 +189,7 @@ final class Schema {
   $source_ref
   PRIMARY KEY  (id),
   UNIQUE KEY email (email),
-  UNIQUE KEY user_id (user_id),
+  $user_id_index user_id (user_id),
   KEY last_name (last_name,first_name)
 ) $charset_collate;",
 
@@ -206,6 +209,7 @@ final class Schema {
   season_id bigint(20) unsigned NOT NULL,
   club_id bigint(20) unsigned NOT NULL,
   classification tinyint(3) unsigned NOT NULL,
+  classification_carried tinyint(1) DEFAULT NULL,
   status varchar(16) NOT NULL DEFAULT 'active',
   registered_at datetime DEFAULT NULL,
   registered_by bigint(20) unsigned DEFAULT NULL,
@@ -583,6 +587,14 @@ final class Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY endpoint_hash (endpoint_hash),
   KEY person_id (person_id)
+) $charset_collate;",
+
+			$t( 'withdrawal_notice' )       => "CREATE TABLE {$t('withdrawal_notice')} (
+  team_id bigint(20) unsigned NOT NULL,
+  person_id bigint(20) unsigned NOT NULL,
+  queued_at datetime NOT NULL,
+  PRIMARY KEY  (team_id,person_id),
+  KEY queued_at (queued_at)
 ) $charset_collate;",
 
 			$t( 'notification_pref' )       => "CREATE TABLE {$t('notification_pref')} (

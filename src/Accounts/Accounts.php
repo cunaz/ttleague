@@ -26,9 +26,6 @@ final class Accounts {
 		add_action( self::PURGE_HOOK, array( self::class, 'purge_tokens' ) );
 		add_filter( 'show_admin_bar', array( self::class, 'show_admin_bar' ) );
 		add_action( 'admin_init', array( self::class, 'keep_out_of_admin' ) );
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
-		}
 	}
 
 	/**

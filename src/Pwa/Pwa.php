@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace TTLeague\Pwa;
 
+use TTLeague\Frontend\PageInstaller;
+
 /**
  * Manifest unter /manifest.webmanifest und Service Worker unter /sw.js, beide über Routen
  * und bei parse_request beantwortet. Im <head> stehen Links auf Manifest, theme-color und
@@ -184,13 +186,15 @@ final class Pwa {
 	}
 
 	private static function send_service_worker(): void {
-		$file     = TTLEAGUE_DIR . 'assets/pwa/sw.js';
-		$template = is_readable( $file ) ? (string) file_get_contents( $file ) : ''; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- lokale Datei des Plugins.
-		$palette  = self::palette();
-		$config   = ServiceWorker::config(
+		$file          = TTLEAGUE_DIR . 'assets/pwa/sw.js';
+		$template      = is_readable( $file ) ? (string) file_get_contents( $file ) : ''; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- lokale Datei des Plugins.
+		$palette       = self::palette();
+		$private_pages = array_flip( array( 'login', 'my_area', 'entry' ) );
+		$private_paths = array_intersect_key( PageInstaller::paths(), $private_pages );
+		$config        = ServiceWorker::config(
 			self::base(),
 			self::path( '?quelle=app' ),
-			(array) apply_filters( 'ttleague_pwa_never_cache', ServiceWorker::NEVER_CACHE ),
+			(array) apply_filters( 'ttleague_pwa_never_cache', array_merge( ServiceWorker::NEVER_CACHE, array_values( $private_paths ) ) ),
 			array(
 				'lang'    => (string) get_bloginfo( 'language' ),
 				'site'    => wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ),
@@ -204,7 +208,8 @@ final class Pwa {
 				'background' => Manifest::color( $palette, Manifest::BACKGROUND_SLUGS, Manifest::BACKGROUND_COLOR ),
 				'text'       => Manifest::color( $palette, Manifest::TEXT_SLUGS, Manifest::TEXT_COLOR ),
 				'accent'     => Manifest::color( $palette, Manifest::THEME_SLUGS, Manifest::THEME_COLOR ),
-			)
+			),
+			array_values( array_intersect_key( PageInstaller::ids(), $private_pages ) )
 		);
 
 		status_header( 200 );

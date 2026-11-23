@@ -122,7 +122,7 @@ final class Lifecycle {
 	/**
 	 * Geplante Saison freigeben: In einer Transaktion wird jede bisher aktive Saison archiviert
 	 * und die geplante aktiv. Ihre Begegnungen sind danach gewöhnliche Begegnungen; gemeldete
-	 * Spieler bleiben, wie sie sind (auch «provisional»). Danach meldet der Dienst
+	 * Spieler behalten ihren Status. Übernommene Klassierungen werden nachgeführt. Danach meldet der Dienst
 	 * SeasonEvents::published().
 	 *
 	 * @param string       $confirmation Name der Saison als Bestätigung.
@@ -158,6 +158,7 @@ final class Lifecycle {
 					/* translators: %s: Saison */
 					$this->audit->record( 'season', $archived, 'archived', $actor->user_id, array( 'status' => SeasonRepository::ACTIVE ), array( 'status' => SeasonRepository::ARCHIVED ), sprintf( __( 'Freigabe der Saison %s', 'ttleague' ), $season['name'] ) );
 				}
+				$refreshed = $this->registrations->refresh_carried_classifications( $season );
 				$this->set_status( $season_id, SeasonRepository::ACTIVE, $now );
 				$this->audit->record(
 					'season',
@@ -166,10 +167,11 @@ final class Lifecycle {
 					$actor->user_id,
 					array( 'status' => SeasonRepository::PLANNED ),
 					array(
-						'status'         => SeasonRepository::ACTIVE,
-						'archived'       => $archived,
-						'confirmed'      => $confirmed,
-						'hard_conflicts' => $state['facts']['hard_conflicts'],
+						'status'                    => SeasonRepository::ACTIVE,
+						'archived'                  => $archived,
+						'confirmed'                 => $confirmed,
+						'hard_conflicts'            => $state['facts']['hard_conflicts'],
+						'classifications_refreshed' => $refreshed,
 					)
 				);
 				return $archived;
@@ -255,6 +257,7 @@ final class Lifecycle {
 					}
 					$fixtures[] = (int) $row['id'];
 				}
+				$this->queue_withdrawal_notices( $team_id, (int) $team['season_id'] );
 				$this->audit->record(
 					'team',
 					$team_id,
@@ -272,6 +275,21 @@ final class Lifecycle {
 		);
 		$this->events->team_withdrawn( $season_id, $team_id );
 		return $count;
+	}
+
+	/** Empfänger beim Rückzug festhalten, in derselben Transaktion wie die Forfaitwertungen. */
+	private function queue_withdrawal_notices( int $team_id, int $season_id ): void {
+		$this->db->query(
+			"INSERT INTO {$this->db->table( 'withdrawal_notice' )} (team_id, person_id, queued_at)
+			SELECT DISTINCT %d, r.person_id, %s FROM {$this->db->table( 'fixture' )} f
+			JOIN {$this->db->table( 'team' )} opponent ON opponent.id = CASE WHEN f.home_team_id = %d THEN f.away_team_id ELSE f.home_team_id END
+			JOIN {$this->db->table( 'club_role' )} r ON r.season_id = opponent.season_id AND r.club_id = opponent.club_id
+			JOIN {$this->db->table( 'person' )} p ON p.id = r.person_id AND p.status = 'active'
+			WHERE ( f.home_team_id = %d OR f.away_team_id = %d ) AND f.status <> 'cancelled'
+			AND opponent.status = 'active' AND opponent.season_id = %d
+			AND ( r.role = 'tk_chef' OR ( r.role = 'captain' AND r.team_id = opponent.id ) )",
+			array( $team_id, $this->db->now(), $team_id, $team_id, $team_id, $season_id )
+		);
 	}
 
 	/**

@@ -49,9 +49,6 @@ final class Notifications {
 		add_filter( 'ttleague_push_available', array( self::class, 'push_available' ) );
 		add_filter( 'ttleague_push_controls', array( PushUi::class, 'controls' ), 10, 2 );
 		add_action( 'rest_api_init', array( SubscriptionController::class, 'register_routes' ) );
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
-		}
 	}
 
 	/**

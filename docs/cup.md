@@ -4,6 +4,8 @@ Meldung der Cupmannschaften, Auslosung, Tableau, Rundenfristen und die Aufstellu
 
 ## Aufbau
 
+Die TK kann in der geplanten Saison unter «Spielbetrieb → Saison → Kategorien und Gruppen» den Mannschaftscup A oder B anlegen. Fristen und Punktelimite setzt sie danach unter «Spielbetrieb → Cup».
+
 Eine Konkurrenz vom Typ `CUP` je Kategorie. Meldungen stehen in `cup_entry`, das Tableau in `cup_tie`, die Begegnungen in `fixture`. `competition.format_json` enthält die Parameter der Kategorie:
 
 | Schlüssel | Bedeutung |

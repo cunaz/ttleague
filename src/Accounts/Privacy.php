@@ -123,7 +123,7 @@ final class Privacy {
 		$result = $found['result'];
 		if ( null !== $result ) {
 			$retained = true;
-			$removed  = $result['phone'] || $result['preferences'] + $result['push_subscriptions'] + $result['login_tokens'] > 0;
+			$removed  = array() !== array_filter( $result );
 		}
 		if ( $retained ) {
 			$messages[] = __( 'Spielbetrieb: Name, E-Mail-Adresse, Lizenznummer, Meldungen (Club, Klassierung), Funktionen und Resultate bleiben gespeichert. Sie gehören zum Spielbetrieb: Ranglisten, Matchreports und die Anmeldung beruhen darauf. Auf Wunsch anonymisiert die Technische Kommission die Person; dann verschwinden Name und E-Mail-Adresse.', 'ttleague' );
@@ -141,7 +141,7 @@ final class Privacy {
 	 * damit Ranglisten, Matchreports und Profile den Platzhalter zeigen. Prüft selbst keine
 	 * Rechte: Aufrufer ist WP-CLI; jeder andere Aufrufer muss vorher ttl_tk verlangen.
 	 *
-	 * @return array{name:string,user_id:int|null,email:bool,phone:bool,preferences:int,push_subscriptions:int,login_tokens:int}
+	 * @return array{name:string,user_id:int|null,email:bool,phone:bool,preferences:int,push_subscriptions:int,login_tokens:int,withdrawal_notices:int}
 	 * @throws \RuntimeException Wenn es die Person nicht gibt oder sie schon anonymisiert ist.
 	 */
 	public static function anonymize( int $person_id, ?int $actor_user_id = null, ?string $note = null ): array {

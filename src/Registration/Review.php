@@ -199,10 +199,11 @@ final class Review {
 					$this->repo->lock_player( $player_id );
 					$existing = $this->repo->player_season( $request['season_id'], $player_id );
 					$approval = array(
-						'classification' => (int) $classification,
-						'status'         => ClubRegistration::ACTIVE,
-						'approved_by'    => $actor->user_id,
-						'approved_at'    => $now,
+						'classification'         => (int) $classification,
+						'classification_carried' => 0,
+						'status'                 => ClubRegistration::ACTIVE,
+						'approved_by'            => $actor->user_id,
+						'approved_at'            => $now,
 					);
 					if ( null !== $existing && Rules::other_club( $request['club_id'], $existing['club_id'] ) ) {
 						/* translators: 1: Name, 2: Club */
@@ -366,13 +367,15 @@ final class Review {
 					if ( ClubRegistration::PROVISIONAL !== $player['status'] ) {
 						continue;
 					}
+					$carried = $this->repo->carried_classification( $player['player_id'], $season );
 					$this->db->update(
 						'player_season',
 						array(
-							'classification' => $this->repo->carried_classification( $player['player_id'], $season ) ?? $player['classification'],
-							'status'         => ClubRegistration::ACTIVE,
-							'approved_by'    => $actor->user_id,
-							'approved_at'    => $now,
+							'classification'         => $carried ?? $player['classification'],
+							'classification_carried' => null === $carried ? 0 : 1,
+							'status'                 => ClubRegistration::ACTIVE,
+							'approved_by'            => $actor->user_id,
+							'approved_at'            => $now,
 						),
 						array(
 							'season_id' => $season_id,

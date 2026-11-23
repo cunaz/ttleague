@@ -313,6 +313,22 @@ final class SeasonSetupTest extends SeasonTestCase {
 		$this->refused( fn() => $this->setup->add_club( $this->tk, $this->id['active'], $this->id['club_altstetten'] ), Refusal::CONFLICT );
 	}
 
+	public function test_officer_assignment_requires_the_tk_a_participating_club_and_an_active_person(): void {
+		$this->league();
+		$next   = $this->setup->create( $this->tk );
+		$club   = $this->seed->club( 'Neuer Club', 7 );
+		$person = $this->seed->person( 'Neumann', 'Kim' );
+
+		$this->refused( fn() => $this->setup->set_club_officer( $this->tk, $next, $club, $person, true ), Refusal::NOT_FOUND );
+		$this->setup->add_club( $this->tk, $next, $club );
+		$this->refused( fn() => $this->setup->set_club_officer( $this->chef, $next, $club, $person, true ), Refusal::FORBIDDEN );
+		$this->refused( fn() => $this->setup->set_club_officer( $this->tk, $this->id['active'], $club, $person, true ), Refusal::CONFLICT );
+		$this->refused( fn() => $this->setup->set_club_officer( $this->tk, $next, $club, 0, true ), Refusal::INVALID );
+		$this->db->update( 'person', array( 'status' => 'inactive' ), array( 'id' => $person ) );
+		$this->refused( fn() => $this->setup->set_club_officer( $this->tk, $next, $club, $person, true ), Refusal::INVALID );
+		self::assertSame( 0, $this->rows( 'club_role', "season_id = {$next} AND club_id = {$club}" ) );
+	}
+
 	public function test_a_club_without_registration_can_be_removed(): void {
 		$this->league();
 		$next = $this->setup->create( $this->tk );

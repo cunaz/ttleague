@@ -37,9 +37,6 @@ final class Frontend {
 		add_filter( 'site_status_tests', array( PageInstaller::class, 'site_status_tests' ) );
 		add_action( 'save_post_page', array( self::class, 'reset_urls' ) );
 
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( PageInstaller::class, 'deactivate' ) );
-		}
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'ttleague pages', PagesCommand::class );
 		}
@@ -53,6 +50,15 @@ final class Frontend {
 			self::$urls = new Urls( home_url( '/' ), PageInstaller::paths() );
 		}
 		return self::$urls;
+	}
+
+	/**
+	 * WordPress-Permalink einer installierten Seite, auch bei einfachen Permalinks und index.php.
+	 */
+	public static function page_url( string $key ): string {
+		$id   = PageInstaller::page_id( $key );
+		$link = $id > 0 ? get_permalink( $id ) : false;
+		return $link ? $link : self::urls()->page( $key );
 	}
 
 	/**

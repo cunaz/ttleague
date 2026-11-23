@@ -87,6 +87,19 @@ final class Notifier {
 	}
 
 	/**
+	 * Für vorgemerkte Zustellungen: Ein Auftrag ist erledigt, wenn alle gewählten, erreichbaren
+	 * Kanäle fertig sind. Eine fremde laufende Reservierung ist noch keine Bestätigung.
+	 */
+	public function send_confirmed( Notification $message, Recipient $recipient ): bool {
+		foreach ( $this->send( $message, array( $recipient ) ) as $delivery ) {
+			if ( self::FAILED === $delivery['status'] || ( self::DUPLICATE === $delivery['status'] && ! $this->log->was_sent( $recipient, $message, $delivery['channel'] ) ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
 	 * Gewünschte Kanäle für einen Ereignistyp.
 	 *
 	 * @return array{email:bool,push:bool}

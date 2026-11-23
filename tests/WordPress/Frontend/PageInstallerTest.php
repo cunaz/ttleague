@@ -9,7 +9,11 @@ declare(strict_types=1);
 
 namespace TTLeague\Tests\WordPress\Frontend;
 
+use TTLeague\Accounts\LoginFlow;
 use TTLeague\Frontend\PageInstaller;
+use TTLeague\RankingTournament\RankingTournament;
+use TTLeague\Results\EntryBlock;
+use TTLeague\Results\Results;
 use TTLeague\Tests\WordPress\TestCase;
 
 /**
@@ -60,6 +64,36 @@ final class PageInstallerTest extends TestCase {
 		self::assertSame( $own, $adopted['id'] );
 		self::assertSame( 'übernommen', $adopted['action'] );
 		self::assertSame( array(), $this->problems() );
+	}
+
+	public function test_private_pages_use_wordpress_permalinks_and_keep_their_query_arguments(): void {
+		PageInstaller::install();
+		$ids = PageInstaller::ids();
+		foreach ( array( '', '/index.php/%postname%/', '/%postname%/' ) as $structure ) {
+			$this->set_permalink_structure( $structure );
+			$area  = LoginFlow::my_area_url();
+			$login = LoginFlow::link_url( 'testtoken', $area );
+			$entry = Results::entry_url( 17 );
+			self::assertSame( get_permalink( $ids['my_area'] ), $area );
+			self::assertSame(
+				add_query_arg(
+					array(
+						'anmeldung'   => 'testtoken',
+						'redirect_to' => rawurlencode( $area ),
+					),
+					get_permalink( $ids['login'] )
+				),
+				$login
+			);
+			self::assertSame( add_query_arg( 'begegnung', '17', get_permalink( $ids['entry'] ) ), $entry );
+			self::assertSame( add_query_arg( 'rl-gruppe', '3', get_permalink( $ids['entry'] ) ), RankingTournament::entry_url( 3 ) );
+			if ( '' === $structure ) {
+				$this->go_to( $login );
+				self::assertTrue( LoginFlow::is_private_page() );
+				$this->go_to( $entry );
+				self::assertTrue( EntryBlock::is_entry_page() );
+			}
+		}
 	}
 
 	public function test_site_health_is_good_when_every_page_is_published_with_its_block(): void {

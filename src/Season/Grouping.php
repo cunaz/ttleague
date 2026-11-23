@@ -35,6 +35,8 @@ final class Grouping {
 	public const CUP = 'CUP';
 	public const RL  = 'RL';
 
+	public const CUP_CATEGORIES = array( 'A', 'B' );
+
 	private SeasonGuard $guard;
 
 	private RegistrationRepository $registrations;
@@ -350,6 +352,39 @@ final class Grouping {
 			$this->events->changed( $season_id );
 		}
 		return $result;
+	}
+
+	/**
+	 * Eine neue Cup-Kategorie in der geplanten Saison einrichten.
+	 */
+	public function create_cup( Actor $actor, int $season_id, string $category ): void {
+		SeasonGuard::require_tk( $actor );
+		if ( ! in_array( $category, self::CUP_CATEGORIES, true ) ) {
+			throw SeasonException::field( 'category', __( 'Wähle eine gültige Cup-Kategorie.', 'ttleague' ) );
+		}
+		$this->db->transaction(
+			function () use ( $actor, $season_id, $category ): void {
+				$this->guard->lock();
+				$this->guard->planned( $season_id );
+				$exists = $this->db->get_var(
+					"SELECT id FROM {$this->db->table( 'competition' )} WHERE season_id = %d AND type = %s AND category = %s LIMIT 1",
+					array( $season_id, self::CUP, $category )
+				);
+				if ( null !== $exists ) {
+					throw SeasonException::conflict( __( 'Diese Cup-Kategorie gibt es in der Saison schon.', 'ttleague' ) );
+				}
+				$data = array(
+					'season_id' => $season_id,
+					'type'      => self::CUP,
+					'category'  => $category,
+					/* translators: %s: Cup-Kategorie */
+					'name'      => sprintf( __( 'Mannschaftscup %s', 'ttleague' ), $category ),
+				);
+				$id   = $this->db->insert( 'competition', $data );
+				$this->audit->record( 'competition', $id, 'created', $actor->user_id, null, $data );
+			}
+		);
+		$this->events->changed( $season_id );
 	}
 
 	/**

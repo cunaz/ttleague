@@ -42,9 +42,6 @@ final class Results {
 		add_action( self::RECALC_HOOK, array( self::class, 'recalc_ratings' ) );
 		EntryBlock::register();
 		MyGames::register();
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
-		}
 	}
 
 	public static function service(): ResultService {
@@ -66,7 +63,7 @@ final class Results {
 	 * Adresse der Erfassungsseite einer Begegnung (Seite «entry», Block ttleague/result-entry).
 	 */
 	public static function entry_url( int $fixture_id ): string {
-		return add_query_arg( 'begegnung', (string) $fixture_id, \TTLeague\Frontend\Frontend::urls()->page( 'entry' ) );
+		return add_query_arg( 'begegnung', (string) $fixture_id, \TTLeague\Frontend\Frontend::page_url( 'entry' ) );
 	}
 
 	/**

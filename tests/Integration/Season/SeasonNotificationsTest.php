@@ -72,6 +72,94 @@ final class SeasonNotificationsTest extends SeasonTestCase {
 		$this->db->update( 'audit_log', array( 'created_at' => '2027-07-20 10:00:00' ), array( 'action' => 'published' ) );
 	}
 
+	public function test_withdrawal_reaches_only_opponents_once_across_fixtures_and_roles(): void {
+		$team   = $this->id['seefeld_1'];
+		$season = $this->id['active'];
+		foreach ( array(
+			array( $team, $this->id['wollishofen_1'], 'scheduled' ),
+			array( $this->id['wollishofen_1'], $team, 'scheduled' ),
+			array( $this->id['oerlikon_1'], $team, 'scheduled' ),
+			array( $team, $this->id['altstetten_1'], 'cancelled' ),
+		) as [ $home, $away, $status ] ) {
+			$this->seed->fixture(
+				$this->id['group_a'],
+				array(
+					'home_team_id' => $home,
+					'away_team_id' => $away,
+					'status'       => $status,
+				)
+			);
+		}
+		$this->seed->role( $season, $this->id['club_wollishofen'], $this->id['chef_wollishofen'], 'captain', $this->id['wollishofen_1'] );
+		( new Preferences( $this->db ) )->set( $this->id['captain_oerlikon_1'], EventTypes::TEAM_WITHDRAWN, false, false );
+		$this->notifications->send_withdrawal( $team );
+		self::assertSame( array(), $this->email->sent );
+
+		$this->lifecycle->withdraw_team( $this->tk, $team, 'Zu wenige Spieler' );
+		$broken              = $this->id['chef_wollishofen'];
+		$this->email->during = function ( $recipient ) use ( $broken ): void {
+			$this->email->fail = $recipient->person_id === $broken;
+		};
+		$next                = $this->notifications->send_withdrawal( $team, 0, 2 );
+		self::assertNotNull( $next );
+		self::assertNull( $this->notifications->send_withdrawal( $team, $next, 2 ) );
+		self::assertSame( array( $team ), $this->notifications->withdrawals_to_catch_up() );
+		self::assertCount( 2, $this->email->sent );
+		$this->email->during = null;
+		$this->email->fail   = false;
+		$this->notifications->send_withdrawal( $team );
+		$this->notifications->send_withdrawal( $team );
+		self::assertSame( array(), $this->notifications->withdrawals_to_catch_up() );
+
+		self::assertEqualsCanonicalizing(
+			array( 'p' . $this->id['chef_wollishofen'], 'p' . $this->id['captain_wollishofen_1'], 'p' . $this->id['chef_oerlikon'] ),
+			$this->email->recipients( EventTypes::TEAM_WITHDRAWN )
+		);
+	}
+
+	public function test_an_old_withdrawal_or_an_expired_notice_never_sends(): void {
+		$team = $this->id['seefeld_1'];
+		$this->db->update( 'team', array( 'status' => 'withdrawn' ), array( 'id' => $team ) );
+		self::assertSame( array(), $this->notifications->withdrawals_to_catch_up() );
+		$this->db->insert(
+			'withdrawal_notice',
+			array(
+				'team_id'   => $team,
+				'person_id' => $this->id['chef_oerlikon'],
+				'queued_at' => '2020-01-01 00:00:00',
+			)
+		);
+		$this->notifications->send_withdrawal( $team );
+		self::assertSame( array(), $this->email->sent );
+		self::assertSame( array(), $this->notifications->withdrawals_to_catch_up() );
+		self::assertSame( '0', $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( 'withdrawal_notice' )}" ) );
+	}
+
+	public function test_overlapping_workers_keep_a_notice_until_the_delivery_is_confirmed(): void {
+		$team = $this->id['seefeld_1'];
+		$this->seed->fixture(
+			$this->id['group_a'],
+			array(
+				'home_team_id' => $team,
+				'away_team_id' => $this->id['oerlikon_1'],
+			)
+		);
+		$this->lifecycle->withdraw_team( $this->tk, $team, 'Zu wenige Spieler' );
+		$this->email->during = function () use ( $team ): void {
+			// Der zweite Lauf sieht für die erste Person die offene Reservierung. Der erste scheitert danach.
+			$this->email->during = null;
+			$this->notifications->send_withdrawal( $team );
+			$this->email->fail = true;
+		};
+		$this->notifications->send_withdrawal( $team );
+		self::assertCount( 1, $this->email->sent );
+		self::assertSame( array( $team ), $this->notifications->withdrawals_to_catch_up() );
+		$this->email->fail = false;
+		$this->notifications->send_withdrawal( $team );
+		self::assertCount( 2, $this->email->sent );
+		self::assertSame( array(), $this->notifications->withdrawals_to_catch_up() );
+	}
+
 	/**
 	 * @return list<string> Empfänger als «p<Person>».
 	 */

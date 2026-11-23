@@ -121,6 +121,30 @@ final class ExtensionPointsTest extends TestCase {
 		self::assertStringEndsWith( 'admin.php?page=ttleague-tk-meldung&club=12', Tk::page_url( 'ttleague-tk-meldung', array( 'club' => '12' ) ) );
 	}
 
+	public function test_the_permalink_notice_is_limited_to_the_league_admin_and_unsuitable_structures(): void {
+		wp_set_current_user( $this->account( 'administrator', 'verwaltung-liga@example.invalid' ) );
+		Tk::menu();
+		set_current_screen( get_plugin_page_hookname( Tk::ACCOUNTS_PAGE, Tk::OVERVIEW_PAGE ) );
+		$notice = static function (): string {
+			ob_start();
+			Tk::permalink_notice();
+			return (string) ob_get_clean();
+		};
+
+		foreach ( array( '', '/index.php/%postname%/' ) as $structure ) {
+			$this->set_permalink_structure( $structure );
+			self::assertStringContainsString( admin_url( 'options-permalink.php' ), $notice() );
+		}
+		$this->set_permalink_structure( '/%postname%/' );
+		self::assertSame( '', $notice() );
+		$this->set_permalink_structure( '' );
+		wp_set_current_user( $this->account( 'ttl_tk', 'tk@example.invalid' ) );
+		self::assertStringContainsString( 'Website-Verwaltung', $notice() );
+		self::assertStringNotContainsString( 'options-permalink.php', $notice() );
+		set_current_screen( 'dashboard' );
+		self::assertSame( '', $notice() );
+	}
+
 	public function test_overview_shows_module_sections_with_count_and_anchor(): void {
 		( new Seeder( $this->db ) )->season( '2026-27', 'active' );
 		add_filter(

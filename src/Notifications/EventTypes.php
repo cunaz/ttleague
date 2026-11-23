@@ -24,6 +24,7 @@ final class EventTypes {
 	public const REGISTRATION_REMINDER = 'registration_reminder';
 	public const REGISTRATION_DECIDED  = 'registration_decided';
 	public const SEASON_PUBLISHED      = 'season_published';
+	public const TEAM_WITHDRAWN        = 'team_withdrawn';
 	public const POSTPONEMENT          = 'postponement';
 	public const POSTPONEMENT_TK       = 'postponement_tk';
 	public const RL_CALLUP             = 'rl_callup';

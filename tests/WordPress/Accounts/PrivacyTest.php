@@ -253,4 +253,23 @@ final class PrivacyTest extends TestCase {
 		self::assertSame( array(), $this->export( self::EMAIL ), 'unter der alten Adresse nicht mehr auffindbar' );
 		self::assertSame( array(), $this->export( self::ACCOUNT ) );
 	}
+
+	public function test_erasing_only_a_pending_withdrawal_notice_is_reported_and_logged(): void {
+		Privacy::erase( self::EMAIL );
+		$this->db->insert(
+			'withdrawal_notice',
+			array(
+				'team_id'   => $this->league->id['team_h1'],
+				'person_id' => $this->person,
+				'queued_at' => $this->db->now(),
+			)
+		);
+
+		self::assertTrue( Privacy::erase( self::EMAIL )['items_removed'] );
+		self::assertSame( 0, $this->rows( 'withdrawal_notice' ) );
+		$entry = Services::audit()->for_entity( 'person', $this->person, 1 )[0];
+		self::assertSame( 'privacy_erased', $entry['action'] );
+		self::assertSame( 1, json_decode( $entry['after_json'], true )['withdrawal_notices'] );
+		self::assertFalse( Privacy::erase( self::EMAIL )['items_removed'] );
+	}
 }

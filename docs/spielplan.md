@@ -142,7 +142,7 @@ Die Anteile beziehen sich auf `matched` und sind `null`, wenn keine Begegnung zu
 - Die Kapazität gilt pro Kalendertag, unabhängig von der Anspielzeit. Zwei Begegnungen nacheinander am selben Abend zählen wie zwei gleichzeitige.
 - Der Hinweis `club_same_evening` vergleicht nur Clubs, nicht Kategorien oder Kader. Ob tatsächlich Ersatzspieler fehlen, beurteilt die TK.
 - Geprüft wird nur, was im Plan steht: keine Vollständigkeit (fehlende oder doppelte Paarungen), keine Fristen für Verschiebungen (Art. 10.2), kein Cup und kein Ranglistenturnier. Eine Begegnung mit einem Team, das in keiner Gruppe der Eingabe steht, wird abgewiesen.
-- Die Tische pro Begegnung sind vorerst ein Parameter des Konstruktors und noch kein Saison-Parameter.
+- Die Tische pro Begegnung legt die TK in den Saisonregeln fest (`schedule_tables_per_match`). Der Saisonassistent übergibt den Wert an die Kapazitätsprüfung.
 
 ## Tests
 

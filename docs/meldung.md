@@ -53,9 +53,9 @@ Hat der Club schon eine Mannschaft gemeldet, lehnt der Dienst ab; es wird nichts
 
 ### Klassierung bestehender Spieler
 
-Bestehende Spieler meldet das System mit der Klassierung aus der letzten früheren Saison, in der sie gemeldet waren: Ist deren Klassierung abgeschlossen (`season.classification_closed_at`), gilt der Entscheid der TK (`classification_proposal.decided`), sonst `player_season.classification` jener Saison. Der Club kann sie nicht wählen. Bei der Freigabe der Meldung führt das System die Klassierung der noch provisorischen Spieler nach; so gilt auch ein Entscheid, der erst nach dem Bestätigen fiel. Schliesst die TK die Klassierung erst nach der Freigabe einer Meldung ab, bleibt deren Klassierung stehen (siehe «Offen»).
+Bestehende Spieler meldet das System mit der Klassierung aus der letzten früheren Saison, in der sie gemeldet waren: Ist deren Klassierung abgeschlossen (`season.classification_closed_at`), gilt der Entscheid der TK (`classification_proposal.decided`), sonst `player_season.classification` jener Saison. Der Club kann sie nicht wählen. Bei der Freigabe der Meldung führt das System die Klassierung der noch provisorischen Spieler nach; so gilt auch ein Entscheid, der erst nach dem Bestätigen fiel. Bei der Freigabe der neuen Saison übernimmt der Assistent auch spätere Entscheide aus der Vorsaison für alle automatisch übernommenen Klassierungen.
 
-Die TK kann beim Melden eine eigene Klassierung mitgeben. Das gilt als Entscheid: Der Spieler ist sofort `active`, und die Freigabe der Meldung ändert den Wert nicht mehr.
+Eine von der TK beim Melden ausdrücklich gesetzte Klassierung gilt ab sofort für die neue Saison. Der Spieler erhält den Status `active`. Dasselbe gilt für die Freigabe einer Neumeldung, auch bei Verknüpfung mit einem bestehenden Spieler.
 
 ## Prüfung durch die TK
 
@@ -118,7 +118,6 @@ Im Backend als Knöpfe auf der Seite «Meldungen», dazu `wp ttleague export reg
 
 ## Offen
 
-- Schliesst die TK die Klassierung der aktiven Saison erst ab, nachdem eine Meldung geprüft ist, bleiben die Klassierungen dieser Meldung auf dem Stand der Freigabe. Das Nachführen gehört zum Abschluss der Klassierung ([klassierung.md](klassierung.md)) oder zur Freigabe der Saison.
 - Die Liste «Mein Club» (Konten und Einladungen) zeigt auch provisorisch gemeldete Spieler der aktiven Saison.
 - E-Mail-Adressen von Personen, die nur in der geplanten Saison zum Club gehören, setzt bis zur Freigabe der Saison die TK (`ttl_invite_person` bleibt bei der aktiven Saison). Ein Captain ohne Adresse lässt sich nicht wählen.
 - Ein Captain pro Mannschaft: Setzt jemand den Captain über die Meldung, ersetzt das alle bisherigen Captains der Mannschaft.

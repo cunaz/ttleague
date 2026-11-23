@@ -87,7 +87,7 @@ final class EntryBlock {
 	 * @return array{login:string,my_area:string,report:string,rest:string}
 	 */
 	public static function links( int $fixture_id ): array {
-		$entry = $fixture_id > 0 ? Results::entry_url( $fixture_id ) : Frontend::urls()->page( 'entry' );
+		$entry = $fixture_id > 0 ? Results::entry_url( $fixture_id ) : Frontend::page_url( 'entry' );
 		return array(
 			'login'   => LoginFlow::page_url( array( 'redirect_to' => $entry ) ),
 			'my_area' => LoginFlow::my_area_url(),

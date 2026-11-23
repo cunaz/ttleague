@@ -41,9 +41,6 @@ final class RankingTournament {
 		add_action( Notifications::CRON_HOOK, array( self::class, 'run_reminders' ), 20 );
 		add_action( Notifications::CRON_HOOK, array( self::class, 'catch_up_callups' ), 20 );
 		add_action( self::CALLUP_HOOK, array( self::class, 'send_callups' ), 10, 2 );
-		if ( defined( 'TTLEAGUE_FILE' ) ) {
-			register_deactivation_hook( TTLEAGUE_FILE, array( self::class, 'deactivate' ) );
-		}
 		AdminActions::register();
 		MyArea::register();
 		EntryPage::register();
@@ -201,7 +198,7 @@ final class RankingTournament {
 	 * der Nummer der Gruppe.
 	 */
 	public static function entry_url( int $group_id ): string {
-		return add_query_arg( self::PARAM, (string) $group_id, Frontend::urls()->page( 'entry' ) );
+		return add_query_arg( self::PARAM, (string) $group_id, Frontend::page_url( 'entry' ) );
 	}
 
 	/**

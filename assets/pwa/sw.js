@@ -24,7 +24,7 @@
 const PAGES = CONFIG.prefix + 'pages:' + CONFIG.version;
 const ASSETS = CONFIG.prefix + 'assets:' + CONFIG.version;
 const ASSET_EXTENSIONS = /\.(?:css|js|mjs|woff2?|ttf|otf|png|jpe?g|gif|webp|avif|svg|ico)$/i;
-const SKIP_PARAMS = [ 'preview', 'preview_id', 'customize_changeset_uuid', 'rest_route', 'doing_wp_cron', 'ttl_pwa', 'ttl_ical' ];
+const SKIP_PARAMS = [ 'preview', 'preview_id', 'customize_changeset_uuid', 'rest_route', 'doing_wp_cron', 'ttl_pwa', 'ttl_ical', 'anmeldung' ];
 
 /**
  * Gehört die Adresse zur Website (gleiche Herkunft, innerhalb der Startadresse)?
@@ -43,7 +43,10 @@ function inScope( url ) {
  * @return {boolean} Nie speichern.
  */
 function excluded( url ) {
-	const path = url.pathname.slice( CONFIG.base.length );
+	const path = url.pathname.slice( CONFIG.base.length ).replace( /^index\.php\//, '' );
+	if ( url.searchParams.getAll( 'page_id' ).some( ( id ) => CONFIG.privatePageIds.includes( Number( id ) ) ) ) {
+		return true;
+	}
 	if ( CONFIG.never.some( ( entry ) => path === entry || path.startsWith( entry + '/' ) ) ) {
 		return true;
 	}

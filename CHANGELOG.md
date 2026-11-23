@@ -2,7 +2,15 @@
 
 Alle nennenswerten Änderungen an ttleague werden hier festgehalten.
 
-## [Unreleased]
+## 0.2.0
+
+- Bei der Saisonfreigabe werden automatisch übernommene Spielerklassierungen mit dem endgültigen Stand der Vorsaison abgeglichen. Manuelle Entscheide bleiben erhalten. Schemaversion 2026112301 hält die Herkunft der Klassierung fest.
+- Die erste Saison kann auch ohne importierte Cup-Konkurrenzen einen Mannschaftscup A und B erhalten.
+- Bei einem unvollständigen Datenbank-Upgrade bleibt die bisherige Schemaversion erhalten. WordPress wiederholt den Abgleich nach einer Minute.
+- Auf einer leeren Installation kann die TK im Saisonassistenten Clubs und Funktionäre ohne Spielerlizenz anlegen, TK-Chefs zuweisen und einladen. Ein fehlgeschlagener Mailversand wird gemeldet und der unversandte Einladungslink gesperrt.
+- Beim Mannschaftsrückzug erhalten Captains und TK-Chefs der betroffenen Gegner eine Mitteilung über ihre gewählten Kanäle. Der Rückzug merkt die Zustellungen vor. WP-Cron holt offene Aufträge bis zu sieben Tage lang nach.
+- Einladungen und Links zur Erfassung funktionieren auch bei einfachen WordPress-Permalinks. Der Spielbetrieb weist auf die für Liga-Adressen benötigte Einstellung hin. Der Offline-Cache schliesst private Seiten und Anmeldetoken aus.
+- `bin/package.sh` erstellt ein installierbares WordPress-ZIP aus dem Worktree oder einer Git-Revision.
 
 ### Korrigiert
 - Fotos der Spielberichte sind auf fünf gespeicherte Anhänge pro Begegnung begrenzt, einschliesslich Historie und Papierkorb; eine Datenbanksperre verhindert parallele Überschreitungen. Bestehende Belege werden nicht automatisch gelöscht.

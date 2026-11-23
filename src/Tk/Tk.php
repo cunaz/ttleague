@@ -37,6 +37,7 @@ final class Tk {
 
 	public static function register(): void {
 		add_action( 'admin_menu', array( self::class, 'menu' ) );
+		add_action( 'admin_notices', array( self::class, 'permalink_notice' ) );
 		add_action( 'admin_enqueue_scripts', array( self::class, 'styles' ) );
 		add_action( 'admin_post_' . self::DECIDE, array( Actions::class, 'decide' ) );
 		add_action( 'admin_post_' . self::EMAIL, array( Actions::class, 'email' ) );
@@ -146,6 +147,23 @@ final class Tk {
 		foreach ( $pages as $page ) {
 			self::$hooks[] = (string) add_submenu_page( self::OVERVIEW_PAGE, $page['title'], $page['title'], Capabilities::TK, $page['slug'], $page['render'] );
 		}
+	}
+
+	/**
+	 * Die eigenen Routen für den Spielbetrieb setzen sprechende Permalinks ohne index.php voraus.
+	 */
+	public static function permalink_notice(): void {
+		global $wp_rewrite;
+		if ( ! in_array( get_current_screen()?->id, self::$hooks, true ) || $wp_rewrite->using_mod_rewrite_permalinks() ) {
+			return;
+		}
+		echo '<div class="notice notice-warning"><p>' . esc_html__( 'Für Spielberichte, Kalender-Abos und die installierbare Web-App braucht TTLeague sprechende Permalinks ohne index.php. Wähle unter Einstellungen → Permalinks zum Beispiel «Beitragsname».', 'ttleague' ) . ' ';
+		if ( current_user_can( 'manage_options' ) ) {
+			echo '<a href="' . esc_url( admin_url( 'options-permalink.php' ) ) . '">' . esc_html__( 'Permalink-Einstellungen öffnen', 'ttleague' ) . '</a>';
+		} else {
+			echo esc_html__( 'Bitte die Website-Verwaltung um diese Einstellung.', 'ttleague' );
+		}
+		echo '</p></div>';
 	}
 
 	public static function overview_url( string $anchor = '' ): string {

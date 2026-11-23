@@ -197,7 +197,7 @@ final class PersonalData {
 	 * Löscht Telefon, Benachrichtigungs-Einstellungen, Push-Abos und Anmelde-Tokens. Name,
 	 * E-Mail, Meldungen und Resultate bleiben. Null, wenn es die Person nicht gibt.
 	 *
-	 * @return array{phone:bool,preferences:int,push_subscriptions:int,login_tokens:int}|null Was entfernt wurde.
+	 * @return array{phone:bool,preferences:int,push_subscriptions:int,login_tokens:int,withdrawal_notices:int}|null Was entfernt wurde.
 	 */
 	public function erase( int $person_id, ?int $actor_user_id = null, ?string $note = null ): ?array {
 		return $this->db->transaction(
@@ -218,7 +218,7 @@ final class PersonalData {
 						array( 'id' => $person_id )
 					);
 				}
-				if ( self::any( $removed ) ) {
+				if ( array() !== array_filter( $removed ) ) {
 					// Im Protokoll stehen nur Anzahl und Art, nie die gelöschten Werte.
 					$this->audit->record( 'person', $person_id, 'privacy_erased', $actor_user_id, null, $removed, $note );
 				}
@@ -230,7 +230,7 @@ final class PersonalData {
 	/**
 	 * Anonymisiert eine Person auf deren Wunsch.
 	 *
-	 * @return array{name:string,user_id:int|null,email:bool,phone:bool,preferences:int,push_subscriptions:int,login_tokens:int}
+	 * @return array{name:string,user_id:int|null,email:bool,phone:bool,preferences:int,push_subscriptions:int,login_tokens:int,withdrawal_notices:int}
 	 *         Neuer Name, gelöstes Konto und was entfernt wurde.
 	 * @throws \RuntimeException Wenn es die Person nicht gibt oder sie schon anonymisiert ist.
 	 */
@@ -344,13 +344,14 @@ final class PersonalData {
 	/**
 	 * Einstellungen, Push-Abos und Anmelde-Tokens löschen.
 	 *
-	 * @return array{preferences:int,push_subscriptions:int,login_tokens:int}
+	 * @return array{preferences:int,push_subscriptions:int,login_tokens:int,withdrawal_notices:int}
 	 */
 	private function remove_private( int $person_id ): array {
 		return array(
 			'preferences'        => $this->db->delete( 'notification_pref', array( 'person_id' => $person_id ) ),
 			'push_subscriptions' => $this->db->delete( 'push_subscription', array( 'person_id' => $person_id ) ),
 			'login_tokens'       => $this->db->delete( 'login_token', array( 'person_id' => $person_id ) ),
+			'withdrawal_notices' => $this->db->delete( 'withdrawal_notice', array( 'person_id' => $person_id ) ),
 		);
 	}
 
@@ -365,18 +366,6 @@ final class PersonalData {
 
 	private function count( string $table, int $person_id ): int {
 		return (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->db->table( $table )} WHERE person_id = %d", array( $person_id ) );
-	}
-
-	/**
-	 * @param array<string,bool|int> $removed Was entfernt wurde.
-	 */
-	private static function any( array $removed ): bool {
-		foreach ( $removed as $value ) {
-			if ( true === $value || ( is_int( $value ) && $value > 0 ) ) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private static function text( ?string $value ): ?string {

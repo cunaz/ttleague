@@ -105,6 +105,7 @@ Reservierte Ereignistypen:
 | `registration_reminder` | Meldung | TK-Chefs vor Ablauf des Meldefensters |
 | `registration_decided` | Meldung | TK-Chef nach Prüfung oder Freigabe eines Spielers |
 | `season_published` | Saison | Captains und TK-Chefs bei der Freigabe des Spielplans |
+| `team_withdrawn` | Saison | Captains und TK-Chefs der Gegner beim Rückzug einer Mannschaft |
 | `postponement` | Verschiebung | beide Seiten: Antrag, Antwort, Entscheid |
 | `postponement_tk` | Verschiebung | TK: zur Kenntnis oder zur Bewilligung |
 | `rl_callup` | Ranglistenturnier | Aufgebot an die Spieler einer Gruppe |

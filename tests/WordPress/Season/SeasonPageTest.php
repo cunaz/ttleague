@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace TTLeague\Tests\WordPress\Season;
 
+use TTLeague\Access\Capabilities;
 use TTLeague\Domain\Rules\SeasonRules;
 use TTLeague\Domain\Season\RulesInput;
 use TTLeague\Infrastructure\Cache\DataVersion;
@@ -172,6 +173,34 @@ final class SeasonPageTest extends SeasonWpTestCase {
 		self::assertSame( 0, $this->rows( 'season', "id = {$next}" ) );
 	}
 
+	public function test_the_tk_can_grant_and_revoke_a_new_clubs_first_officer(): void {
+		$season = SeasonAdmin::setup()->create( $this->tk() );
+		$club   = $this->seed->club( 'Ohne Vorsaison', 7 );
+		$person = $this->seed->person( '<Neu>', 'Kim' );
+		$user   = $this->account( 'subscriber', 'kim@example.invalid', $person );
+		SeasonAdmin::setup()->add_club( $this->tk(), $season, $club );
+		$fields = array(
+			'season' => (string) $season,
+			'club'   => (string) $club,
+			'person' => (string) $person,
+		);
+
+		$html = $this->page( SeasonPage::CREATE );
+		self::assertStringContainsString( 'TK-Chef zuweisen', $html );
+		self::assertStringContainsString( 'Kim &lt;Neu&gt;', $html );
+		self::assertFalse( user_can( $user, Capabilities::MANAGE_CLUB, $club ) );
+		$this->post( SeasonActions::OFFICER_ADD, $fields, $season );
+		$this->post( SeasonActions::OFFICER_ADD, $fields, $season );
+		self::assertTrue( user_can( $user, Capabilities::MANAGE_CLUB, $club ) );
+		self::assertSame( 1, $this->rows( 'club_role', "season_id = {$season} AND club_id = {$club} AND person_id = {$person} AND role = 'tk_chef'" ) );
+		self::assertSame( 1, $this->rows( 'audit_log', "action = 'officer_added'" ) );
+		self::assertStringContainsString( 'Zuweisung aufheben', $this->page( SeasonPage::CREATE ) );
+
+		$this->post( SeasonActions::OFFICER_REMOVE, $fields, $season );
+		self::assertFalse( user_can( $user, Capabilities::MANAGE_CLUB, $club ) );
+		self::assertSame( 1, $this->rows( 'audit_log', "action = 'officer_removed'" ) );
+	}
+
 	public function test_rules_are_saved_or_shown_with_errors_at_their_fields(): void {
 		$next = $this->plan();
 		$html = $this->page( SeasonPage::RULES );
@@ -331,6 +360,21 @@ final class SeasonPageTest extends SeasonWpTestCase {
 		self::assertSame( array( 'Gruppe A', 'Gruppe B' ), array_column( SeasonAdmin::grouping()->groups( $next ), 'name' ) );
 	}
 
+	public function test_cup_can_be_created_without_copying_a_previous_competition(): void {
+		$next = $this->plan();
+		$post = array(
+			'season'   => (string) $next,
+			'category' => 'A',
+		);
+		self::assertStringContainsString( 'Mannschaftscup A anlegen', $this->page( SeasonPage::GROUPS ) );
+		$this->post( SeasonActions::CUP_CREATE, $post, $next );
+		$this->post( SeasonActions::CUP_CREATE, $post, $next );
+		self::assertSame( 1, $this->rows( 'competition', "season_id = {$next} AND type = 'CUP' AND category = 'A'" ) );
+		$html = $this->page( SeasonPage::GROUPS );
+		self::assertStringNotContainsString( 'Mannschaftscup A anlegen', $html );
+		self::assertStringContainsString( 'Mannschaftscup B anlegen', $html );
+	}
+
 	public function test_cup_and_ranking_tournament_are_carried_over_from_the_page(): void {
 		$this->seed->competition( $this->id['active'], 'CUP', 'Mannschaftscup A', 'A' );
 		$this->seed->competition( $this->id['active'], 'RL', 'Ranglistenturnier' );
@@ -466,13 +510,14 @@ final class SeasonPageTest extends SeasonWpTestCase {
 		$fixture = $this->fixture( 'oerlikon_1', 'wollishofen_1' );
 		$actions = ( new \ReflectionClass( SeasonActions::class ) )->getConstants();
 		unset( $actions['HANDLERS'], $actions['MEMORY'] );
-		self::assertCount( 23, $actions );
+		self::assertCount( 29, $actions );
 		$before = array(
 			$this->db->get_results( "SELECT * FROM {$this->db->table( 'season' )} ORDER BY id" ),
 			$this->db->get_results( "SELECT * FROM {$this->db->table( 'fixture' )} ORDER BY id" ),
 			$this->db->get_results( "SELECT * FROM {$this->db->table( 'team' )} ORDER BY id" ),
 			$this->db->get_results( "SELECT * FROM {$this->db->table( 'competition' )} ORDER BY id" ),
 			$this->db->get_results( "SELECT * FROM {$this->db->table( 'club_season' )} ORDER BY id" ),
+			$this->db->get_results( "SELECT * FROM {$this->db->table( 'club_role' )} ORDER BY id" ),
 		);
 
 		foreach ( $actions as $action ) {
@@ -484,6 +529,7 @@ final class SeasonPageTest extends SeasonWpTestCase {
 				'fixture' => (string) $fixture,
 				'team'    => (string) $this->id['seefeld_1'],
 				'club'    => (string) $this->id['club_seefeld'],
+				'person'  => (string) $this->id['chef_seefeld'],
 				'confirm' => SeasonActions::CLOSE === $action ? '2026/27' : '2027/28',
 				'reason'  => 'Test',
 				'name'    => 'Neu',
@@ -511,6 +557,7 @@ final class SeasonPageTest extends SeasonWpTestCase {
 				$this->db->get_results( "SELECT * FROM {$this->db->table( 'team' )} ORDER BY id" ),
 				$this->db->get_results( "SELECT * FROM {$this->db->table( 'competition' )} ORDER BY id" ),
 				$this->db->get_results( "SELECT * FROM {$this->db->table( 'club_season' )} ORDER BY id" ),
+				$this->db->get_results( "SELECT * FROM {$this->db->table( 'club_role' )} ORDER BY id" ),
 			),
 			'Keine abgewiesene Anfrage hat etwas geändert.'
 		);

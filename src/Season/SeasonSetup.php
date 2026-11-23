@@ -279,6 +279,51 @@ final class SeasonSetup {
 	}
 
 	/**
+	 * TK-Chef eines teilnehmenden Clubs in der geplanten Saison zuweisen oder abberufen.
+	 * Mehrere TK-Chefs können denselben Club betreuen.
+	 *
+	 * @throws SeasonException Ohne TK-Recht, ausserhalb der geplanten Saison, bei fehlender
+	 *                         Clubmeldung oder bei Zuweisung einer unbekannten/inaktiven Person.
+	 */
+	public function set_club_officer( Actor $actor, int $season_id, int $club_id, int $person_id, bool $assigned ): void {
+		SeasonGuard::require_tk( $actor );
+		$changed = $this->db->transaction(
+			function () use ( $actor, $season_id, $club_id, $person_id, $assigned ): bool {
+				$this->guard->lock();
+				$this->guard->planned( $season_id );
+				$this->registrations->lock_club( $club_id );
+				$registration = $this->registrations->club_season( $season_id, $club_id );
+				if ( null === $registration ) {
+					throw SeasonException::not_found( __( 'Dieser Club nimmt an der Saison nicht teil.', 'ttleague' ) );
+				}
+				if ( $assigned && 'active' !== $this->db->get_var( "SELECT status FROM {$this->db->table( 'person' )} WHERE id = %d FOR UPDATE", array( $person_id ) ) ) {
+					throw SeasonException::field( 'person', __( 'Bitte wähle eine aktive Person.', 'ttleague' ) );
+				}
+				$officers = $this->registrations->tk_chefs( $season_id, $club_id );
+				if ( in_array( $person_id, $officers, true ) === $assigned ) {
+					return false;
+				}
+				$role = array(
+					'season_id' => $season_id,
+					'club_id'   => $club_id,
+					'person_id' => $person_id,
+					'role'      => 'tk_chef',
+				);
+				if ( $assigned ) {
+					$this->db->insert( 'club_role', $role );
+				} else {
+					$this->db->delete( 'club_role', $role );
+				}
+				$this->audit->record( 'club_season', $registration['id'], $assigned ? 'officer_added' : 'officer_removed', $actor->user_id, $assigned ? null : $role, $assigned ? $role : null );
+				return true;
+			}
+		);
+		if ( $changed ) {
+			$this->events->changed( $season_id );
+		}
+	}
+
+	/**
 	 * Club aus der geplanten Saison nehmen, solange er nichts gemeldet hat: keine Spieler, keine
 	 * Neumeldungen, keine Mannschaften. Seine Funktionen in dieser Saison fallen weg.
 	 *

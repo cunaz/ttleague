@@ -2,7 +2,16 @@
 
 WordPress-Plugin für den Spielbetrieb einer Tischtennis-Liga im Firmen- und Freizeitsport: Mannschaftsmeisterschaft, Mannschaftscup, Ranglistenturnier, Spieler mit Klassierung und Wertungszahl, Resultaterfassung durch die Clubs. Entstanden für den SFFS Firmensport Tischtennis Region Zürich, gebaut für jede Liga mit ähnlichem Reglement.
 
-Status: in Entwicklung, noch nicht einsatzbereit.
+Version 0.2.0 lässt sich als WordPress-Plugin-ZIP installieren. Das Paket funktioniert auf dem Server ohne Composer und Node.js.
+
+## Installation und Betrieb
+
+1. `bin/package.sh` erstellt aus dem aktuellen Worktree das ZIP `dist/ttleague.zip`. Zum Bauen braucht es Bash und Git mit Unterstützung für `git archive --mtime`. Für ein Release aus einer festgehaltenen Revision `bin/package.sh <commit>` verwenden. Das Paket enthält die Laufzeitdateien und die Lizenz. Auf dem WordPress-Server genügen PHP ab 8.2 mit DOM und mbstring, WordPress ab 6.7 und MariaDB oder MySQL mit InnoDB. Für Web-Push braucht PHP zusätzlich OpenSSL mit P-256.
+2. Das ZIP unter «Plugins → Installieren → Plugin hochladen» einspielen und ttleague aktivieren. Für die Liga-Adressen unter «Einstellungen → Permalinks» eine Struktur wie «Beitragsname» wählen. Der Webserver muss Seitenpfade sowie `/sw.js` und `/manifest.webmanifest` an WordPress weiterleiten. Unter «Einstellungen → Allgemein» die Ortszeitzone der Liga setzen.
+3. Unter «Spielbetrieb → Saison» die erste Saison anlegen, Club aufnehmen, TK-Chef erfassen oder zuweisen und einladen. Sobald das Meldefenster offen ist, kann der Club seine erste Mannschaft in «Mein Bereich» melden. Eine bestehende Liga übernimmt ihre Altdaten über ihr Instanz-Repository.
+4. Für zeitgesteuerte Fristen WP-Cron regelmässig ausführen lassen. Anmeldelink und Benachrichtigungen mit einem Testkonto auf der Instanz prüfen. HTTPS und die geschützte Ablage der Spielberichtsfotos prüfen. Der Test «Fotos der Spielberichte» steht unter «Werkzeuge → Website-Zustand». Die Details zu Mail, Push und Cron stehen in [Erfassung und Betrieb](docs/erfassung.md).
+
+**Update und Wiederherstellung.** Vor einem Update die Datenbank, WordPress-Konfiguration und privaten Fotoverzeichnisse gemeinsam sichern. Auf einer Kopie das neue ZIP einspielen, eine WordPress-Seite aufrufen und mit `wp ttleague info` die gespeicherte Schemaversion mit dem Code vergleichen. Bei einem unvollständigen Schema pausiert der Spielbetrieb. Die Verwaltung erhält einen Hinweis und WordPress versucht das Upgrade nach einer Minute erneut. Auf der Kopie auch Anmeldung, Spielplan und eine Resultaterfassung prüfen. Für die Rückkehr zum vorherigen Stand das vorherige Plugin-Paket und die dazu passende Sicherung wiederherstellen. Eingaben seit der Sicherung dabei berücksichtigen.
 
 ## Aufbau
 

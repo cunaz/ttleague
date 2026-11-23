@@ -47,7 +47,7 @@ final class LoginFlow {
 	 * @param array<string,string> $args Parameter (Werte unkodiert).
 	 */
 	public static function page_url( array $args = array() ): string {
-		return add_query_arg( array_map( 'rawurlencode', $args ), Frontend::urls()->page( 'login' ) );
+		return add_query_arg( array_map( 'rawurlencode', $args ), Frontend::page_url( 'login' ) );
 	}
 
 	/**
@@ -56,7 +56,7 @@ final class LoginFlow {
 	 * @param array<string,string> $args Parameter (Werte unkodiert).
 	 */
 	public static function my_area_url( array $args = array() ): string {
-		return add_query_arg( array_map( 'rawurlencode', $args ), Frontend::urls()->page( 'my_area' ) );
+		return add_query_arg( array_map( 'rawurlencode', $args ), Frontend::page_url( 'my_area' ) );
 	}
 
 	public static function link_url( string $token, string $redirect = '' ): string {

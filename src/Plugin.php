@@ -32,15 +32,22 @@ final class Plugin {
 	private static bool $booted = false;
 
 	public static function boot(): void {
-		if ( self::$booted ) {
+		if ( self::$booted || wp_installing() ) {
 			return;
 		}
 		self::$booted = true;
 
 		load_plugin_textdomain( 'ttleague', false, dirname( plugin_basename( TTLEAGUE_FILE ) ) . '/languages' );
 
-		// Schema nachziehen, wenn eine neue Plugin-Version eine neue DB-Version mitbringt.
-		add_action( 'init', array( Installer::class, 'maybe_upgrade' ), 1 );
+		// Auch mit unvollständigem Schema muss sich die Version abfragen lassen.
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			\WP_CLI::add_command( 'ttleague', \TTLeague\Cli\Command::class );
+		}
+		if ( ! Installer::maybe_upgrade() ) {
+			add_action( 'admin_notices', array( self::class, 'schema_notice' ) );
+			add_action( 'network_admin_notices', array( self::class, 'schema_notice' ) );
+			return;
+		}
 
 		// Öffentliche Darstellung (Routing, Seiten, Blöcke, Shortcodes, Assets).
 		if ( class_exists( \TTLeague\Frontend\Frontend::class ) ) {
@@ -82,11 +89,28 @@ final class Plugin {
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'ttleague', \TTLeague\Cli\Command::class );
 			\WP_CLI::add_command( 'ttleague rating', \TTLeague\Cli\RatingCommand::class );
 			\WP_CLI::add_command( 'ttleague account', \TTLeague\Cli\AccountCommand::class );
 			\WP_CLI::add_command( 'ttleague notifications', \TTLeague\Cli\NotificationCommand::class );
 			\WP_CLI::add_command( 'ttleague export', \TTLeague\Cli\ExportCommand::class );
+		}
+	}
+
+	/** Cron-Aufträge und Routing auch bei unvollständigem Datenbankschema aufräumen. */
+	public static function deactivate(): void {
+		Frontend\PageInstaller::deactivate();
+		Accounts\Accounts::deactivate();
+		Results\Results::deactivate();
+		Notifications\Notifications::deactivate();
+		Season\SeasonAdmin::deactivate();
+		RankingTournament\RankingTournament::deactivate();
+		Cup\Cup::deactivate();
+		Events\Events::deactivate();
+	}
+
+	public static function schema_notice(): void {
+		if ( current_user_can( 'manage_options' ) || current_user_can( \TTLeague\Access\Capabilities::TK ) ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'ttleague pausiert den Spielbetrieb, weil das Datenbank-Update unvollständig ist. Die Website-Verwaltung sollte das PHP-Fehlerprotokoll und die Datenbankrechte prüfen. Das Plugin versucht das Update nach einer Minute erneut.', 'ttleague' ) . '</p></div>';
 		}
 	}
 }

@@ -24,7 +24,7 @@ final class RecalcLockTest extends IntegrationTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		$name          = RecalcLock::name( 'ttleague_test', self::PREFIX . 'sperre_' );
+		$name          = RecalcLock::name( (string) $this->db->get_var( 'SELECT DATABASE()' ), self::PREFIX . 'sperre_' );
 		$this->running = new RecalcLock( $this->db, $name );
 		$this->waiting = new RecalcLock( self::another_connection(), $name );
 	}
@@ -68,7 +68,7 @@ final class RecalcLockTest extends IntegrationTestCase {
 		self::assertSame( $names[0], RecalcLock::name( 'liga', 'wp_' ) );
 		self::assertLessThanOrEqual( 64, strlen( RecalcLock::name( str_repeat( 'datenbank', 10 ), str_repeat( 'praefix_', 10 ) ) ), 'Höchstlänge eines Sperrnamens' );
 
-		$other = new RecalcLock( self::another_connection(), RecalcLock::name( 'ttleague_test', self::PREFIX . 'andere_' ) );
+		$other = new RecalcLock( self::another_connection(), RecalcLock::name( (string) $this->db->get_var( 'SELECT DATABASE()' ), self::PREFIX . 'andere_' ) );
 		self::assertTrue( $this->running->acquire( 0 ) );
 		try {
 			self::assertTrue( $other->acquire( 0 ), 'anderes Präfix: eigene Sperre' );

@@ -464,7 +464,25 @@ final class SeasonLifecyclePageTest extends SeasonWpTestCase {
 		self::assertSame( array( 'forfeit', '0', '10' ), array_values( (array) $row ) );
 		self::assertGreaterThan( $version, DataVersion::get() );
 		self::assertNotFalse( wp_next_scheduled( Results::RECALC_HOOK ), 'Die Wertungszahl wird neu gerechnet.' );
-		self::assertSame( array(), $this->mails, 'Der Rückzug löst keine Mitteilung je Begegnung aus.' );
+		$args = array( $this->id['seefeld_1'], 0 );
+		self::assertSame( array(), $this->mails, 'Die Anfrage versendet keine Nachrichten.' );
+		self::assertNotFalse( wp_next_scheduled( SeasonAdmin::WITHDRAWN_HOOK, $args ) );
+		wp_unschedule_hook( SeasonAdmin::WITHDRAWN_HOOK );
+		SeasonAdmin::catch_up_withdrawals();
+		self::assertNotFalse( wp_next_scheduled( SeasonAdmin::WITHDRAWN_HOOK, $args ), 'Ein verlorener Schritt wird nachgeholt.' );
+		wp_unschedule_hook( SeasonAdmin::WITHDRAWN_HOOK );
+		do_action( SeasonAdmin::WITHDRAWN_HOOK, ...$args ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- Hook des Plugins.
+		SeasonAdmin::catch_up_withdrawals();
+		self::assertFalse( wp_next_scheduled( SeasonAdmin::WITHDRAWN_HOOK, $args ), 'Alle Zustellungen sind abgeschlossen.' );
+		self::assertEqualsCanonicalizing(
+			array( 'person' . $this->id['captain_oerlikon_1'] . '@example.invalid', 'person' . $this->id['chef_oerlikon'] . '@example.invalid' ),
+			array_column( $this->mails, 'to' )
+		);
+		foreach ( $this->mails as $mail ) {
+			self::assertSame( 'notification_team_withdrawn', $mail->type );
+			self::assertStringContainsString( 'Seefeld 1', $mail->subject );
+			self::assertStringNotContainsString( 'Zu wenige Spieler', $mail->text );
+		}
 		$html = $this->page( SeasonPage::CLOSE );
 		self::assertStringContainsString( 'Die Mannschaft ist zurückgezogen. Forfait gewertete Begegnungen: 1.', $html );
 		self::assertStringContainsString( 'Zurückgezogen: Seefeld 1.', $html );

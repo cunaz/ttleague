@@ -3,7 +3,7 @@
  * Plugin Name:       ttleague
  * Plugin URI:        https://github.com/cunaz/ttleague
  * Description:       Spielbetrieb einer Tischtennis-Liga: Meisterschaft, Cup, Ranglistenturnier, Spieler und Wertungszahl. Entwickelt für den SFFS Firmensport Region Zürich.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 6.7
  * Requires PHP:      8.2
  * Author:            Rupert Wildner
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TTLEAGUE_VERSION', '0.1.0' );
+define( 'TTLEAGUE_VERSION', '0.2.0' );
 define( 'TTLEAGUE_FILE', __FILE__ );
 define( 'TTLEAGUE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'TTLEAGUE_URL', plugin_dir_url( __FILE__ ) );
@@ -50,4 +50,6 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 register_activation_hook( __FILE__, array( \TTLeague\Infrastructure\Database\Installer::class, 'activate' ) );
 
-add_action( 'plugins_loaded', array( \TTLeague\Plugin::class, 'boot' ) );
+register_deactivation_hook( __FILE__, array( \TTLeague\Plugin::class, 'deactivate' ) );
+
+add_action( 'after_setup_theme', array( \TTLeague\Plugin::class, 'boot' ) );

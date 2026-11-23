@@ -111,10 +111,44 @@ final class SeasonSteps {
 		if ( array() === $clubs ) {
 			$out .= '<p>' . esc_html__( 'Noch nimmt kein Club teil. Ohne Aufnahme kann ein Club nicht melden.', 'ttleague' ) . '</p>';
 		} else {
-			$out .= '<table class="widefat striped ttl-tk-table ttl-season-narrow"><thead><tr><th scope="col">' . esc_html__( 'Club', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'Meldung', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'Aktion', 'ttleague' ) . '</th></tr></thead><tbody>';
+			$officers = array();
+			foreach ( $db->get_results(
+				"SELECT DISTINCT cr.club_id, p.id, p.first_name, p.last_name, p.email, p.status FROM {$db->table( 'club_role' )} cr
+				JOIN {$db->table( 'person' )} p ON p.id = cr.person_id WHERE cr.season_id = %d AND cr.role = 'tk_chef'
+				ORDER BY p.last_name, p.first_name, p.id",
+				array( $season_id )
+			) as $officer ) {
+				$officers[ $officer['club_id'] ][] = $officer;
+			}
+			$out .= '<table class="widefat striped ttl-tk-table ttl-season-narrow"><thead><tr><th scope="col">' . esc_html__( 'Club', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'Meldung', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'TK-Chefs', 'ttleague' ) . '</th><th scope="col">' . esc_html__( 'Aktion', 'ttleague' ) . '</th></tr></thead><tbody>';
 			foreach ( $clubs as $club ) {
 				$empty = RegistrationRules::OPEN === $club['status'] && 0 === $club['players'] + $club['teams'] + $club['requests'];
 				$out  .= '<tr><td>' . esc_html( $club['name'] ) . '</td><td>' . esc_html( RegistrationView::status_label( $club['status'] ) ) . '</td><td>';
+				if ( empty( $officers[ $club['club_id'] ] ) ) {
+					$out .= esc_html__( 'Noch kein TK-Chef', 'ttleague' );
+				}
+				foreach ( $officers[ $club['club_id'] ] ?? array() as $officer ) {
+					$name   = trim( $officer['first_name'] . ' ' . $officer['last_name'] );
+					$fields = array(
+						'season' => (string) $season_id,
+						'club'   => (string) $club['club_id'],
+						'person' => (string) $officer['id'],
+					);
+					$out   .= '<strong>' . esc_html( $name ) . '</strong>';
+					if ( 'active' === $officer['status'] && ! empty( $officer['email'] ) ) {
+						$out .= SeasonPage::form( SeasonActions::OFFICER_INVITE, $season_id, $fields, 'ttl-tk-inline' )
+							. '<button type="submit" class="button button-small">' . esc_html__( 'Einladen', 'ttleague' )
+							. '<span class="screen-reader-text">: ' . esc_html( $name ) . '</span></button></form>';
+					}
+					$out .= SeasonPage::form(
+						SeasonActions::OFFICER_REMOVE,
+						$season_id,
+						$fields,
+						'ttl-tk-inline'
+					) . '<button type="submit" class="button button-small">' . esc_html__( 'Zuweisung aufheben', 'ttleague' )
+						. '<span class="screen-reader-text">: ' . esc_html( $name . ', ' . $club['name'] ) . '</span></button></form>';
+				}
+				$out .= '</td><td>';
 				if ( $empty ) {
 					$out .= SeasonPage::form(
 						SeasonActions::CLUB_REMOVE,
@@ -130,7 +164,7 @@ final class SeasonSteps {
 				}
 				$out .= '</td></tr>';
 			}
-			$out .= '</tbody></table>';
+			$out .= '</tbody></table>' . self::officer_form( $season_id, $clubs );
 		}
 		$taken   = array_column( $clubs, 'club_id' );
 		$options = '';
@@ -145,6 +179,14 @@ final class SeasonSteps {
 				. '<button type="submit" class="button">' . esc_html__( 'Aufnehmen', 'ttleague' ) . '</button></form>';
 		}
 
+		$out .= '<details><summary>' . esc_html__( 'Neuen Club anlegen', 'ttleague' ) . '</summary>'
+			. SeasonPage::form( SeasonActions::CLUB_CREATE, $season_id, array( 'season' => (string) $season_id ) )
+			. '<label>' . esc_html__( 'Clubnummer', 'ttleague' ) . ' <input name="number" type="number" min="1" max="2147483647" required></label>'
+			. '<label>' . esc_html__( 'Clubname', 'ttleague' ) . ' <input name="name" maxlength="120" required></label>'
+			. '<label>' . esc_html__( 'Kurzname', 'ttleague' ) . ' <input name="short_name" maxlength="60" required></label>'
+			. '<label>' . esc_html__( 'URL-Kürzel (z. B. ttc-seefeld)', 'ttleague' ) . ' <input name="slug" maxlength="60" pattern="[a-z0-9]+(-[a-z0-9]+)*" required></label>'
+			. '<button type="submit" class="button">' . esc_html__( 'Anlegen und in die Saison aufnehmen', 'ttleague' ) . '</button></form></details>';
+
 		$out     .= '<h3>' . esc_html__( 'Geplante Saison löschen', 'ttleague' ) . '</h3>';
 		$contents = SeasonAdmin::setup()->contents( $season_id );
 		if ( 0 !== array_sum( $contents ) ) {
@@ -156,6 +198,37 @@ final class SeasonSteps {
 			. '<label for="ttl-season-delete">' . esc_html( sprintf( __( 'Zur Bestätigung den Namen der Saison eingeben (%s)', 'ttleague' ), $planned['name'] ) ) . '</label>'
 			. '<input type="text" id="ttl-season-delete" name="confirm" required autocomplete="off">'
 			. '<button type="submit" class="button">' . esc_html__( 'Saison löschen', 'ttleague' ) . '</button></form>';
+	}
+
+	/**
+	 * @param list<array<string,mixed>> $clubs Teilnehmende Clubs.
+	 */
+	private static function officer_form( int $season_id, array $clubs ): string {
+		$db      = Services::db();
+		$persons = $db->get_results( "SELECT id, first_name, last_name, email FROM {$db->table( 'person' )} WHERE status = 'active' ORDER BY last_name, first_name, id" );
+		$options = '<option value="">' . esc_html__( 'Club wählen', 'ttleague' ) . '</option>';
+		foreach ( $clubs as $club ) {
+			$options .= '<option value="' . esc_attr( (string) $club['club_id'] ) . '">' . esc_html( $club['name'] ) . '</option>';
+		}
+		$club_select = '<label>' . esc_html__( 'Club', 'ttleague' ) . ' <select name="club" required>' . $options . '</select></label> ';
+		$new         = '<details><summary>' . esc_html__( 'Neue Person als TK-Chef erfassen', 'ttleague' ) . '</summary>'
+			. SeasonPage::form( SeasonActions::OFFICER_CREATE, $season_id, array( 'season' => (string) $season_id ) )
+			. $club_select
+			. '<label>' . esc_html__( 'Vorname', 'ttleague' ) . ' <input name="first_name" maxlength="80"></label>'
+			. '<label>' . esc_html__( 'Nachname', 'ttleague' ) . ' <input name="last_name" maxlength="80" required></label>'
+			. '<label>' . esc_html__( 'E-Mail-Adresse', 'ttleague' ) . ' <input name="email" type="email" maxlength="190" required></label>'
+			. '<button type="submit" class="button">' . esc_html__( 'Person anlegen und zuweisen', 'ttleague' ) . '</button></form></details>';
+		if ( array() === $persons ) {
+			return $new;
+		}
+		$out  = SeasonPage::form( SeasonActions::OFFICER_ADD, $season_id, array( 'season' => (string) $season_id ), 'ttl-tk-inline' ) . $club_select;
+		$out .= '<label for="ttl-officer-person">' . esc_html__( 'TK-Chef', 'ttleague' ) . '</label> <select id="ttl-officer-person" name="person" required>'
+			. '<option value="">' . esc_html__( 'Person wählen', 'ttleague' ) . '</option>';
+		foreach ( $persons as $person ) {
+			$name = trim( $person['first_name'] . ' ' . $person['last_name'] );
+			$out .= '<option value="' . esc_attr( (string) $person['id'] ) . '">' . esc_html( $name . ' · ' . ( '' === (string) $person['email'] ? '#' . $person['id'] : $person['email'] ) ) . '</option>';
+		}
+		return $out . '</select> <button type="submit" class="button">' . esc_html__( 'TK-Chef zuweisen', 'ttleague' ) . '</button></form>' . $new;
 	}
 
 	/**
@@ -272,6 +345,12 @@ final class SeasonSteps {
 			$out .= SeasonPage::form( SeasonActions::COPY, $season_id, $hidden, 'ttl-tk-inline' )
 				/* translators: %d: Anzahl */
 				. '<button type="submit" class="button">' . esc_html( sprintf( __( 'Cup und Ranglistenturnier übernehmen (%d)', 'ttleague' ), count( $state['copyable'] ) ) ) . '</button></form>';
+		}
+		$cup_categories = array_column( array_filter( $state['other'], static fn( array $row ): bool => Grouping::CUP === $row['type'] ), 'category' );
+		foreach ( array_diff( Grouping::CUP_CATEGORIES, $cup_categories ) as $category ) {
+			$out .= SeasonPage::form( SeasonActions::CUP_CREATE, $season_id, $hidden + array( 'category' => $category ), 'ttl-tk-inline' )
+				/* translators: %s: Cup-Kategorie */
+				. '<button type="submit" class="button">' . esc_html( sprintf( __( 'Mannschaftscup %s anlegen', 'ttleague' ), $category ) ) . '</button></form>';
 		}
 		$out .= '</div>';
 		if ( array() !== $state['other'] ) {
@@ -720,7 +799,8 @@ final class SeasonSteps {
 			}
 		}
 		$out .= '<h3>' . esc_html__( 'Rückzug einer Mannschaft (Art. 13.3)', 'ttleague' ) . '</h3>'
-			. '<p>' . esc_html__( 'Alle Begegnungen der Mannschaft werden forfait gegen sie gewertet, auch schon gespielte; ihre Spiele zählen nicht mehr. In der Tabelle steht sie am Ende. Das lässt sich nur Begegnung für Begegnung über die Erfassung zurücknehmen.', 'ttleague' ) . '</p>';
+			. '<p>' . esc_html__( 'Alle Begegnungen der Mannschaft werden forfait gegen sie gewertet, auch schon gespielte; ihre Spiele zählen nicht mehr. In der Tabelle steht sie am Ende. Das lässt sich nur Begegnung für Begegnung über die Erfassung zurücknehmen.', 'ttleague' ) . '</p>'
+			. '<p>' . esc_html__( 'Die Captains und TK-Chefs der betroffenen Gegner werden über den Rückzug benachrichtigt.', 'ttleague' ) . '</p>';
 		if ( array() !== $withdrawn ) {
 			/* translators: %s: Mannschaften */
 			$out .= '<p>' . esc_html( sprintf( __( 'Zurückgezogen: %s.', 'ttleague' ), implode( ', ', $withdrawn ) ) ) . '</p>';

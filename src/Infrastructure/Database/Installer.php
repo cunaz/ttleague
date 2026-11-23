@@ -15,6 +15,9 @@ final class Installer {
 
 	public const OPTION = 'ttleague_db_version';
 
+	/** Kurze Pause zwischen gescheiterten automatischen Schema-Upgrades. */
+	public const RETRY_TRANSIENT = 'ttleague_schema_retry';
+
 	/** Merkt sich (automatisch geladen), dass person.user_id eindeutig ist. */
 	public const USER_UNIQUE_OPTION = 'ttleague_person_user_unique';
 
@@ -30,34 +33,65 @@ final class Installer {
 	 * Bei jedem Laden prüfen, ob eine neue Schemaversion vorliegt. Nach einem Upgrade gelten
 	 * zwischengespeicherte Lesemodelle nicht mehr: Eine neue Version kann ihnen Felder hinzufügen.
 	 */
-	public static function maybe_upgrade(): void {
+	public static function maybe_upgrade(): bool {
+		global $wpdb;
 		if ( get_option( self::OPTION ) !== Schema::VERSION ) {
-			self::install();
+			if ( Schema::VERSION === get_transient( self::RETRY_TRANSIENT ) ) {
+				return false;
+			}
+			// Datenbankdiagnosen gehören ins Serverprotokoll, auch mit aktiviertem WP_DEBUG_DISPLAY.
+			$previous = $wpdb->suppress_errors();
+			try {
+				self::install();
+			} catch ( DbException $e ) {
+				set_transient( self::RETRY_TRANSIENT, Schema::VERSION, MINUTE_IN_SECONDS );
+				error_log( 'ttleague: Schema-Upgrade fehlgeschlagen. ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Diagnose für die Verwaltung.
+				return false;
+			} finally {
+				$wpdb->suppress_errors( $previous );
+			}
 			DataVersion::bump();
-			return;
+			return true;
 		}
 		// Fehlt der UNIQUE-Index auf person.user_id noch, höchstens stündlich erneut versuchen.
 		// Die Option ist automatisch geladen; im Normalfall kostet die Prüfung keine Abfrage.
 		if ( '1' !== get_option( self::USER_UNIQUE_OPTION ) && false === get_transient( 'ttleague_person_user_index' ) ) {
 			set_transient( 'ttleague_person_user_index', 1, HOUR_IN_SECONDS );
-			self::ensure_unique_person_user();
+			try {
+				self::ensure_unique_person_user();
+			} catch ( DbException $e ) {
+				error_log( 'ttleague: Index person.user_id konnte nicht geprüft werden. ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Diagnose für die Verwaltung.
+			}
 		}
+		return true;
 	}
 
 	public static function install(): void {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-		self::drop_obsolete_indexes();
+		$db = WpdbDb::from_global();
+		self::drop_obsolete_indexes( $db );
 		// Vor dbDelta umwandeln, damit dbDelta den gleichnamigen Index nicht ein zweites Mal anlegen will.
-		$person = Schema::table( 'person', $wpdb->prefix );
-		if ( $person === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $person ) ) ) {
-			self::ensure_unique_person_user();
+		$person_exists = null !== $db->get_var( 'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s', array( $db->table( 'person' ) ) );
+		$unique        = ! $person_exists || self::ensure_unique_person_user();
+		foreach ( Schema::statements( $wpdb->prefix, $wpdb->get_charset_collate(), $unique ) as $table => $sql ) {
+			$changes = dbDelta( $sql );
+			if ( '' !== $wpdb->last_error ) {
+				throw new DbException( $table . ': ' . $wpdb->last_error ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Interne Diagnose.
+			}
+			// dbDelta meldet geplante Änderungen. Eine spätere erfolgreiche Anweisung kann last_error überschreiben.
+			if ( array() !== $changes && array() !== dbDelta( $sql, false ) ) {
+				throw new DbException( 'Schema der Tabelle ' . $table . ' ist nach dbDelta unvollständig.' ); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Tabellenname aus Schema.
+			}
 		}
-		foreach ( Schema::statements( $wpdb->prefix, $wpdb->get_charset_collate() ) as $sql ) {
-			dbDelta( $sql );
+		if ( ! $person_exists ) {
+			update_option( self::USER_UNIQUE_OPTION, '1', true );
 		}
-		update_option( self::OPTION, Schema::VERSION, false );
+		if ( ! update_option( self::OPTION, Schema::VERSION, false ) && Schema::VERSION !== get_option( self::OPTION ) ) {
+			throw new DbException( 'Die neue Schemaversion liess sich nicht speichern.' );
+		}
+		delete_transient( self::RETRY_TRANSIENT );
 	}
 
 	/**
@@ -85,20 +119,16 @@ final class Installer {
 	/**
 	 * Ersetzte Indizes löschen (Schema::OBSOLETE_INDEXES); dbDelta() kann das nicht.
 	 */
-	private static function drop_obsolete_indexes(): void {
-		global $wpdb;
+	private static function drop_obsolete_indexes( Db $db ): void {
 		foreach ( Schema::OBSOLETE_INDEXES as $name => $indexes ) {
-			$table = Schema::table( $name, $wpdb->prefix );
+			$table = $db->table( $name );
 			foreach ( $indexes as $index ) {
-				$exists = $wpdb->get_var(
-					$wpdb->prepare(
-						'SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
-						$table,
-						$index
-					)
+				$exists = $db->get_var(
+					'SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+					array( $table, $index )
 				);
 				if ( (int) $exists > 0 ) {
-					$wpdb->query( "ALTER TABLE `{$table}` DROP INDEX `{$index}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.SchemaChange -- Namen aus Schema-Konstanten.
+					$db->query( "ALTER TABLE `{$table}` DROP INDEX `{$index}`" );
 				}
 			}
 		}

@@ -35,6 +35,7 @@ Dieses Dokument beschreibt, wie die Daten in den Tabellen `wp_ttl_*` abgelegt we
 | `person.last_name`, `first_name` | getrennt gespeichert; Importe aus Altsystemen liefern die Aufteilung |
 | `player.license_no` | Lizenznummer, stabil über alle Saisons |
 | `player_season.classification` | offizielle Klassierung 1 bis 22 dieser Saison (Anzeige D1 bis A22 über `ClassificationScale::label()`) |
+| `player_season.classification_carried` | Herkunft der Klassierung ab Schemaversion 2026112301. 1 für automatisch übernommen, 0 für ausdrücklich festgelegt, NULL bei älteren Meldungen oder einem Import ohne Herkunft. Bei NULL führt die Saisonfreigabe den Wert nur nach, wenn die ursprüngliche provisorische Anmeldung im Protokoll belegt ist und kein späterer Entscheid über eine Neumeldung vorliegt. |
 | `club_role.role` | `tk_chef` oder `captain` (mit `team_id`) |
 
 ## Konkurrenzen (`competition`)
@@ -50,6 +51,8 @@ Dieses Dokument beschreibt, wie die Daten in den Tabellen `wp_ttl_*` abgelegt we
 - `name` wie «Seefeld 1», `number` = Mannschaftsnummer, `competition_id` = MM-Gruppe.
 - `home_venue_id` und `default_start_time` aus der Lokalzuordnung des Clubs.
 - `team_roster.kind`: `stamm` (gemeldete Stammspieler) oder `bound` (durch Ersatzeinsätze gebunden, `valid_from` = Tag des bindenden Einsatzes; folgt aus den Einsätzen und wird nach jeder Erfassung neu bestimmt, siehe erfassung.md).
+
+`withdrawal_notice` speichert je zurückgezogener Mannschaft und Person einen offenen Versandauftrag mit Zeitpunkt in UTC. Erfolgreich bearbeitete Aufträge werden gelöscht, der Stundenlauf entfernt verbliebene Aufträge nach sieben Tagen.
 
 ## Begegnungen (`fixture`)
 

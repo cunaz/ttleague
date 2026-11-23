@@ -1,6 +1,6 @@
 <?php
 /**
- * Text der Mitteilung «Spielplan freigegeben» (Schweizer Schreibweise) für E-Mail und Push.
+ * Mitteilungen zum Saisonbetrieb (Schweizer Schreibweise) für E-Mail und Push.
  *
  * @package TTLeague
  */
@@ -14,8 +14,7 @@ use TTLeague\Notifications\EventTypes;
 use TTLeague\Notifications\Notification;
 
 /**
- * Eine Art: season_published. Bezug ist die Saison; jede Person erhält die Mitteilung einmal,
- * mit dem Spielplan ihrer Mannschaften und den Adressen der Kalender-Abos.
+ * Die Freigabe bezieht sich auf die Saison, der Rückzug auf die Mannschaft.
  */
 final class SeasonMessages {
 
@@ -24,6 +23,34 @@ final class SeasonMessages {
 	public const REF_SEASON = 'season';
 
 	public function __construct( private readonly SeasonLinks $links ) {}
+
+	public function withdrawn( int $team_id, string $team, string $season_slug ): Notification {
+		/* translators: %s: Name der zurückgezogenen Mannschaft. */
+		$subject = sprintf( __( '%s hat sich aus der Meisterschaft zurückgezogen', 'ttleague' ), $team );
+		$body    = __( 'Die Gegner erhalten für die betroffenen Begegnungen einen Forfaitsieg. Die noch angesetzten Spiele gegen diese Mannschaft entfallen.', 'ttleague' );
+		$url     = $this->links->schedule( $season_slug );
+		return new Notification(
+			EventTypes::TEAM_WITHDRAWN,
+			EventTypes::TEAM_WITHDRAWN,
+			'team',
+			$team_id,
+			'',
+			$subject,
+			array( $body ),
+			array(),
+			array(
+				'url'   => $url,
+				'label' => __( 'Meisterschaft ansehen', 'ttleague' ),
+			),
+			$this->links->my_area(),
+			array(
+				'title' => $subject,
+				'body'  => $body,
+				'url'   => $url,
+				'tag'   => 'ttleague-team-withdrawn-' . $team_id,
+			)
+		);
+	}
 
 	/**
 	 * Mitteilung für eine Person.

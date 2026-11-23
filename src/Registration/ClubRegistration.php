@@ -537,7 +537,8 @@ final class ClubRegistration {
 			/* translators: %s: Name */
 			throw RegistrationException::conflict( sprintf( __( '%s ist schon gemeldet.', 'ttleague' ), $player['name'] ) );
 		}
-		$value = $actor->is_tk && null !== $classification ? $classification : $this->repo->carried_classification( $player['id'], $ctx->season );
+		$manual = $actor->is_tk && null !== $classification;
+		$value  = $manual ? $classification : $this->repo->carried_classification( $player['id'], $ctx->season );
 		if ( ! Rules::is_classification( $value ) ) {
 			$message = $actor->is_tk
 				/* translators: %s: Name */
@@ -552,15 +553,16 @@ final class ClubRegistration {
 		$approved = $actor->is_tk && ( $ctx->is_active() || Rules::REVIEWED === $ctx->status() || null !== $classification );
 		$now      = $this->access->now();
 		$row      = array(
-			'player_id'      => $player['id'],
-			'season_id'      => $ctx->season_id(),
-			'club_id'        => $ctx->club_id(),
-			'classification' => $value,
-			'status'         => $approved ? self::ACTIVE : self::PROVISIONAL,
-			'registered_at'  => $now,
-			'registered_by'  => $actor->user_id,
-			'approved_by'    => $approved ? $actor->user_id : null,
-			'approved_at'    => $approved ? $now : null,
+			'player_id'              => $player['id'],
+			'season_id'              => $ctx->season_id(),
+			'club_id'                => $ctx->club_id(),
+			'classification'         => $value,
+			'classification_carried' => $manual ? 0 : 1,
+			'status'                 => $approved ? self::ACTIVE : self::PROVISIONAL,
+			'registered_at'          => $now,
+			'registered_by'          => $actor->user_id,
+			'approved_by'            => $approved ? $actor->user_id : null,
+			'approved_at'            => $approved ? $now : null,
 		);
 		$id       = $this->db->insert( 'player_season', $row );
 		$this->audit->record( 'player_season', $id, 'registered', $actor->user_id, null, $row );
