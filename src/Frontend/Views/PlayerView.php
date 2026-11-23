@@ -11,7 +11,6 @@ namespace TTLeague\Frontend\Views;
 
 use TTLeague\Calendar\FeedUrls;
 use TTLeague\Calendar\SubscribeBox;
-use TTLeague\Domain\Rating\ClassificationScale;
 use TTLeague\Frontend\Support\Format;
 use TTLeague\Frontend\Support\Html;
 use TTLeague\ReadModel\PlayerProfile;
@@ -107,10 +106,11 @@ final class PlayerView extends View {
 		}
 		$out = '';
 		if ( null !== $profile['rating'] ) {
-			$value    = (float) $profile['rating']['rating'];
-			$proposal = ClassificationScale::from_rating( $value, 100.0 );
-			/* translators: 1: Wertungszahl, 2: Anzahl Spiele, 3: Klassierung. */
-			$text = sprintf( __( 'Aktuell %1$s nach %2$d gewerteten Spielen; das entspricht der Klassierung %3$s.', 'ttleague' ), Format::rating( $value ), (int) $profile['rating']['games'], ClassificationScale::label( $proposal ) );
+			$value = (float) $profile['rating']['rating'];
+			$games = (int) $profile['rating']['games'];
+			/* translators: %d: Anzahl der gewerteten Spiele. */
+			$text = sprintf( _n( 'Berechnet aus einem gewerteten Spiel.', 'Berechnet aus %d gewerteten Spielen.', $games, 'ttleague' ), $games )
+				. ' ' . __( 'Die offizielle Klassierung legt die Technische Kommission für jede Saison fest.', 'ttleague' );
 			$out .= '<p class="ttl-rating"><span class="ttl-rating__value">' . esc_html( Format::rating( $value ) ) . '</span> <span class="ttl-rating__text">' . esc_html( $text ) . '</span></p>';
 		}
 		if ( array() === $profile['history'] ) {
@@ -127,12 +127,12 @@ final class PlayerView extends View {
 		/* translators: %s: Name des Spielers. */
 		$title = sprintf( __( 'Verlauf der Wertungszahl von %s', 'ttleague' ), $player['name'] );
 		/* translators: 1: Startdatum, 2: Startwert, 3: Enddatum, 4: Endwert, 5: Höchstwert, 6: Datum des Höchstwerts. */
-		$desc  = sprintf( __( 'Von %1$s (%2$s) bis %3$s (%4$s), Höchstwert %5$s am %6$s. Zu jedem Saisonbeginn wird die Wertungszahl auf die neue Klassierung gesetzt; die Saisons sind durch senkrechte Linien getrennt.', 'ttleague' ), Format::date_plain( $first['date'] ), Format::rating( $first['start'] ), Format::date_plain( $last['date'] ), Format::rating( $last['value'] ), Format::rating( $peak ), Format::date_plain( $peak_at ) );
+		$desc  = sprintf( __( 'Von %1$s (%2$s) bis %3$s (%4$s), Höchstwert %5$s am %6$s. Senkrechte Linien markieren den Saisonwechsel.', 'ttleague' ), Format::date_plain( $first['date'] ), Format::rating( $first['start'] ), Format::date_plain( $last['date'] ), Format::rating( $last['value'] ), Format::rating( $peak ), Format::date_plain( $peak_at ) );
 		$parts = RatingChart::parts( $days, 'ttl-rating-' . (int) $player['license'], $title, $desc );
 		$chart = str_replace( '{svg}', wp_kses( $parts['svg'], RatingChart::allowed_html() ), $parts['html'] );
 
 		$out .= '<figure class="ttl-chart">' . $chart
-			. '<figcaption class="ttl-footnote">' . esc_html__( 'Linie pro Saison; zu Saisonbeginn startet die Wertungszahl bei der neuen Klassierung × 100. Mit der Maus über die Grafik fahren zeigt die Werte pro Spieltag.', 'ttleague' ) . '</figcaption></figure>';
+			. '<figcaption class="ttl-footnote">' . esc_html__( 'Jede Linie zeigt eine Saison. Der Startwert richtet sich nach der Klassierung, danach verändert sich die Wertungszahl mit den gewerteten Spielen. Die Tabelle zeigt den Stand nach jedem Spieltag.', 'ttleague' ) . '</figcaption></figure>';
 
 		$rows = array();
 		foreach ( array_reverse( $days ) as $day ) {
