@@ -42,7 +42,8 @@ final class PlayerView extends View {
 		$games   = '' === $filter ? $profile['games'] : array_values( array_filter( $profile['games'], static fn( array $g ): bool => $g['season_slug'] === $filter ) );
 
 		$out  = $this->facts( $player, $profile );
-		$out .= Html::section( __( 'Wertungszahl', 'ttleague' ), $this->rating( $player, $profile ), 'ttl-section--rating', 'ttl-wertungszahl' );
+		$out .= '<section class="ttl-section ttl-section--rating" id="ttl-wertungszahl" aria-labelledby="ttl-wertungszahl-title">'
+			. $this->rating( $player, $profile ) . '</section>';
 		$out .= Html::section( __( 'Klassierung pro Saison', 'ttleague' ), $this->seasons( $profile['seasons'] ), 'ttl-section--seasons', 'ttl-klassierung' );
 		$out .= Html::section( __( 'Bilanz', 'ttleague' ), $this->balance( $profile['games'] ), 'ttl-section--balance', 'ttl-bilanz' );
 
@@ -102,21 +103,18 @@ final class PlayerView extends View {
 	 * @param array<string,mixed> $profile Profil.
 	 */
 	private function rating( array $player, array $profile ): string {
-		if ( null === $profile['rating'] && array() === $profile['history'] ) {
-			return Html::notice( __( 'Für diesen Spieler ist noch keine Wertungszahl berechnet. Sie entsteht aus gewerteten Spielen in Meisterschaft, Cup und Ranglistenturnier.', 'ttleague' ) );
-		}
-		$out = '';
+		$summary = Html::heading( 2, __( 'Wertungszahl', 'ttleague' ), 'ttl-wertungszahl-title', 'ttl-section__title' );
 		if ( null !== $profile['rating'] ) {
 			$value = (float) $profile['rating']['rating'];
 			$games = (int) $profile['rating']['games'];
 			/* translators: %d: Anzahl der gewerteten Spiele. */
-			$text = sprintf( _n( 'Berechnet aus %d gewertetem Spiel.', 'Berechnet aus %d gewerteten Spielen.', $games, 'ttleague' ), $games )
-				. ' ' . __( 'Die offizielle Klassierung legt die Technische Kommission für jede Saison fest.', 'ttleague' );
-			$out .= '<p class="ttl-rating"><span class="ttl-rating__value">' . esc_html( Format::rating( $value ) ) . '</span> <span class="ttl-rating__text">' . esc_html( $text ) . '</span></p>';
+			$text     = sprintf( _n( '%d gewertetes Spiel', '%d gewertete Spiele', $games, 'ttleague' ), $games );
+			$summary .= '<p class="ttl-rating"><span class="ttl-rating__value">' . esc_html( Format::rating( $value ) ) . '</span> <span class="ttl-rating__text">' . esc_html( $text ) . '</span></p>';
 		}
-		$games_by_id = array_column( $profile['games'], null, 'id' );
-		$events      = array();
-		$rows        = array();
+		$games_by_id   = array_column( $profile['games'], null, 'id' );
+		$events        = array();
+		$rows          = array();
+		$season_deltas = array();
 		foreach ( $profile['history'] as $event ) {
 			$game = $games_by_id[ $event['game_id'] ] ?? null;
 			if ( null === $game ) {
@@ -128,9 +126,27 @@ final class PlayerView extends View {
 				'season_name' => $game['season_name'],
 			);
 			$rows[]   = array( 'cells' => $this->rating_game_cells( $event, $game ) );
+
+			$season                   = $game['season_slug'];
+			$season_deltas[ $season ] = ( $season_deltas[ $season ] ?? 0.0 ) + $event['delta'];
 		}
+		$classification = __( 'Die offizielle Klassierung legt die Technische Kommission für jede Saison fest.', 'ttleague' );
 		if ( array() === $events ) {
-			return $out . Html::notice( __( 'Noch kein Verlauf vorhanden.', 'ttleague' ) );
+			if ( null === $profile['rating'] ) {
+				return $summary . Html::notice( __( 'Für diesen Spieler ist noch keine Wertungszahl berechnet. Sie entsteht aus gewerteten Spielen in Meisterschaft, Cup und Ranglistenturnier.', 'ttleague' ) );
+			}
+			return $summary . Html::notice( __( 'Noch kein Verlauf vorhanden.', 'ttleague' ) ) . '<p class="ttl-footnote">' . esc_html( $classification ) . '</p>';
+		}
+		$latest = $events[ array_key_last( $events ) ];
+		if ( null === $profile['rating'] ) {
+			$summary .= '<p class="ttl-rating"><span class="ttl-rating__value">' . esc_html( Format::rating( $latest['after'] ) )
+				. '</span> <span class="ttl-rating__text">' . esc_html__( 'Nach der letzten gewerteten Partie', 'ttleague' ) . '</span></p>';
+		}
+		if ( '' !== $latest['season'] && '' !== $latest['season_name'] ) {
+			/* translators: %s: Saison, z. B. 2026/27. */
+			$label    = sprintf( __( 'Punkte in der Saison %s', 'ttleague' ), $latest['season_name'] );
+			$summary .= '<p class="ttl-rating__season"><span class="ttl-rating__delta">' . esc_html( Format::delta( $season_deltas[ $latest['season'] ] ) )
+				. '</span> <span class="ttl-rating__season-label">' . esc_html( $label ) . '</span></p>';
 		}
 
 		if ( function_exists( 'wp_enqueue_script' ) ) {
@@ -142,13 +158,9 @@ final class PlayerView extends View {
 		$parts = RatingChart::parts( $events, 'ttl-rating-' . (int) $player['license'], $title, $desc );
 		$chart = str_replace( '{svg}', wp_kses( $parts['svg'], RatingChart::allowed_html() ), $parts['html'] );
 
-		$last = $rows[ count( $rows ) - 1 ];
-		$out .= '<figure class="ttl-chart" data-rating-chart>'
-			. '<div class="ttl-chart__nav" hidden>'
-			. '<button type="button" data-page="-1">' . esc_html__( '← Früher', 'ttleague' ) . '</button>'
-			. '<button type="button" data-page="1">' . esc_html__( 'Später →', 'ttleague' ) . '</button></div>'
-			. $chart
-			. '<figcaption class="ttl-footnote">' . esc_html( $desc ) . '</figcaption></figure>'
+		$last = $rows[ array_key_last( $rows ) ];
+		$out  = '<div class="ttl-rating-panel"><div class="ttl-rating-panel__summary">' . $summary . '</div>'
+			. '<figure class="ttl-chart" data-rating-chart>' . $chart . '</figure></div>'
 			. '<div class="ttl-rating-game" aria-live="polite" aria-atomic="true">' . implode( ' ', $last['cells'] ) . '</div>';
 
 		$table = Html::table(
@@ -167,7 +179,8 @@ final class PlayerView extends View {
 				'class'   => 'ttl-rating-history ttl-table--compact',
 			)
 		);
-		return $out . '<details class="ttl-details"><summary>' . esc_html__( 'Verlauf als Tabelle', 'ttleague' ) . '</summary>' . $table . '</details>';
+		return $out . '<div class="ttl-rating-notes"><details class="ttl-details"><summary>' . esc_html__( 'Verlauf als Tabelle', 'ttleague' ) . '</summary>' . $table . '</details>'
+			. '<details class="ttl-details"><summary>' . esc_html__( 'Zur Wertungszahl', 'ttleague' ) . '</summary><p>' . esc_html( $desc . ' ' . $classification ) . '</p></details></div>';
 	}
 
 	/**
@@ -179,18 +192,22 @@ final class PlayerView extends View {
 	 */
 	private function rating_game_cells( array $event, array $game ): array {
 		$opponents = implode( ' / ', array_column( $game['opponents'], 'name' ) );
-		$score     = Format::ratio( $game['sets_for'], $game['sets_against'] );
-		/* translators: 1: Satzresultat, 2: Namen der Gegner. */
-		$pairing = '' === $opponents ? $score : sprintf( __( '%1$s gegen %2$s', 'ttleague' ), $score, $opponents );
+		$score     = '<span class="ttl-rating-game__score">' . esc_html( Format::ratio( $game['sets_for'], $game['sets_against'] ) ) . '</span>';
+		if ( '' !== $opponents ) {
+			/* translators: %s: Namen der Gegner. */
+			$opponents = sprintf( __( 'gegen %s', 'ttleague' ), $opponents );
+		}
 		if ( null !== $game['partner'] ) {
 			/* translators: %s: Name des Doppelpartners. */
-			$pairing .= ' ' . sprintf( __( '(mit %s)', 'ttleague' ), $game['partner']['name'] );
+			$opponents = trim( $opponents . ' ' . sprintf( __( '(mit %s)', 'ttleague' ), $game['partner']['name'] ) );
 		}
-		$url = 'RL' === $game['kind'] ? $this->urls->ranking( $game['season_slug'] ) : $this->urls->fixture( (int) $game['fixture_id'] );
+		$pairing = $score . ( '' === $opponents ? '' : ' <span class="ttl-rating-game__opponents">' . esc_html( $opponents ) . '</span>' );
+		$url     = 'RL' === $game['kind'] ? $this->urls->ranking( $game['season_slug'] ) : $this->urls->fixture( (int) $game['fixture_id'] );
 		return array(
 			'<span class="ttl-rating-game__meta">' . esc_html( Format::date_plain( $event['at'] ) . ' · ' . $game['season_name'] . ' · ' . $game['competition'] ) . '</span>',
-			'<strong class="ttl-rating-game__pairing">' . esc_html( $pairing ) . '</strong>',
-			'<span class="ttl-rating-game__change">' . esc_html( Format::points( round( $event['before'], 1 ) ) . ' → ' . Format::points( round( $event['after'], 1 ) ) . ' (' . Format::delta( $event['delta'] ) . ')' ) . '</span>',
+			'<strong class="ttl-rating-game__pairing">' . $pairing . '</strong>',
+			'<span class="ttl-rating-game__change">' . esc_html( Format::points( round( $event['before'], 1 ) ) . ' → ' . Format::points( round( $event['after'], 1 ) ) )
+				. ' <span class="ttl-rating-game__delta">(' . esc_html( Format::delta( $event['delta'] ) ) . ')</span></span>',
 			Html::link( $url . '#ttl-partie-' . $game['id'], __( 'Zur Partie', 'ttleague' ) ),
 		);
 	}

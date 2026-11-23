@@ -7,20 +7,30 @@
 		const points = Array.from( chart.querySelectorAll( '.ttl-chart__point' ) );
 		const rows = Array.from( section.querySelectorAll( '.ttl-rating-history tbody tr' ) ).reverse();
 		const detail = section.querySelector( '.ttl-rating-game' );
-		const nav = chart.querySelector( '.ttl-chart__nav' );
-		if ( ! scroller || ! detail || ! nav || ! points.length || points.length !== rows.length ) {
+		const overview = chart.querySelector( '.ttl-chart__overview' );
+		const range = chart.querySelector( '.ttl-chart__range' );
+		if ( ! scroller || ! detail || ! overview || ! range || ! points.length || points.length !== rows.length ) {
 			continue;
 		}
-		const [ earlier, later ] = nav.querySelectorAll( 'button' );
 		let selected = points.length - 1;
 		chart.dataset.interactive = 'true';
+		scroller.dir = 'ltr';
 		points.forEach( ( point ) => {
 			point.disabled = false;
 			point.removeAttribute( 'title' );
 		} );
 
 		const frame = chart.querySelector( '.ttl-chart__frame' );
+		const canAnchor = getComputedStyle( frame ).getPropertyValue( 'anchor-scope' ).trim() === '--ttl-preview';
 		const area = chart.querySelector( '.ttl-chart__area' );
+		const svg = area.querySelector( '.ttl-chart__svg' );
+		const mini = svg.cloneNode( false );
+		mini.setAttribute( 'class', 'ttl-chart__mini' );
+		for ( const line of svg.querySelectorAll( '.ttl-chart__line, .ttl-chart__reset, .ttl-chart__boundary' ) ) {
+			mini.append( line.cloneNode( false ) );
+		}
+		range.before( mini );
+
 		const guide = document.createElement( 'span' );
 		guide.className = 'ttl-chart__guide';
 		guide.hidden = true;
@@ -48,20 +58,39 @@
 			guide.hidden = true;
 		}
 
+		function visibleBounds( start, end, size, viewport, padding ) {
+			const min = Math.max( start, 0 ) + padding;
+			const max = Math.min( end, viewport ) - padding;
+			return max - min >= size ? [ min, max ] : [ padding, viewport - padding ];
+		}
+
 		function placePreview( point ) {
 			const box = frame.getBoundingClientRect();
 			const dot = point.getBoundingClientRect();
-			const x = dot.left + dot.width / 2 - box.left;
-			const y = dot.top + dot.height / 2 - box.top;
 			const height = tip.offsetHeight;
+			const viewportWidth = document.documentElement.clientWidth;
+			const viewportHeight = window.innerHeight;
+			// CSS zentriert und wendet die Vorschau innerhalb eines vollständig sichtbaren Rahmens.
+			const frameVisible = box.left >= 0 && box.right <= viewportWidth && box.top >= 0 && box.bottom <= viewportHeight;
+			if ( canAnchor && frameVisible && Math.max( dot.top - box.top, box.bottom - dot.bottom ) >= height + 4 ) {
+				tip.style.inset = '';
+				tip.dataset.anchored = '';
+				return;
+			}
+			delete tip.dataset.anchored;
+			// Ist weniger als eine Karte vom Rahmen sichtbar, nutzt sie den Platz im Fenster.
+			const width = tip.offsetWidth;
+			const [ firstX, lastX ] = visibleBounds( box.left, box.right, width, viewportWidth, 4 );
+			const [ firstY, lastY ] = visibleBounds( box.top, box.bottom, height, viewportHeight, 2 );
+			const x = dot.left + dot.width / 2;
+			const y = dot.top + dot.height / 2;
 			const gap = 12;
-			const firstY = Math.max( 0, -box.top ) + 4;
-			const lastY = Math.min( box.height, window.innerHeight - box.top ) - 4;
 			const above = y - gap - height;
 			const below = y + gap;
 			const top = above >= firstY || y - firstY > lastY - y ? above : below;
-			tip.style.left = Math.max( 4, Math.min( x - tip.offsetWidth / 2, box.width - tip.offsetWidth - 4 ) ) + 'px';
-			tip.style.top = Math.max( firstY, Math.min( top, lastY - height ) ) + 'px';
+			const left = Math.max( firstX, Math.min( x - width / 2, lastX - width ) );
+			const clippedTop = Math.max( firstY, Math.min( top, lastY - height ) );
+			tip.style.inset = ( clippedTop - box.top ) + 'px auto auto ' + ( left - box.left ) + 'px';
 		}
 
 		function showPreview( point ) {
@@ -81,20 +110,26 @@
 			placePreview( point );
 		}
 
-		// Beim Abfahren der Kurve zählt die nächste Partie entlang der Spielachse.
-		function nearestPoint( clientX ) {
-			const x = clientX - area.getBoundingClientRect().left;
+		function pointAtOrAfter( x ) {
 			let first = 0;
 			let last = points.length - 1;
 			while ( first < last ) {
 				const mid = Math.floor( ( first + last ) / 2 );
-				if ( x <= ( points[ mid ].offsetLeft + points[ mid + 1 ].offsetLeft ) / 2 ) {
+				if ( x <= points[ mid ].offsetLeft ) {
 					last = mid;
 				} else {
 					first = mid + 1;
 				}
 			}
-			return points[ first ];
+			return first;
+		}
+
+		// Beim Abfahren der Kurve zählt die nächste Partie entlang der Spielachse.
+		function nearestPoint( clientX ) {
+			const x = clientX - area.getBoundingClientRect().left;
+			const right = pointAtOrAfter( x );
+			const left = Math.max( 0, right - 1 );
+			return x - points[ left ].offsetLeft <= points[ right ].offsetLeft - x ? points[ left ] : points[ right ];
 		}
 
 		area.addEventListener( 'pointermove', ( event ) => {
@@ -122,6 +157,19 @@
 			}
 		} );
 		scroller.addEventListener( 'focusout', hidePreview );
+		function updateViewport() {
+			if ( ! preview ) {
+				return;
+			}
+			const dot = preview.getBoundingClientRect();
+			if ( dot.bottom > 0 && dot.top < window.innerHeight && dot.right > 0 && dot.left < document.documentElement.clientWidth ) {
+				placePreview( preview );
+			} else {
+				hidePreview();
+			}
+		}
+		window.addEventListener( 'scroll', updateViewport, { passive: true } );
+		window.addEventListener( 'resize', updateViewport );
 		document.addEventListener( 'keydown', ( event ) => {
 			if ( event.key === 'Escape' && preview ) {
 				dismissed = preview;
@@ -129,11 +177,27 @@
 			}
 		} );
 
-		function updateNavigation() {
-			const end = scroller.scrollWidth - scroller.clientWidth;
-			nav.hidden = end < 2;
-			earlier.disabled = scroller.scrollLeft <= 1;
-			later.disabled = scroller.scrollLeft >= end - 1;
+		function updateOverview() {
+			const width = scroller.clientWidth;
+			const total = scroller.scrollWidth;
+			const end = total - width;
+			overview.hidden = end < 2 || ! width;
+			if ( overview.hidden ) {
+				return;
+			}
+			// Der Range-Daumen deckt genau den im Hauptdiagramm sichtbaren Anteil ab.
+			const left = Math.max( 0, Math.min( end, scroller.scrollLeft ) );
+			const right = left + width;
+			const first = pointAtOrAfter( left );
+			let last = pointAtOrAfter( right );
+			if ( last > first && points[ last ].offsetLeft > right ) {
+				last--;
+			}
+			const from = points[ first ].dataset.date;
+			const to = points[ last ].dataset.date;
+			overview.style.setProperty( '--ttl-window-width', range.clientWidth * width / total + 'px' );
+			range.value = 100 * left / end;
+			range.setAttribute( 'aria-valuetext', from === to ? from : from + ' – ' + to );
 		}
 
 		function select( index ) {
@@ -172,10 +236,30 @@
 				scroller.scrollLeft += point.left - bounds.left - ( bounds.width - point.width ) / 2;
 			}
 		} );
-		nav.addEventListener( 'click', ( event ) => {
-			const button = event.target.closest( 'button[data-page]' );
-			if ( button ) {
-				scroller.scrollBy( { left: Number( button.dataset.page ) * scroller.clientWidth * 0.8 } );
+		range.addEventListener( 'input', () => {
+			scroller.scrollLeft = range.valueAsNumber / 100 * ( scroller.scrollWidth - scroller.clientWidth );
+		} );
+		// Beim Ziehen des breiten Sichtfensters bleibt die gegriffene Stelle unter dem Zeiger.
+		let grabOffset = 0;
+		function overviewPosition( event ) {
+			const bounds = range.getBoundingClientRect();
+			return ( event.clientX - bounds.left ) / bounds.width * scroller.scrollWidth;
+		}
+		range.addEventListener( 'pointerdown', ( event ) => {
+			if ( ! event.isPrimary || event.button !== 0 ) {
+				return;
+			}
+			event.preventDefault();
+			range.focus( { preventScroll: true } );
+			range.setPointerCapture( event.pointerId );
+			const x = overviewPosition( event );
+			const offset = x - scroller.scrollLeft;
+			grabOffset = offset >= 0 && offset <= scroller.clientWidth ? offset : scroller.clientWidth / 2;
+			scroller.scrollLeft = x - grabOffset;
+		} );
+		range.addEventListener( 'pointermove', ( event ) => {
+			if ( event.isPrimary && range.hasPointerCapture( event.pointerId ) ) {
+				scroller.scrollLeft = overviewPosition( event ) - grabOffset;
 			}
 		} );
 		function updateLayout() {
@@ -190,13 +274,28 @@
 			} else {
 				hidePreview();
 			}
-			updateNavigation();
+			updateOverview();
 		}
 		scroller.addEventListener( 'scroll', updateLayout, { passive: true } );
 		scroller.scrollLeft = scroller.scrollWidth;
-		updateNavigation();
+		updateOverview();
+		if ( 'IntersectionObserver' in window ) {
+			// Angeschnittene Datumsangaben ausblenden, ohne ihren Platz auf der Achse zu ändern.
+			const threshold = 0.99;
+			const labels = new IntersectionObserver( ( entries ) => {
+				for ( const entry of entries ) {
+					const shown = entry.intersectionRatio >= threshold && entry.intersectionRect.width > 0 && entry.intersectionRect.height > 0;
+					entry.target.style.visibility = shown ? '' : 'hidden';
+				}
+			}, { root: scroller, threshold } );
+			for ( const label of area.querySelectorAll( '.ttl-chart__date' ) ) {
+				labels.observe( label );
+			}
+		}
 		if ( 'ResizeObserver' in window ) {
-			new ResizeObserver( updateLayout ).observe( scroller );
+			const observer = new ResizeObserver( updateLayout );
+			observer.observe( scroller );
+			observer.observe( range );
 		}
 	}
 }() );

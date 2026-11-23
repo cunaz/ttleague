@@ -115,10 +115,11 @@ final class RatingChart {
 					$labels        .= '<span class="ttl-chart__date" aria-hidden="true" style="left:' . $left( $slot ) . '">' . esc_html( Format::date_short( $date ) ) . '</span>';
 					$last_date_slot = $slot;
 				}
+				$day = Format::date_plain( $date );
 				/* translators: 1: Spielnummer im Verlauf, 2: Datum, 3: Wertungszahl, 4: Veränderung. */
-				$label    = sprintf( __( 'Spiel %1$d am %2$s, Wertungszahl %3$s (%4$s)', 'ttleague' ), $i + 1, Format::date_plain( $date ), Format::rating( $event['after'] ), Format::delta( $event['delta'] ) );
+				$label    = sprintf( __( 'Spiel %1$d am %2$s, Wertungszahl %3$s (%4$s)', 'ttleague' ), $i + 1, $day, Format::rating( $event['after'] ), Format::delta( $event['delta'] ) );
 				$state    = $i === $count - 1 ? 'aria-pressed="true" tabindex="0"' : 'aria-pressed="false" tabindex="-1"';
-				$buttons .= '<button type="button" disabled class="ttl-chart__point" data-index="' . $i . '" style="left:' . $left( $slot ) . ';top:' . $after . '%" ' . $state . ' aria-label="' . esc_attr( $label ) . '" title="' . esc_attr( $label ) . '"></button>';
+				$buttons .= '<button type="button" disabled class="ttl-chart__point" data-index="' . $i . '" style="left:' . $left( $slot ) . ';top:' . $after . '%" ' . $state . ' aria-label="' . esc_attr( $label ) . '" data-date="' . esc_attr( $day ) . '" title="' . esc_attr( $label ) . '"></button>';
 			}
 			$series = implode( ' ', $points );
 			$end    = $anchor + $stop - $first;
@@ -126,12 +127,18 @@ final class RatingChart {
 				. '<polyline class="ttl-chart__line" points="' . $series . '" vector-effect="non-scaling-stroke"></polyline>';
 		}
 
-		$html = '<div class="ttl-chart__frame" role="group" aria-labelledby="' . esc_attr( $id ) . '-title" aria-describedby="' . esc_attr( $id ) . '-desc">'
+		$start_name = $events[0]['season_name'];
+		$end_name   = $events[ $count - 1 ]['season_name'];
+		$html       = '<div class="ttl-chart__frame" role="group" aria-labelledby="' . esc_attr( $id ) . '-title" aria-describedby="' . esc_attr( $id ) . '-desc">'
 			. '<span class="screen-reader-text" id="' . esc_attr( $id ) . '-title">' . esc_html( $title ) . '</span>'
 			. '<span class="screen-reader-text" id="' . esc_attr( $id ) . '-desc">' . esc_html( $desc ) . '</span>'
 			. '<div class="ttl-chart__scale" aria-hidden="true">' . $scale . '</div>'
-			. '<div class="ttl-chart__scroll"><div class="ttl-chart__plot" style="min-width:' . ( 1.75 * $slots ) . 'rem">'
-			. '<div class="ttl-chart__area">{svg}' . $labels . $buttons . '</div></div></div></div>';
+			. '<div class="ttl-chart__scroll" id="' . esc_attr( $id ) . '-scroll"><div class="ttl-chart__plot" style="min-width:' . ( 1.75 * $slots ) . 'rem">'
+			. '<div class="ttl-chart__area">{svg}' . $labels . $buttons . '</div></div></div></div>'
+			. '<div class="ttl-chart__overview" hidden dir="ltr"><div class="ttl-chart__track">'
+			. '<input class="ttl-chart__range" type="range" min="0" max="100" step="any" value="100" aria-label="' . esc_attr__( 'Sichtbaren Zeitraum verschieben', 'ttleague' ) . '" aria-controls="' . esc_attr( $id ) . '-scroll"></div>'
+			. '<div class="ttl-chart__extent" aria-hidden="true"><span>' . esc_html( $start_name ) . '</span>'
+			. ( $start_name === $end_name ? '' : '<span>' . esc_html( $end_name ) . '</span>' ) . '</div></div>';
 
 		return array(
 			'svg'  => $svg . '</svg>',

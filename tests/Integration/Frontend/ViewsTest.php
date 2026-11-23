@@ -190,6 +190,8 @@ final class ViewsTest extends IntegrationTestCase {
 		);
 		$profile = ( new PlayerView( $this->model, $this->urls, $context ) )->render( array() );
 		self::assertStringContainsString( 'ttl-chart__plot', $profile );
+		self::assertStringContainsString( '<span class="ttl-rating__delta">+0,3</span>', $profile, 'nur Partien der jüngsten gespielten Saison, auf eine Nachkommastelle gerundet' );
+		self::assertStringContainsString( 'Punkte in der Saison 2026/27', $profile );
 		self::assertStringContainsString( 'Verlauf als Tabelle', $profile );
 		self::assertStringContainsString( 'Klassierungsauswertung', $profile );
 		self::assertStringContainsString( 'RL 1. Runde, Kat. 1', $profile );
