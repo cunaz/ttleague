@@ -1,5 +1,6 @@
 /* Der Verlauf und die Tabelle stehen bereits im HTML. Die Auswahl bleibt im Spielerprofil. */
 ( function () {
+	let tooltipCount = 0;
 	for ( const chart of document.querySelectorAll( '[data-rating-chart]' ) ) {
 		const section = chart.closest( '.ttl-section--rating' );
 		const scroller = chart.querySelector( '.ttl-chart__scroll' );
@@ -13,7 +14,120 @@
 		const [ earlier, later ] = nav.querySelectorAll( 'button' );
 		let selected = points.length - 1;
 		chart.dataset.interactive = 'true';
-		points.forEach( ( point ) => { point.disabled = false; } );
+		points.forEach( ( point ) => {
+			point.disabled = false;
+			point.removeAttribute( 'title' );
+		} );
+
+		const frame = chart.querySelector( '.ttl-chart__frame' );
+		const area = chart.querySelector( '.ttl-chart__area' );
+		const guide = document.createElement( 'span' );
+		guide.className = 'ttl-chart__guide';
+		guide.hidden = true;
+		guide.setAttribute( 'aria-hidden', 'true' );
+		area.append( guide );
+
+		const tip = document.createElement( 'div' );
+		tip.className = 'ttl-chart__tooltip';
+		tip.id = 'ttl-chart-tip-' + ++tooltipCount;
+		tip.setAttribute( 'role', 'tooltip' );
+		tip.hidden = true;
+		frame.append( tip );
+
+		let preview = null;
+		let dismissed = null;
+
+		function hidePreview() {
+			if ( ! preview ) {
+				return;
+			}
+			preview.removeAttribute( 'data-preview' );
+			preview.removeAttribute( 'aria-describedby' );
+			preview = null;
+			tip.hidden = true;
+			guide.hidden = true;
+		}
+
+		function placePreview( point ) {
+			const box = frame.getBoundingClientRect();
+			const dot = point.getBoundingClientRect();
+			const x = dot.left + dot.width / 2 - box.left;
+			const y = dot.top + dot.height / 2 - box.top;
+			const height = tip.offsetHeight;
+			const gap = 12;
+			const firstY = Math.max( 0, -box.top ) + 4;
+			const lastY = Math.min( box.height, window.innerHeight - box.top ) - 4;
+			const above = y - gap - height;
+			const below = y + gap;
+			const top = above >= firstY || y - firstY > lastY - y ? above : below;
+			tip.style.left = Math.max( 4, Math.min( x - tip.offsetWidth / 2, box.width - tip.offsetWidth - 4 ) ) + 'px';
+			tip.style.top = Math.max( firstY, Math.min( top, lastY - height ) ) + 'px';
+		}
+
+		function showPreview( point ) {
+			if ( preview === point || dismissed === point ) {
+				return;
+			}
+			hidePreview();
+			dismissed = null;
+			preview = point;
+			const cells = rows[ Number( point.dataset.index ) ].cells;
+			tip.replaceChildren( ...Array.from( cells ).slice( 0, 3 ).map( ( cell ) => cell.firstElementChild.cloneNode( true ) ) );
+			tip.hidden = false;
+			guide.hidden = false;
+			guide.style.left = point.style.left;
+			point.dataset.preview = 'true';
+			point.setAttribute( 'aria-describedby', tip.id );
+			placePreview( point );
+		}
+
+		// Beim Abfahren der Kurve zählt die nächste Partie entlang der Spielachse.
+		function nearestPoint( clientX ) {
+			const x = clientX - area.getBoundingClientRect().left;
+			let first = 0;
+			let last = points.length - 1;
+			while ( first < last ) {
+				const mid = Math.floor( ( first + last ) / 2 );
+				if ( x <= ( points[ mid ].offsetLeft + points[ mid + 1 ].offsetLeft ) / 2 ) {
+					last = mid;
+				} else {
+					first = mid + 1;
+				}
+			}
+			return points[ first ];
+		}
+
+		area.addEventListener( 'pointermove', ( event ) => {
+			if ( event.pointerType !== 'touch' ) {
+				showPreview( nearestPoint( event.clientX ) );
+			}
+		} );
+		frame.addEventListener( 'pointermove', ( event ) => {
+			if ( ! preview || area.contains( event.target ) ) {
+				return;
+			}
+			const bounds = tip.getBoundingClientRect();
+			if ( event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom ) {
+				hidePreview();
+			}
+		} );
+		frame.addEventListener( 'pointerleave', () => {
+			dismissed = null;
+			hidePreview();
+		} );
+		scroller.addEventListener( 'focusin', ( event ) => {
+			if ( event.target.matches( '.ttl-chart__point:focus-visible' ) ) {
+				dismissed = null;
+				showPreview( event.target );
+			}
+		} );
+		scroller.addEventListener( 'focusout', hidePreview );
+		document.addEventListener( 'keydown', ( event ) => {
+			if ( event.key === 'Escape' && preview ) {
+				dismissed = preview;
+				hidePreview();
+			}
+		} );
 
 		function updateNavigation() {
 			const end = scroller.scrollWidth - scroller.clientWidth;
@@ -34,7 +148,8 @@
 		}
 
 		scroller.addEventListener( 'click', ( event ) => {
-			const point = event.target.closest( '.ttl-chart__point' );
+			const point = event.target.closest( '.ttl-chart__point' ) ||
+				( area.contains( event.target ) && preview && nearestPoint( event.clientX ) );
 			if ( point ) {
 				select( Number( point.dataset.index ) );
 			}
@@ -63,11 +178,25 @@
 				scroller.scrollBy( { left: Number( button.dataset.page ) * scroller.clientWidth * 0.8 } );
 			}
 		} );
-		scroller.addEventListener( 'scroll', updateNavigation, { passive: true } );
+		function updateLayout() {
+			if ( preview && preview.matches( ':focus-visible' ) && preview === document.activeElement ) {
+				const dot = preview.getBoundingClientRect();
+				const bounds = scroller.getBoundingClientRect();
+				if ( dot.right > bounds.left && dot.left < bounds.right ) {
+					placePreview( preview );
+				} else {
+					hidePreview();
+				}
+			} else {
+				hidePreview();
+			}
+			updateNavigation();
+		}
+		scroller.addEventListener( 'scroll', updateLayout, { passive: true } );
 		scroller.scrollLeft = scroller.scrollWidth;
 		updateNavigation();
 		if ( 'ResizeObserver' in window ) {
-			new ResizeObserver( updateNavigation ).observe( scroller );
+			new ResizeObserver( updateLayout ).observe( scroller );
 		}
 	}
 }() );

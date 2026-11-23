@@ -120,7 +120,10 @@ final class RatingChart {
 				$state    = $i === $count - 1 ? 'aria-pressed="true" tabindex="0"' : 'aria-pressed="false" tabindex="-1"';
 				$buttons .= '<button type="button" disabled class="ttl-chart__point" data-index="' . $i . '" style="left:' . $left( $slot ) . ';top:' . $after . '%" ' . $state . ' aria-label="' . esc_attr( $label ) . '" title="' . esc_attr( $label ) . '"></button>';
 			}
-			$svg .= '<polyline class="ttl-chart__line" points="' . implode( ' ', $points ) . '" vector-effect="non-scaling-stroke"></polyline>';
+			$series = implode( ' ', $points );
+			$end    = $anchor + $stop - $first;
+			$svg   .= '<polygon class="ttl-chart__fill" points="' . $anchor . ',100 ' . $series . ' ' . $end . ',100"></polygon>'
+				. '<polyline class="ttl-chart__line" points="' . $series . '" vector-effect="non-scaling-stroke"></polyline>';
 		}
 
 		$html = '<div class="ttl-chart__frame" role="group" aria-labelledby="' . esc_attr( $id ) . '-title" aria-describedby="' . esc_attr( $id ) . '-desc">'
@@ -174,6 +177,7 @@ final class RatingChart {
 			'g'        => $common,
 			'line'     => $common,
 			'polyline' => $common,
+			'polygon'  => $common,
 			'circle'   => $common,
 			'rect'     => $common,
 			'text'     => $common,
