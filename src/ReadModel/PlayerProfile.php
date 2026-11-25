@@ -17,7 +17,7 @@ use TTLeague\ReadModel\Support\Sql;
  * Ein Spiel aus Sicht des Spielers:
  * array{id:int,season_id:int,season_slug:string,season_name:string,date:?string,kind:string ('MM'|'CUP'|'RL'),
  *       competition:string,category:?string,group_no:?int,fixture_id:?int,rl_round_no:?int,rl_is_final:bool,
- *       rl_category:?int,rl_group_no:?int,type:string,status:string,counts_for_result:bool,
+ *       rl_category:?int,rl_group_no:?int,rl_group_id:?int,type:string,status:string,counts_for_result:bool,
  *       partner:?array,opponents:list<array>,sets_for:int,sets_against:int,won:?bool,
  *       team:?string,opponent_team:?string}
  *
@@ -37,7 +37,7 @@ final class PlayerProfile {
 	 */
 	public function get( int $player_id ): array {
 		return $this->cache->remember(
-			'player_profile',
+			'player_profile_v2',
 			array( $player_id ),
 			fn(): array => $this->load( $player_id )
 		);
@@ -306,6 +306,7 @@ final class PlayerProfile {
 				'rl_is_final'       => '1' === (string) $row['rl_is_final'],
 				'rl_category'       => Sql::int_or_null( $row['rl_category'] ),
 				'rl_group_no'       => Sql::int_or_null( $row['rl_group_no'] ),
+				'rl_group_id'       => Sql::int_or_null( $row['rl_group_id'] ),
 				'type'              => 'double' === $row['type'] ? 'double' : 'single',
 				'status'            => $status,
 				'counts_for_result' => '1' === (string) $row['counts_for_result'],

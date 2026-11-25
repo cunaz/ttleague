@@ -12,7 +12,7 @@ namespace TTLeague\Frontend\Views;
 use TTLeague\Frontend\Support\Format;
 
 /**
- * Verbindet die Wertungszahlen der gespielten Partien in Spielreihenfolge. Den Übergang
+ * Verbindet die Wertungsstände der Begegnungen in zeitlicher Reihenfolge. Den Übergang
  * zur neu verankerten Saison kennzeichnet eine gestrichelte Linie ohne eigenen Spielpunkt.
  */
 final class RatingChart {
@@ -116,8 +116,10 @@ final class RatingChart {
 					$last_date_slot = $slot;
 				}
 				$day = Format::date_plain( $date );
-				/* translators: 1: Spielnummer im Verlauf, 2: Datum, 3: Wertungszahl, 4: Veränderung. */
-				$label    = sprintf( __( 'Spiel %1$d am %2$s, Wertungszahl %3$s (%4$s)', 'ttleague' ), $i + 1, $day, Format::rating( $event['after'] ), Format::delta( $event['delta'] ) );
+				/* translators: %d: Nummer des Spiels im Verlauf. */
+				$point = $event['point_label'] ?? sprintf( __( 'Spiel %d', 'ttleague' ), $i + 1 );
+				/* translators: 1: Begegnung, 2: Datum, 3: Wertungszahl, 4: Veränderung. */
+				$label    = sprintf( __( '%1$s am %2$s, Wertungszahl %3$s (%4$s)', 'ttleague' ), $point, $day, Format::rating( $event['after'] ), Format::delta( $event['delta'] ) );
 				$state    = $i === $count - 1 ? 'aria-pressed="true" tabindex="0"' : 'aria-pressed="false" tabindex="-1"';
 				$buttons .= '<button type="button" disabled class="ttl-chart__point" data-index="' . $i . '" style="left:' . $left( $slot ) . ';top:' . $after . '%" ' . $state . ' aria-label="' . esc_attr( $label ) . '" data-date="' . esc_attr( $day ) . '" title="' . esc_attr( $label ) . '"></button>';
 			}

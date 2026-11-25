@@ -189,7 +189,14 @@ final class ViewsTest extends IntegrationTestCase {
 			)
 		);
 		$profile = ( new PlayerView( $this->model, $this->urls, $context ) )->render( array() );
-		self::assertStringContainsString( 'ttl-chart__plot', $profile );
+		self::assertSame( 5, substr_count( $profile, 'class="ttl-chart__point"' ), 'acht Wertungen aus fünf Begegnungen oder Turniergruppen' );
+		self::assertStringContainsString( '<details class="ttl-rating-breakdown"><summary>3 Partien</summary>', $profile );
+		$player  = $this->model->profiles->get( $this->ids['player_muster'] );
+		$ranking = array_values( array_filter( $player['games'], static fn( array $game ): bool => 'RL' === $game['kind'] ) );
+		self::assertSame( $this->ids['rl_group_1'], $ranking[0]['rl_group_id'] );
+		foreach ( $player['history'] as $event ) {
+			self::assertStringContainsString( '#ttl-partie-' . $event['game_id'] . '"', $profile );
+		}
 		self::assertStringContainsString( '<span class="ttl-rating__delta">+0,3</span>', $profile, 'nur Partien der jüngsten gespielten Saison, auf eine Nachkommastelle gerundet' );
 		self::assertStringContainsString( 'Punkte in der Saison 2026/27', $profile );
 		self::assertStringContainsString( 'Verlauf als Tabelle', $profile );

@@ -36,9 +36,10 @@ final class RatingService {
 	 * Berechnet alle Wertungszahlen neu und speichert sie.
 	 */
 	public function recalc( bool $reanchor = true ): RatingResult {
-		$games   = $this->repository->games();
+		$rules   = $this->rules();
+		$games   = $this->repository->games( $rules->rating_doubles_weight > 0.0 );
 		$classes = $this->repository->classifications();
-		$engine  = new RatingEngine( $this->rules(), $reanchor );
+		$engine  = new RatingEngine( $rules, $reanchor );
 		$result  = $engine->run( $games, static fn( int $player, int $season ) => $classes[ $season ][ $player ] ?? null );
 		$this->repository->save( $result );
 		return $result;

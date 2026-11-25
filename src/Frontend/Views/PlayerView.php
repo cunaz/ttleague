@@ -111,24 +111,17 @@ final class PlayerView extends View {
 			$text     = sprintf( _n( '%d gewertetes Spiel', '%d gewertete Spiele', $games, 'ttleague' ), $games );
 			$summary .= '<p class="ttl-rating"><span class="ttl-rating__value">' . esc_html( Format::rating( $value ) ) . '</span> <span class="ttl-rating__text">' . esc_html( $text ) . '</span></p>';
 		}
-		$games_by_id   = array_column( $profile['games'], null, 'id' );
-		$events        = array();
+		$events        = RatingEncounters::group( $profile['history'], $profile['games'] );
 		$rows          = array();
 		$season_deltas = array();
-		foreach ( $profile['history'] as $event ) {
-			$game = $games_by_id[ $event['game_id'] ] ?? null;
-			if ( null === $game ) {
-				// Die Spielliste enthält nur öffentlich sichtbare Partien.
-				continue;
-			}
-			$events[] = $event + array(
-				'season'      => $game['season_slug'],
-				'season_name' => $game['season_name'],
-			);
-			$rows[]   = array( 'cells' => $this->rating_game_cells( $event, $game ) );
-
-			$season                   = $game['season_slug'];
-			$season_deltas[ $season ] = ( $season_deltas[ $season ] ?? 0.0 ) + $event['delta'];
+		foreach ( $events as $i => $event ) {
+			$games = $event['games'];
+			$name  = $this->rating_encounter_name( $games[0] );
+			/* translators: 1: Gegner oder Bezeichnung der Begegnung, 2: Anzahl der gewerteten Partien. */
+			$events[ $i ]['point_label'] = sprintf( _n( '%1$s, %2$d Partie', '%1$s, %2$d Partien', count( $games ), 'ttleague' ), $name, count( $games ) );
+			$rows[]                      = array( 'cells' => $this->rating_encounter_cells( $event, $name ) );
+			$season                      = $event['season'];
+			$season_deltas[ $season ]    = ( $season_deltas[ $season ] ?? 0.0 ) + $event['delta'];
 		}
 		$classification = __( 'Die offizielle Klassierung legt die Technische Kommission für jede Saison fest.', 'ttleague' );
 		if ( array() === $events ) {
@@ -154,7 +147,7 @@ final class PlayerView extends View {
 		}
 		/* translators: %s: Name des Spielers. */
 		$title = sprintf( __( 'Verlauf der Wertungszahl von %s', 'ttleague' ), $player['name'] );
-		$desc  = __( 'Jeder Punkt zeigt den Stand nach einer Partie. Am Saisonwechsel führt die gestrichelte Linie zum neuen Startwert.', 'ttleague' );
+		$desc  = __( 'Jeder Punkt bündelt die gewerteten Partien einer Mannschaftsbegegnung oder einer Gruppe im Ranglistenturnier. Am Saisonwechsel führt die gestrichelte Linie zum neuen Startwert.', 'ttleague' );
 		$parts = RatingChart::parts( $events, 'ttl-rating-' . (int) $player['license'], $title, $desc );
 		$chart = str_replace( '{svg}', wp_kses( $parts['svg'], RatingChart::allowed_html() ), $parts['html'] );
 
@@ -167,15 +160,15 @@ final class PlayerView extends View {
 			array(
 				array( 'label' => __( 'Datum und Wettbewerb', 'ttleague' ) ),
 				array(
-					'label'   => __( 'Partie', 'ttleague' ),
+					'label'   => __( 'Begegnung', 'ttleague' ),
 					'primary' => true,
 				),
 				array( 'label' => __( 'Wertungszahl', 'ttleague' ) ),
-				array( 'label' => __( 'Spielbericht', 'ttleague' ) ),
+				array( 'label' => __( 'Partien', 'ttleague' ) ),
 			),
 			array_reverse( $rows ),
 			array(
-				'caption' => __( 'Wertungszahl pro Partie, neueste zuerst', 'ttleague' ),
+				'caption' => __( 'Wertungszahl pro Begegnung oder Turniergruppe, neueste zuerst', 'ttleague' ),
 				'class'   => 'ttl-rating-history ttl-table--compact',
 			)
 		);
@@ -184,13 +177,85 @@ final class PlayerView extends View {
 	}
 
 	/**
-	 * Dieselben vier Felder werden unter der Kurve und in ihrer Tabellenalternative angezeigt.
+	 * @param array<string,mixed> $game Eine Partie der Begegnung.
+	 */
+	private function rating_encounter_name( array $game ): string {
+		if ( 'RL' === $game['kind'] ) {
+			$name = $this->ranking_round_label( $game );
+			if ( null !== $game['rl_group_no'] ) {
+				/* translators: %d: Gruppennummer im Ranglistenturnier. */
+				$name .= ' · ' . sprintf( __( 'Gruppe %d', 'ttleague' ), $game['rl_group_no'] );
+			}
+			return $name;
+		}
+		$teams = implode( ' – ', array_filter( array( $game['team'], $game['opponent_team'] ) ) );
+		return '' !== $teams ? $teams : $game['competition'];
+	}
+
+	/**
+	 * Dieselben Felder erscheinen in Vorschau, Auswahl und Tabelle.
 	 *
-	 * @param array<string,mixed> $event Wertung aus Sicht des Spielers.
-	 * @param array<string,mixed> $game  Zugehörige öffentliche Partie.
+	 * @param array<string,mixed> $point Gruppierte Wertungen.
+	 * @param string              $name  Paarung oder Turniergruppe.
 	 * @return list<string> Sichere HTML-Zellen.
 	 */
-	private function rating_game_cells( array $event, array $game ): array {
+	private function rating_encounter_cells( array $point, string $name ): array {
+		$games = $point['games'];
+		$count = count( $games );
+		$first = $games[0];
+		$meta  = Format::date_plain( $point['at'] ) . ' · ' . $point['season_name'] . ' · ' . $first['competition'];
+		if ( 1 === $count ) {
+			$meta    .= ' · ' . $name;
+			$heading  = $this->rating_game_pairing( $first );
+			$contents = $this->rating_game_link( $first );
+		} else {
+			$wins = count( array_filter( array_column( $games, 'won' ) ) );
+			/* translators: 1: Siege des Spielers, 2: gewertete Partien dieser Begegnung oder Gruppe. */
+			$meta   .= ' · ' . sprintf( __( '%1$d von %2$d gewonnen', 'ttleague' ), $wins, $count );
+			$heading = esc_html( $name );
+			/* translators: %d: Anzahl der gewerteten Partien. */
+			$label    = sprintf( __( '%d Partien', 'ttleague' ), $count );
+			$contents = '<details class="ttl-rating-breakdown"><summary>' . esc_html( $label ) . '</summary><ul>';
+			foreach ( $games as $game ) {
+				$contents .= '<li><span class="ttl-rating-breakdown__pairing">' . $this->rating_game_pairing( $game ) . '</span> '
+					. self::rating_change( $game ) . ' ' . $this->rating_game_link( $game ) . '</li>';
+			}
+			$contents .= '</ul></details>';
+		}
+		return array(
+			'<span class="ttl-rating-game__meta">' . esc_html( $meta ) . '</span>',
+			'<strong class="ttl-rating-game__pairing">' . $heading . '</strong>',
+			self::rating_change( $point ),
+			$contents,
+		);
+	}
+
+	/**
+	 * @param array<string,mixed> $game Partie aus Spielersicht.
+	 */
+	private function rating_game_link( array $game ): string {
+		if ( 'RL' === $game['kind'] ) {
+			$url = $this->urls->ranking( $game['season_slug'] );
+		} elseif ( $game['fixture_id'] > 0 ) {
+			$url = $this->urls->fixture( $game['fixture_id'] );
+		} else {
+			return '<span>–</span>';
+		}
+		return Html::link( $url . '#ttl-partie-' . $game['id'], __( 'Zur Partie', 'ttleague' ) );
+	}
+
+	/**
+	 * @param array<string,mixed> $event Wertung einer Partie oder Begegnung.
+	 */
+	private static function rating_change( array $event ): string {
+		return '<span class="ttl-rating-game__change">' . esc_html( Format::points( round( $event['before'], 1 ) ) . ' → ' . Format::points( round( $event['after'], 1 ) ) )
+			. ' <span class="ttl-rating-game__delta">(' . esc_html( Format::delta( $event['delta'] ) ) . ')</span></span>';
+	}
+
+	/**
+	 * @param array<string,mixed> $game Partie aus Spielersicht.
+	 */
+	private function rating_game_pairing( array $game ): string {
 		$opponents = implode( ' / ', array_column( $game['opponents'], 'name' ) );
 		$score     = '<span class="ttl-rating-game__score">' . esc_html( Format::ratio( $game['sets_for'], $game['sets_against'] ) ) . '</span>';
 		if ( '' !== $opponents ) {
@@ -201,15 +266,7 @@ final class PlayerView extends View {
 			/* translators: %s: Name des Doppelpartners. */
 			$opponents = trim( $opponents . ' ' . sprintf( __( '(mit %s)', 'ttleague' ), $game['partner']['name'] ) );
 		}
-		$pairing = $score . ( '' === $opponents ? '' : ' <span class="ttl-rating-game__opponents">' . esc_html( $opponents ) . '</span>' );
-		$url     = 'RL' === $game['kind'] ? $this->urls->ranking( $game['season_slug'] ) : $this->urls->fixture( (int) $game['fixture_id'] );
-		return array(
-			'<span class="ttl-rating-game__meta">' . esc_html( Format::date_plain( $event['at'] ) . ' · ' . $game['season_name'] . ' · ' . $game['competition'] ) . '</span>',
-			'<strong class="ttl-rating-game__pairing">' . $pairing . '</strong>',
-			'<span class="ttl-rating-game__change">' . esc_html( Format::points( round( $event['before'], 1 ) ) . ' → ' . Format::points( round( $event['after'], 1 ) ) )
-				. ' <span class="ttl-rating-game__delta">(' . esc_html( Format::delta( $event['delta'] ) ) . ')</span></span>',
-			Html::link( $url . '#ttl-partie-' . $game['id'], __( 'Zur Partie', 'ttleague' ) ),
-		);
+		return $score . ( '' === $opponents ? '' : ' <span class="ttl-rating-game__opponents">' . esc_html( $opponents ) . '</span>' );
 	}
 
 	/**
@@ -477,18 +534,23 @@ final class PlayerView extends View {
 	private function competition( array $game ): string {
 		$season = $game['season_slug'];
 		if ( 'RL' === $game['kind'] ) {
-			if ( $game['rl_is_final'] ) {
-				$label = __( 'RL Final', 'ttleague' );
-			} else {
-				/* translators: 1: Runde, 2: Kategorie. */
-				$label = sprintf( __( 'RL %1$d. Runde, Kat. %2$d', 'ttleague' ), (int) $game['rl_round_no'], (int) $game['rl_category'] );
-			}
-			return Html::link( $this->urls->ranking( $season ), $label );
+			return Html::link( $this->urls->ranking( $season ), $this->ranking_round_label( $game ) );
 		}
 		if ( 'CUP' === $game['kind'] ) {
 			return Html::link( $this->urls->cup( $season, (string) $game['category'] ), $game['competition'] );
 		}
 		$slug = \TTLeague\ReadModel\Championship::group_slug( $game['category'], (int) $game['group_no'], 0 );
 		return Html::link( $this->urls->group( $season, $slug ), $game['competition'] ) . ( 'double' === $game['type'] ? ' <span class="ttl-muted">' . esc_html__( 'Doppel', 'ttleague' ) . '</span>' : '' );
+	}
+
+	/**
+	 * @param array<string,mixed> $game Ranglistenspiel.
+	 */
+	private function ranking_round_label( array $game ): string {
+		if ( $game['rl_is_final'] ) {
+			return __( 'RL Final', 'ttleague' );
+		}
+		/* translators: 1: Runde, 2: Kategorie. */
+		return sprintf( __( 'RL %1$d. Runde, Kat. %2$d', 'ttleague' ), (int) $game['rl_round_no'], (int) $game['rl_category'] );
 	}
 }

@@ -2073,6 +2073,37 @@
 	}
 }
 
+.ttl-rating-game > .ttl-rating-breakdown {
+	grid-column: 1 / -1;
+}
+
+.ttl-rating-breakdown summary {
+	cursor: pointer;
+	font-weight: 600;
+	font-size: var(--ttl-small);
+}
+
+.ttl-rating-breakdown ul {
+	list-style: none;
+	margin: 0.35rem 0 0;
+	padding: 0;
+}
+
+.ttl-rating-breakdown li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.25rem 1rem;
+	padding-block: 0.45rem;
+	border-block-start: 1px solid var(--ttl-line);
+	font-size: var(--ttl-small);
+}
+
+.ttl-rating-breakdown__pairing {
+	flex: 1 1 12rem;
+	overflow-wrap: anywhere;
+}
+
 .ttl-rating-notes {
 	display: flex;
 	flex-wrap: wrap;
