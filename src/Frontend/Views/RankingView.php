@@ -219,7 +219,7 @@ final class RankingView extends View {
 		foreach ( $group['games'] as $game ) {
 			$a       = $this->player_link( $game['a'] );
 			$b       = $this->player_link( $game['b'] );
-			$games[] = '<li>' . ( 'a' === $game['winner'] ? '<strong>' . $a . '</strong>' : $a ) . ' – ' . ( 'b' === $game['winner'] ? '<strong>' . $b . '</strong>' : $b )
+			$games[] = '<li id="ttl-partie-' . (int) $game['id'] . '">' . ( 'a' === $game['winner'] ? '<strong>' . $a . '</strong>' : $a ) . ' – ' . ( 'b' === $game['winner'] ? '<strong>' . $b . '</strong>' : $b )
 				. ' <span class="ttl-games-list__score">' . esc_html( Format::ratio( $game['sets_a'], $game['sets_b'] ) ) . '</span>'
 				. ( 'played' === $game['status'] ? '' : ' ' . Html::badge( Format::game_status( $game['status'] ), 'muted' ) ) . '</li>';
 		}

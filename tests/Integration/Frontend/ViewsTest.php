@@ -116,6 +116,23 @@ final class ViewsTest extends IntegrationTestCase {
 		self::assertStringContainsString( 'Die Begegnung Nr. 999999 gibt es nicht.', $missing );
 	}
 
+	public function test_public_reports_expose_a_fragment_for_each_player_game(): void {
+		$profile = $this->model->profiles->get( $this->ids['player_muster'] );
+		$ranking = ( new RankingView( $this->model, $this->urls ) )->render( array() );
+		$view    = new MatchReportView( $this->model, $this->urls );
+		$reports = array();
+		foreach ( $profile['games'] as $game ) {
+			if ( 'RL' === $game['kind'] ) {
+				$html = $ranking;
+			} else {
+				$fixture_id               = $game['fixture_id'];
+				$reports[ $fixture_id ] ??= $view->render( array( 'fixture' => $fixture_id ) );
+				$html                     = $reports[ $fixture_id ];
+			}
+			self::assertSame( 1, substr_count( $html, 'id="ttl-partie-' . $game['id'] . '"' ), 'Direktlink zum Spiel in ' . $game['kind'] );
+		}
+	}
+
 	public function test_match_report_offers_sharing_once_there_is_a_result(): void {
 		$html = ( new MatchReportView( $this->model, $this->urls ) )->render( array( 'fixture' => $this->ids['fixture_1'] ) );
 		self::assertSame( 1, substr_count( $html, 'data-ttl-share ' ) );
@@ -172,7 +189,16 @@ final class ViewsTest extends IntegrationTestCase {
 			)
 		);
 		$profile = ( new PlayerView( $this->model, $this->urls, $context ) )->render( array() );
-		self::assertStringContainsString( 'ttl-chart__plot', $profile );
+		self::assertSame( 5, substr_count( $profile, 'class="ttl-chart__point"' ), 'acht Wertungen aus fünf Begegnungen oder Turniergruppen' );
+		self::assertStringContainsString( '<details class="ttl-rating-breakdown"><summary>3 Partien</summary>', $profile );
+		$player  = $this->model->profiles->get( $this->ids['player_muster'] );
+		$ranking = array_values( array_filter( $player['games'], static fn( array $game ): bool => 'RL' === $game['kind'] ) );
+		self::assertSame( $this->ids['rl_group_1'], $ranking[0]['rl_group_id'] );
+		foreach ( $player['history'] as $event ) {
+			self::assertStringContainsString( '#ttl-partie-' . $event['game_id'] . '"', $profile );
+		}
+		self::assertStringContainsString( '<span class="ttl-rating__delta">+0,3</span>', $profile, 'nur Partien der jüngsten gespielten Saison, auf eine Nachkommastelle gerundet' );
+		self::assertStringContainsString( 'Punkte in der Saison 2026/27', $profile );
 		self::assertStringContainsString( 'Verlauf als Tabelle', $profile );
 		self::assertStringContainsString( 'Klassierungsauswertung', $profile );
 		self::assertStringContainsString( 'RL 1. Runde, Kat. 1', $profile );

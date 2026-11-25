@@ -181,6 +181,7 @@ final class MatchReportView extends View {
 				) . '</span>';
 			}
 			$rows[] = array(
+				'id'    => 'ttl-partie-' . (int) $game['id'],
 				'class' => trim( ( 'played' === $game['status'] ? '' : 'is-' . $game['status'] ) . ( $game['counts_for_result'] ? '' : ' is-uncounted' ) ),
 				'cells' => array(
 					esc_html( (string) $game['sequence'] ) . ' <span class="ttl-muted">' . esc_html( $pair ) . '</span>',

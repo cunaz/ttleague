@@ -38,7 +38,7 @@ final class MatchReports {
 	 */
 	public function get( int $fixture_id ): ?array {
 		return $this->cache->remember(
-			'match_report',
+			'match_report_v2',
 			array( $fixture_id ),
 			fn(): ?array => $this->load( $fixture_id )
 		);
@@ -204,6 +204,7 @@ final class MatchReports {
 				}
 			}
 			$games[] = array(
+				'id'                => $id,
 				'sequence'          => $sequence,
 				'type'              => 'double' === $g['type'] ? 'double' : 'single',
 				'status'            => $status,

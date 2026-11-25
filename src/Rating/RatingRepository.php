@@ -25,26 +25,28 @@ final class RatingRepository {
 	 * chronologisch. Kampflose und nicht gespielte Spiele sowie Doppel mit unbekanntem
 	 * Spieler zählen nicht.
 	 *
+	 * @param bool $include_doubles Auch Doppel für Wertung oder Kalibrierung laden.
 	 * @return list<RatingGame>
 	 */
-	public function games(): array {
+	public function games( bool $include_doubles = true ): array {
 		$g      = $this->db->table( 'game' );
 		$f      = $this->db->table( 'fixture' );
 		$c      = $this->db->table( 'competition' );
 		$rg     = $this->db->table( 'rl_group' );
 		$rr     = $this->db->table( 'rl_round' );
 		$status = "'" . implode( "','", self::COUNTING_STATUS ) . "'";
+		$type   = $include_doubles ? '' : " AND g.type = 'single'";
 
 		$rows = $this->db->get_results(
 			"SELECT g.id, COALESCE(g.played_at, f.scheduled_at) AS played_at, c.season_id, c.type AS competition,
 				g.a1_player_id, g.a2_player_id, g.b1_player_id, g.b2_player_id, g.sets_a, g.sets_b, g.type
 			FROM $g g JOIN $f f ON f.id = g.fixture_id JOIN $c c ON c.id = f.competition_id
-			WHERE g.status = 'played' AND f.status IN ($status)
+			WHERE g.status = 'played' AND f.status IN ($status)$type
 			UNION ALL
 			SELECT g.id, COALESCE(g.played_at, CONCAT(r.date_from, ' 20:00:00')) AS played_at, c.season_id, 'RL' AS competition,
 				g.a1_player_id, g.a2_player_id, g.b1_player_id, g.b2_player_id, g.sets_a, g.sets_b, g.type
 			FROM $g g JOIN $rg rg ON rg.id = g.rl_group_id JOIN $rr r ON r.id = rg.rl_round_id JOIN $c c ON c.id = r.competition_id
-			WHERE g.status = 'played'
+			WHERE g.status = 'played'$type
 			ORDER BY played_at, id"
 		);
 

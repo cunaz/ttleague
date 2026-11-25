@@ -71,16 +71,68 @@ final class RatingChartTest extends TestCase {
 		self::assertSame( 2, $days[0]['games'] );
 		self::assertSame( '2026/27', $days[1]['season_name'] );
 		self::assertSame( 1200.0, $days[1]['start'], 'Neuverankerung zu Saisonbeginn' );
+	}
 
-		$parts = RatingChart::parts( $days, 'chart', 'Titel', 'Beschreibung' );
-		self::assertSame( 2, substr_count( $parts['svg'], '<polyline' ), 'eine Linie pro Saison' );
-		self::assertSame( 1, substr_count( $parts['svg'], 'ttl-chart__boundary' ), 'eine Saisongrenze' );
-		self::assertSame( 2, substr_count( $parts['svg'], '<title>' ), 'ein Hover-Band pro Spieltag' );
-		self::assertStringContainsString( 'Di, 8.9.2026: 1209 (+9,0, 1 Spiel)', $parts['svg'] );
+	public function test_each_game_can_be_selected_and_reanchoring_is_distinct(): void {
+		$same_day = array(
+			'at'          => '2026-03-10 20:00:00',
+			'season'      => '2025-26',
+			'season_name' => '2025/26',
+		);
+		$events   = array(
+			$same_day + array(
+				'before' => 1100.0,
+				'after'  => 1091.5,
+				'delta'  => -8.5,
+			),
+			$same_day + array(
+				'before' => 1091.5,
+				'after'  => 1097.5,
+				'delta'  => 6.0,
+			),
+			array(
+				'at'          => '2026-09-08 20:00:00',
+				'season'      => '2026-27',
+				'season_name' => '2026/27',
+				'before'      => 1200.0,
+				'after'       => 1209.0,
+				'delta'       => 9.0,
+			),
+		);
+		$parts    = RatingChart::parts( $events, 'chart', 'Titel', 'Beschreibung' );
+		self::assertSame( 2, substr_count( $parts['svg'], '<polyline' ) );
+		self::assertSame( 1, substr_count( $parts['svg'], 'ttl-chart__boundary' ) );
+		self::assertSame( 1, substr_count( $parts['svg'], 'ttl-chart__reset' ) );
+		self::assertSame( 3, substr_count( $parts['html'], 'class="ttl-chart__point"' ) );
+		self::assertStringContainsString( 'data-index="0" style="left:30%', $parts['html'] );
+		self::assertStringContainsString( 'data-index="1" style="left:50%', $parts['html'] );
+		self::assertStringContainsString( 'data-index="2" style="left:90%', $parts['html'] );
+		self::assertSame( 1, substr_count( $parts['html'], 'aria-pressed="true"' ) );
+		self::assertStringContainsString( 'aria-pressed="true" tabindex="0" aria-label="Spiel 3', $parts['html'] );
 		self::assertStringContainsString( 'aria-labelledby="chart-title"', $parts['html'] );
 		self::assertStringContainsString( '25/26', $parts['html'] );
 		self::assertStringContainsString( '{svg}', $parts['html'] );
-		self::assertStringContainsString( '>1209<', $parts['html'] );
+	}
+
+	public function test_single_game_with_unchanged_rating(): void {
+		$parts = RatingChart::parts(
+			array(
+				array(
+					'at'          => '2026-09-08 20:00:00',
+					'season'      => '2026-27',
+					'season_name' => '2026/27',
+					'before'      => 1200.0,
+					'after'       => 1200.0,
+					'delta'       => 0.0,
+				),
+			),
+			'chart',
+			'Titel',
+			'Beschreibung'
+		);
+		self::assertStringNotContainsString( 'ttl-chart__reset', $parts['svg'] );
+		self::assertStringContainsString( 'data-index="0" style="left:75%;top:50%"', $parts['html'] );
+		self::assertStringContainsString( 'aria-pressed="true"', $parts['html'] );
 	}
 
 	public function test_empty_history_renders_nothing(): void {

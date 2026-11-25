@@ -49,8 +49,8 @@ final class RankingTournament {
 	 */
 	public function get( int $season_id ): ?array {
 		return $this->cache->remember(
-			// v3: mit regular_rounds und «entered» je Gruppe; ältere Einträge ohne diese Schlüssel dürfen nicht mehr gelten.
-			'rl_season_v3',
+			// v4: Spiele mit ihrer ID für Direktlinks aus dem Spielerprofil.
+			'rl_season_v4',
 			array( $season_id ),
 			fn(): ?array => $this->load( $season_id )
 		);
@@ -154,7 +154,7 @@ final class RankingTournament {
 
 		$games = array();
 		foreach ( $this->db->get_results(
-			"SELECT g.rl_group_id, g.sequence, g.a1_player_id, g.b1_player_id, g.sets_a, g.sets_b, g.status
+			"SELECT g.id, g.rl_group_id, g.sequence, g.a1_player_id, g.b1_player_id, g.sets_a, g.sets_b, g.status
 			FROM {$this->db->table( 'game' )} g
 			JOIN {$this->db->table( 'rl_group' )} rg ON rg.id = g.rl_group_id
 			JOIN {$this->db->table( 'rl_round' )} rr ON rr.id = rg.rl_round_id
@@ -179,6 +179,7 @@ final class RankingTournament {
 				$sets_a           = (int) $g['sets_a'];
 				$sets_b           = (int) $g['sets_b'];
 				$group['games'][] = array(
+					'id'     => (int) $g['id'],
 					'a'      => $group_members[ $a ]['player'],
 					'b'      => $group_members[ $b ]['player'],
 					'sets_a' => $sets_a,
