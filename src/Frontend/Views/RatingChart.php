@@ -135,7 +135,7 @@ final class RatingChart {
 			. '<span class="screen-reader-text" id="' . esc_attr( $id ) . '-title">' . esc_html( $title ) . '</span>'
 			. '<span class="screen-reader-text" id="' . esc_attr( $id ) . '-desc">' . esc_html( $desc ) . '</span>'
 			. '<div class="ttl-chart__scale" aria-hidden="true">' . $scale . '</div>'
-			. '<div class="ttl-chart__scroll" id="' . esc_attr( $id ) . '-scroll"><div class="ttl-chart__plot" style="min-width:' . ( 1.75 * $slots ) . 'rem">'
+			. '<div class="ttl-chart__scroll" id="' . esc_attr( $id ) . '-scroll"><div class="ttl-chart__plot" style="--ttl-chart-slots:' . $slots . '">'
 			. '<div class="ttl-chart__area">{svg}' . $labels . $buttons . '</div></div></div></div>'
 			. '<div class="ttl-chart__overview" hidden dir="ltr"><div class="ttl-chart__track">'
 			. '<input class="ttl-chart__range" type="range" min="0" max="100" step="any" value="100" aria-label="' . esc_attr__( 'Sichtbaren Zeitraum verschieben', 'ttleague' ) . '" aria-controls="' . esc_attr( $id ) . '-scroll"></div>'

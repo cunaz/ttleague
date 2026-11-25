@@ -1004,6 +1004,8 @@
 }
 
 .ttl-chart__plot {
+	--ttl-chart-point-size: 44px;
+	min-width: calc(var(--ttl-chart-slots) * var(--ttl-chart-point-size));
 	direction: ltr;
 	padding-block: 2rem;
 }
@@ -1105,10 +1107,8 @@
 	position: absolute;
 	display: grid;
 	place-items: center;
-	width: 1.75rem;
-	height: 1.75rem;
-	min-width: 0;
-	min-height: 0;
+	width: var(--ttl-chart-point-size);
+	height: var(--ttl-chart-point-size);
 	padding: 0;
 	margin: 0;
 	transform: translate(-50%, -50%);
