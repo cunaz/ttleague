@@ -1005,7 +1005,7 @@
 
 .ttl-chart__plot {
 	--ttl-chart-point-size: 44px;
-	min-width: calc(var(--ttl-chart-slots) * var(--ttl-chart-point-size));
+	min-width: calc(var(--ttl-chart-slots) * (var(--ttl-chart-point-size) + 2px));
 	direction: ltr;
 	padding-block: 2rem;
 }
